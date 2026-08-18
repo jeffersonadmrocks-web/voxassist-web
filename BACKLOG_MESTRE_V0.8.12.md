@@ -20,6 +20,18 @@ Consolidação de requisitos recuperados das conversas de computador e celular. 
 - Parecer técnico guiado e assinatura visual automática do técnico.
 - Impressão/Gerar PDF com submenu de documentos.
 
+## Busca / navegação / autocomplete
+- [DISPONÍVEL PARA RETESTE] Pesquisa global por cliente, CPF/CNPJ, telefone, número da OS, equipamento, marca, modelo, número de série, técnico e situação.
+- [DISPONÍVEL PARA RETESTE] Sugestões de resultado durante digitação na busca global; Enter abre o primeiro resultado compatível.
+- [DISPONÍVEL PARA RETESTE] Pesquisa de OS com filtros combináveis por Situação, Marca, Grupo, Técnico e Tipo de Atendimento.
+- [DISPONÍVEL PARA RETESTE] Filtros da pesquisa de OS permanecem ativos durante a navegação da sessão até o usuário limpar.
+- Busca deve ignorar diferença entre maiúsculas/minúsculas e acentuação quando possível.
+- Autocomplete de Tipo de Produto, Marca, Modelo, Estado do Aparelho e Defeito Relatado usando dados já cadastrados.
+- Modelo deve ser refinado pela Marca quando a Marca estiver informada.
+- Autocomplete de Defeito Constatado e Serviço Técnico a partir do histórico cadastrado.
+- Pesquisa de cliente deve considerar Nome/Razão Social, CPF/CNPJ e telefones.
+- Ao localizar OS/cliente a partir do Dashboard, preservar contexto/filtros e evitar fechamento indevido de abas.
+
 ## Fotos / QR / documentos
 - QR permanente na OS para anexar fotos/documentos/PDFs.
 - Fotos classificadas e uso por recepção/técnicos.
