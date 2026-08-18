@@ -1,0 +1,29 @@
+/* Correção urgente — OS V0.8.12 Web seguindo a composição Desktop */
+.vx-os-wrap{padding:7px;background:#f1f4f7;border:1px solid #aeb8c2;min-width:980px}
+.vx-os-head{min-height:56px;padding:7px 10px;margin:0 0 8px;background:#fff;border:1px solid #cbd4dc;box-shadow:none}
+.vx-os-number{font-size:20px;font-weight:500;color:#075fd7;min-width:112px;padding-left:6px}
+.vx-status-btn{height:40px;min-width:165px;padding:0 18px;background:#176fd8;border:0;border-radius:0;font-size:14px}
+.vx-back,.vx-action{height:38px;border-radius:0;box-shadow:none;padding:0 14px;font-size:11px}
+.vx-back{background:#edf2f6}.vx-action.attention{background:#ef7d00}.vx-action.parts{background:#078d43}
+.vx-os-tabs{height:35px;margin:0;gap:0;overflow:visible}
+.vx-os-tabs button{height:35px;padding:0 16px;border:1px solid #9b9b94;border-right:0;background:#c8c4bc;color:#111;border-radius:0;font-size:11px}
+.vx-os-tabs button:last-child{border-right:1px solid #9b9b94}.vx-os-tabs button.active{background:#fff;border-bottom-color:#fff}
+.vx-os-panel{padding:5px;background:#fff;border:1px solid #0d69df;min-height:590px}
+.vx-os-summary-grid{grid-template-columns:46.5% 53.5%;gap:7px}
+.vx-os-box{padding:10px 10px 12px;border:1px solid #0968e8;min-height:615px}
+.vx-os-box h3{font-size:15px;font-weight:500;margin:3px 6px 14px;color:#075fd7}
+.vx-field-grid{gap:10px 16px}.vx-field-grid.two{gap:10px 16px}
+.vx-field label{font-size:10px;color:#61728a;margin:0 0 4px 1px}
+.vx-field input,.vx-field select,.vx-field textarea,.vx-client-search-input{height:30px;padding:4px 5px;border:1px solid #111;border-radius:0;background:#f4f4f4;font-size:11px;box-shadow:none}
+.vx-field textarea{height:auto;min-height:50px}.vx-client-search-input{display:block;width:100%;background:#f2f2f2}
+.vx-client-result{height:47px;margin:7px 0 14px;border:1px solid #cbd7e3;background:#fff}
+.vx-f11{height:36px;margin-top:10px;padding:0 14px;background:#edf2f6;border:0;border-radius:0}
+.vx-events{margin-top:22px;padding:10px 6px 6px;border:1px solid #a8afb7}.vx-events-title{font-size:11px;margin:-18px 0 7px 0;padding:0 4px}
+.vx-event-grid{gap:6px}.vx-event{min-height:55px;padding:9px 10px;background:#edf4fd;border:1px solid #cad7e5}
+.vx-budget-strip{margin-top:7px;padding:9px 10px;border:1px solid #159b4a;background:#fff}.vx-budget-strip h3{font-size:14px;font-weight:500;color:#078b3e;margin:2px 6px 9px}
+.vx-budget-values{gap:7px}.vx-budget-value{min-height:54px;padding:8px 10px;border:1px solid #d1d8df;background:#f8fafb}
+.vx-os-section{padding:10px;border:1px solid #0d69df;background:#fff;min-height:545px}.vx-os-section>h3{margin:-10px -10px 14px;padding:11px 12px;border-bottom:1px solid #cbd5df;background:#f4f6f8;color:#075fd7;font-size:14px;font-weight:500}
+.vx-os-table{border:1px solid #aeb8c2}.vx-os-table th{background:#d9dde0;border:1px solid #9ea8b1;color:#111;font-weight:600}.vx-os-table td{border:1px solid #d6dde4}
+.vx-history-item{border-left:3px solid #176fd8;border-top:1px solid #dbe2e8;border-right:1px solid #dbe2e8;border-bottom:1px solid #dbe2e8;background:#fff}
+.vx-os-actions-bottom{padding-top:10px;border-top:1px solid #e0e5e9}
+@media(max-width:1100px){.vx-os-wrap{min-width:0}.vx-os-summary-grid{grid-template-columns:1fr}.vx-os-box{min-height:auto}.vx-os-tabs{overflow-x:auto}.vx-os-tabs button{flex:0 0 auto}}
