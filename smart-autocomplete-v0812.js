@@ -10,6 +10,7 @@
   };
 
   const norm=v=>String(v||'').trim().toUpperCase();
+  const typingValue=v=>String(v||'').toUpperCase();
   const countValues=(arr,seed=[])=>{
     const map=new Map();
     [...seed,...arr].forEach(v=>{v=norm(v);if(!v)return;map.set(v,(map.get(v)||0)+1)});
@@ -52,24 +53,50 @@
     const box=document.createElement('div');
     box.className='vx-smart-suggestions hidden';
     host.appendChild(box);
+    let currentRows=[];
+    let activeIndex=-1;
 
     const render=()=>{
       const q=norm(el.value);
-      const rows=items.filter(x=>!q||x.text.includes(q)).slice(0,8);
-      if(!rows.length){box.classList.add('hidden');box.innerHTML='';return}
-      box.innerHTML=rows.map((x,i)=>`<button type="button" data-smart-index="${i}"><span>${esc(x.text)}</span>${x.count>1?`<small>${x.count} usos</small>`:''}</button>`).join('');
+      currentRows=items.filter(x=>!q||x.text.includes(q)).slice(0,8);
+      activeIndex=-1;
+      if(!currentRows.length){box.classList.add('hidden');box.innerHTML='';return}
+      box.innerHTML=currentRows.map((x,i)=>`<button type="button" data-smart-index="${i}"><span>${esc(x.text)}</span>${x.count>1?`<small>${x.count} usos</small>`:''}</button>`).join('');
       box.classList.remove('hidden');
-      box.querySelectorAll('button').forEach((b,i)=>b.onclick=()=>{el.value=rows[i].text;box.classList.add('hidden');el.dispatchEvent(new Event('input',{bubbles:true}));el.focus()});
+      box.querySelectorAll('button').forEach((b,i)=>b.onclick=()=>select(i));
+    };
+
+    const select=i=>{
+      const row=currentRows[i];if(!row)return;
+      el.value=row.text;
+      box.classList.add('hidden');
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+      el.focus();
+    };
+
+    const markActive=()=>{
+      box.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('active',i===activeIndex));
     };
 
     el.addEventListener('focus',render);
-    el.addEventListener('input',()=>{el.value=norm(el.value);render()});
-    el.addEventListener('keydown',e=>{if(e.key==='Escape')box.classList.add('hidden')});
+    el.addEventListener('input',()=>{
+      const pos=el.selectionStart;
+      el.value=typingValue(el.value); // preserva espaços durante a digitação
+      try{el.setSelectionRange(pos,pos)}catch(_){ }
+      render();
+    });
+    el.addEventListener('keydown',e=>{
+      if(e.key==='Escape'){box.classList.add('hidden');return}
+      if(box.classList.contains('hidden')||!currentRows.length)return;
+      if(e.key==='ArrowDown'){e.preventDefault();activeIndex=(activeIndex+1)%currentRows.length;markActive();return}
+      if(e.key==='ArrowUp'){e.preventDefault();activeIndex=(activeIndex-1+currentRows.length)%currentRows.length;markActive();return}
+      if((e.key==='Enter'||e.key==='Tab')&&activeIndex>=0){e.preventDefault();select(activeIndex)}
+    });
     document.addEventListener('click',e=>{if(!host.contains(e.target))box.classList.add('hidden')});
 
     const hint=document.createElement('small');
     hint.className='vx-smart-hint';
-    hint.textContent=`Sugestões baseadas nos termos mais usados em ${label}. Você pode digitar um novo termo.`;
+    hint.textContent=`Sugestões baseadas nos termos mais usados em ${label}. Digite livremente ou selecione uma sugestão.`;
     host.appendChild(hint);
   }
 
