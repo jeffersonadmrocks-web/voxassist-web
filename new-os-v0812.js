@@ -3,6 +3,41 @@
   const clientOptionsNew=()=>state.clients.map(c=>`<option value="${c.id}">${esc(c.name)} — ${esc(c.phone_primary||'SEM TELEFONE')}</option>`).join('');
   const f=(label,control,cls='')=>`<div class="vx-newos-field ${cls}"><label>${label}</label>${control}</div>`;
 
+  /* Fonte única de gravação da abertura. As abas internas leem estes mesmos registros. */
+  window.saveNewOs=async function(e,advance){
+    e?.preventDefault?.();
+    const client=document.querySelector('#clientId')?.value||'';
+    const product=up(document.querySelector('#productType')?.value||'');
+    const reported=up(document.querySelector('#reported')?.value||'');
+    if(!client||!product||!reported)return toast('Preencha CLIENTE, TIPO DE PRODUTO e DEFEITO RELATADO.','err');
+    const btns=[...document.querySelectorAll('.vx-newos-actions button')];btns.forEach(b=>b.disabled=true);
+    try{
+      const eq=await api('equipments',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
+        current_client_id:client,
+        product_type:product,
+        brand:up(document.querySelector('#brand')?.value||''),
+        model:up(document.querySelector('#model')?.value||''),
+        serial_number:up(document.querySelector('#serial')?.value||''),
+        accessories:up(document.querySelector('#accessories')?.value||'SEM ACESSÓRIOS')
+      })});
+      if(!eq?.[0]?.id)throw new Error('Não foi possível criar o equipamento.');
+      const os=await api('service_orders',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
+        os_number:genOsNumber(),client_id:client,equipment_id:eq[0].id,
+        service_type:document.querySelector('#serviceType')?.value||'INTERNO',
+        product_location:document.querySelector('#productLocation')?.value||'LABORATORIO',
+        device_condition:up(document.querySelector('#condition')?.value||''),
+        reported_defect:reported,
+        internal_notes:up(document.querySelector('#notes')?.value||''),
+        status:'AGUARDANDO ANALISE',created_by:state.session.user.id,attendant_id:state.session.user.id,store_id:state.profile?.store_id||null
+      })});
+      if(!os?.[0]?.id)throw new Error('Não foi possível criar a ordem de serviço.');
+      await api('os_status_history',{method:'POST',body:JSON.stringify({service_order_id:os[0].id,new_status:'AGUARDANDO ANALISE',change_type:'AUTOMATICO',changed_by:state.session.user.id})});
+      toast('OS salva com sucesso. Dados reaproveitados nas abas internas.');
+      await loadCore();
+      render(advance?`os:${os[0].id}`:'os');
+    }catch(err){toast('Falha ao salvar OS: '+err.message,'err');btns.forEach(b=>b.disabled=false)}
+  };
+
   window.renderNewOs=async function(){
     const title=document.querySelector('#title');if(title)title.textContent='Nova Ordem de Serviço';
     document.querySelector('#app').innerHTML=`<form id="osForm" class="vx-newos-wrap">
@@ -33,7 +68,7 @@
           </div>
           <input id="notes" type="hidden" value="">
           <button type="button" class="vx-newos-f11" id="newNotesBtn">F11 – OBSERVAÇÕES INTERNAS</button>
-          <div class="vx-newos-hint"><b>PADRÃO DE LOCALIZAÇÃO:</b> estes campos ficam nas mesmas posições usadas depois na consulta da OS. Após salvar, Orçamento, Fotos/Anexos, Financeiro e Histórico são liberados dentro da própria OS.</div>
+          <div class="vx-newos-hint"><b>PADRÃO DE LOCALIZAÇÃO:</b> os dados informados aqui são gravados uma única vez e reaparecem automaticamente nas abas internas da OS. Não é necessário redigitar.</div>
         </div>
       </div>
       <div class="vx-newos-actions"><button type="button" class="cancel" onclick="render('os')">CANCELAR</button><button class="save" type="submit">SALVAR OS</button><button type="button" class="advance" id="saveAdvance">SALVAR E AVANÇAR</button></div>
@@ -52,6 +87,6 @@
     const modal=document.querySelector('#newNotesModal'),noteText=document.querySelector('#newNotesText'),noteHidden=document.querySelector('#notes');
     const openNotes=()=>{noteText.value=noteHidden.value||'';modal.classList.remove('hidden');noteText.focus()};
     document.querySelector('#newNotesBtn').onclick=openNotes;document.querySelector('#newNotesCancel').onclick=()=>modal.classList.add('hidden');document.querySelector('#newNotesSave').onclick=()=>{noteHidden.value=up(noteText.value);modal.classList.add('hidden');toast('Observação interna preparada para salvar com a OS.')};
-    document.querySelector('#osForm').onsubmit=e=>saveNewOs(e,false);document.querySelector('#saveAdvance').onclick=e=>saveNewOs(e,true);
+    document.querySelector('#osForm').onsubmit=e=>window.saveNewOs(e,false);document.querySelector('#saveAdvance').onclick=e=>window.saveNewOs(e,true);
   };
 })();
