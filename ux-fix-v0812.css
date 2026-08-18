@@ -1,12 +1,13 @@
 /* VoxAssist Web V0.8.12 — correção de abas e navegação interna */
-.desktop-tabs{height:42px!important;padding:6px 10px 0!important;gap:3px!important;background:#e9edf2!important;border-bottom:1px solid #aeb8c3!important;align-items:flex-end!important;overflow-x:auto!important;overflow-y:hidden!important}
-.desktop-tabs .tab{height:34px!important;min-width:128px!important;max-width:230px!important;padding:0 8px 0 12px!important;border:1px solid #aeb8c3!important;border-bottom-color:#929da9!important;border-radius:5px 5px 0 0!important;background:#d7d4ce!important;color:#111!important;box-shadow:none!important;font-size:12px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;white-space:nowrap!important}
-.desktop-tabs .tab:hover{background:#e7e5df!important}
-.desktop-tabs .tab.active{height:36px!important;background:#fff!important;border-top:3px solid #1a6dc0!important;border-bottom-color:#fff!important;font-weight:600!important;position:relative!important;z-index:2!important}
+.desktop-tabs{height:44px!important;padding:7px 12px 0!important;gap:2px!important;background:#e9edf2!important;border-bottom:1px solid #c4ccd5!important;align-items:flex-end!important;overflow-x:auto!important;overflow-y:hidden!important}
+.desktop-tabs .tab{height:36px!important;min-width:128px!important;max-width:230px!important;padding:0 8px 0 13px!important;border:1px solid transparent!important;border-bottom:0!important;border-radius:5px 5px 0 0!important;background:#e9edf2!important;color:#172033!important;box-shadow:none!important;font-size:12px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;white-space:nowrap!important;transition:background .12s ease,border-color .12s ease!important}
+.desktop-tabs .tab:not(.active):not(.tab-plus):hover{background:#e1e6ec!important;border-color:#cbd3dc!important}
+.desktop-tabs .tab.active{height:38px!important;background:#fff!important;border:1px solid #c2cbd5!important;border-top:3px solid #1a6dc0!important;border-bottom-color:#fff!important;font-weight:600!important;position:relative!important;z-index:2!important;margin-bottom:-1px!important}
 .desktop-tabs .tab span{overflow:hidden;text-overflow:ellipsis;pointer-events:none}
-.desktop-tabs .tab i{font-style:normal!important;width:20px!important;height:20px!important;display:grid!important;place-items:center!important;border-radius:3px!important;font-size:16px!important;line-height:1!important;color:#798592!important;flex:0 0 20px!important}
-.desktop-tabs .tab i:hover{background:#d7dce2!important;color:#b22121!important}
-.desktop-tabs .tab-plus{min-width:48px!important;max-width:48px!important;justify-content:center!important;font-size:17px!important;background:#cfcac2!important}
+.desktop-tabs .tab i{font-style:normal!important;width:20px!important;height:20px!important;display:grid!important;place-items:center!important;border-radius:3px!important;font-size:16px!important;line-height:1!important;color:#8b98a5!important;flex:0 0 20px!important;border:0!important;background:transparent!important}
+.desktop-tabs .tab i:hover{background:#d7dde4!important;color:#b22121!important}
+.desktop-tabs .tab-plus{min-width:48px!important;max-width:48px!important;justify-content:center!important;padding:0!important;font-size:18px!important;font-weight:600!important;background:#e9edf2!important;border:1px solid transparent!important;color:#172033!important}
+.desktop-tabs .tab-plus:hover{background:#dde3ea!important;border-color:#c5ced8!important}
 .feature-page{background:#f4f6f8;border:1px solid #b8c1cb;min-height:620px;padding:14px 16px 24px}
 .feature-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px}
 .feature-head h2{margin:0 0 4px;font-size:24px;color:#0b2742}.feature-head p{margin:0;color:#627386;font-size:12px}.feature-actions{display:flex;gap:7px;flex-wrap:wrap}
