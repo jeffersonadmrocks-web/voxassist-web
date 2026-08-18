@@ -1,6 +1,7 @@
 /* VoxAssist Web V0.8.12 — fidelidade visual ao layout Desktop aprovado */
 (function(){
   const oldRender = window.render;
+  const firstName = ()=>String(state.profile?.full_name||'Administrador').trim().split(/\s+/)[0]||'Administrador';
 
   window.shell = function(){
     document.body.innerHTML=`
@@ -21,7 +22,7 @@
       </aside>
       <main class="desktop-main">
         <header class="desktop-topbar">
-          <div class="welcome">Bom dia, <b>${esc(state.profile?.full_name||'Administrador')}</b></div>
+          <div class="welcome">Bom dia, <b>${esc(firstName())}</b></div>
           <label class="store-picker"><small>LOJA ATIVA</small><select id="activeStore"><option>VOX SERRA</option><option>VOX VITÓRIA</option></select></label>
           <div class="global-search"><input id="globalSearch" placeholder="PESQUISAR CLIENTE, OS, EQUIPAMENTO..."></div>
           <h1 id="title" class="sr-only">Dashboard</h1>
