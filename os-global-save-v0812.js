@@ -1,8 +1,8 @@
-/* VoxAssist Web V0.8.12 — salvar global da OS em posição fixa dentro da tela */
+/* VoxAssist Web V0.8.12 — salvar global + modo ALTERAR da OS */
 (function(){
   const q=(s,r=document)=>r.querySelector(s);
   const qa=(s,r=document)=>[...r.querySelectorAll(s)];
-  let dirty=false,saving=false;
+  let dirty=false,saving=false,editing=false;
 
   function isOsOpen(){return !!(state?.activeOs?.id && q('.vx-os-tabs') && q('.vx-os-panel'));}
   function valueOf(el){
@@ -16,16 +16,49 @@
   function collect(entity){
     const body={};
     qa(`.vx-os-panel [data-entity="${entity}"][data-name]`).forEach(el=>{
-      if(el.disabled||el.readOnly)return;
       const name=el.dataset.name;
       if(name)body[name]=valueOf(el);
     });
     return body;
   }
-  function button(){return q('#vxGlobalSave');}
+  function saveButton(){return q('#vxGlobalSave');}
+  function editButton(){return q('#vxGlobalEdit');}
+
+  function editableControls(){
+    return qa('.vx-os-panel [data-entity][data-name]').filter(el=>!el.hasAttribute('data-vx-never-edit'));
+  }
+
+  function applyEditMode(){
+    if(!isOsOpen())return;
+    editableControls().forEach(el=>{
+      if(el.dataset.vxOriginalReadonly===undefined)el.dataset.vxOriginalReadonly=el.readOnly?'1':'0';
+      if(el.dataset.vxOriginalDisabled===undefined)el.dataset.vxOriginalDisabled=el.disabled?'1':'0';
+      if(editing){
+        if(el.dataset.vxOriginalReadonly!=='1')el.readOnly=false;
+        if(el.dataset.vxOriginalDisabled!=='1')el.disabled=false;
+      }else{
+        if(el.tagName==='SELECT')el.disabled=true;
+        else el.readOnly=true;
+      }
+    });
+    const e=editButton();
+    if(e){
+      e.textContent=editing?'CANCELAR ALTERAÇÃO':'ALTERAR';
+      e.title=editing?'Cancelar modo de edição':'Liberar campos cadastrados para alteração';
+      e.style.background=editing?'#f2f5f8':'#fff';
+      e.style.color='#40566e';
+      e.style.border='1px solid #c8d3dd';
+    }
+    const s=saveButton();
+    if(s){
+      s.disabled=!editing || saving;
+      s.style.opacity=editing?'1':'.72';
+    }
+  }
+
   function setDirty(v=true){
     dirty=v;
-    const b=button();if(!b)return;
+    const b=saveButton();if(!b)return;
     b.classList.toggle('dirty',dirty);
     b.textContent=saving?'SALVANDO...':(dirty?'SALVAR ALTERAÇÕES •':'SALVAR ALTERAÇÕES');
     b.title=dirty?'Existem alterações não salvas nesta OS':'Salvar todos os dados editáveis desta OS';
@@ -37,12 +70,29 @@
       if(t==='SALVAR DADOS COMPLEMENTARES' || t==='SALVAR ORÇAMENTO / ANÁLISE TÉCNICA') b.remove();
     });
   }
-
   function activePanel(){return qa('.vx-os-panel').find(p=>!p.classList.contains('hidden'))||q('.vx-os-panel');}
+
+  function toggleEdit(){
+    if(!isOsOpen())return;
+    if(editing && dirty){
+      const ok=window.confirm('Existem alterações não salvas. Deseja cancelar a edição e descartar essas alterações?');
+      if(!ok)return;
+      render(`os:${state.activeOs.id}`);
+      editing=false;dirty=false;
+      return;
+    }
+    editing=!editing;
+    applyEditMode();
+    if(editing){
+      const first=activePanel()?.querySelector('[data-entity][data-name]:not([readonly]):not([disabled])');
+      setTimeout(()=>first?.focus(),20);
+    }
+  }
 
   function ensureButton(){
     if(!isOsOpen()){
       q('#vxGlobalSaveRow')?.remove();
+      editing=false;dirty=false;
       return;
     }
     removeRedundantSaveButtons();
@@ -50,18 +100,20 @@
     if(!row){
       row=document.createElement('div');
       row.id='vxGlobalSaveRow';
-      row.style.cssText='display:flex;justify-content:flex-end;align-items:center;margin-top:14px;padding-top:10px;';
-      row.innerHTML='<button type="button" id="vxGlobalSave" class="vx-action parts" aria-label="Salvar todas as alterações da ordem de serviço">SALVAR ALTERAÇÕES</button>';
+      row.style.cssText='display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:14px;padding-top:10px;';
+      row.innerHTML='<button type="button" id="vxGlobalEdit" class="vx-action" aria-label="Alterar dados cadastrados da ordem de serviço" style="background:#fff;color:#40566e;border:1px solid #c8d3dd;">ALTERAR</button><button type="button" id="vxGlobalSave" class="vx-action parts" aria-label="Salvar todas as alterações da ordem de serviço">SALVAR ALTERAÇÕES</button>';
+      row.querySelector('#vxGlobalEdit').onclick=toggleEdit;
       row.querySelector('#vxGlobalSave').onclick=saveAll;
     }
     const panel=activePanel();
     if(panel && row.parentElement!==panel) panel.appendChild(row);
     setDirty(dirty);
+    applyEditMode();
   }
 
   async function saveAll(){
-    const o=state?.activeOs;if(!o?.id||saving)return;
-    const b=button();saving=true;if(b)b.disabled=true;setDirty(dirty);
+    const o=state?.activeOs;if(!o?.id||saving||!editing)return;
+    const b=saveButton();saving=true;if(b)b.disabled=true;setDirty(dirty);
     try{
       const orderBody=collect('order');
       const equipmentBody=collect('equipment');
@@ -91,28 +143,31 @@
       if(o.clients&&typeof o.clients==='object')Object.assign(o.clients,clientBody);
       if(typeof window.vxUpdateBudgetTotal==='function')window.vxUpdateBudgetTotal();
       setDirty(false);
+      editing=false;
+      applyEditMode();
       toast('Alterações da OS salvas com sucesso.');
     }catch(err){
       setDirty(true);
       toast('Falha ao salvar alterações da OS: '+err.message,'err');
     }finally{
-      saving=false;if(b)b.disabled=false;setDirty(dirty);
+      saving=false;setDirty(dirty);applyEditMode();
     }
   }
   window.vxSaveAllOs=saveAll;
 
   document.addEventListener('input',e=>{
-    if(isOsOpen()&&e.target.closest('.vx-os-panel')&&e.target.matches('input,select,textarea'))setDirty(true);
+    if(editing&&isOsOpen()&&e.target.closest('.vx-os-panel')&&e.target.matches('input,select,textarea'))setDirty(true);
   },true);
   document.addEventListener('change',e=>{
-    if(isOsOpen()&&e.target.closest('.vx-os-panel')&&e.target.matches('input,select,textarea'))setDirty(true);
+    if(editing&&isOsOpen()&&e.target.closest('.vx-os-panel')&&e.target.matches('input,select,textarea'))setDirty(true);
   },true);
   document.addEventListener('click',e=>{
     if(e.target.closest('.vx-os-tabs'))setTimeout(ensureButton,0);
   });
   document.addEventListener('keydown',e=>{
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='w'&&isOsOpen()){
-      e.preventDefault();e.stopImmediatePropagation();saveAll();
+      e.preventDefault();e.stopImmediatePropagation();
+      if(editing)saveAll();else toast('Clique em ALTERAR para liberar a edição da OS.');
     }
   },true);
   const obs=new MutationObserver(()=>ensureButton());
