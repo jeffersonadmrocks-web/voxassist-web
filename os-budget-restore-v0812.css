@@ -1,0 +1,12 @@
+/* Hotfix orçamento: lista de peças deve ser compacta e nunca esconder os campos já existentes */
+#vx-orcamento .vx-parts-launched-compact{
+  display:block!important;
+  min-height:0!important;
+  height:auto!important;
+  flex:none!important;
+  margin:12px 0!important;
+  padding:10px!important;
+  border:1px solid #2f73d9!important;
+  background:#fff!important;
+}
+#vx-orcamento .vx-parts-launched-compact .vx-table-scroll{max-height:none!important;overflow-x:auto!important}
