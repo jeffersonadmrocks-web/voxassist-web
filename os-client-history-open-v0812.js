@@ -28,4 +28,9 @@
   const style=document.createElement('style');
   style.textContent='#vx-cliente .vx-grid-table tbody tr{cursor:pointer}#vx-cliente .vx-grid-table tbody tr:hover{background:#f3f8fd}#vx-cliente .vx-grid-table tbody tr td:first-child{font-weight:800;color:#0b63ce;text-decoration:underline}';
   document.head.appendChild(style);
+
+  // Carrega por último a administração de Empresas/Usuários para preservar as demais correções de navegação.
+  if(!document.querySelector('script[data-vx-company-admin]')){
+    const s=document.createElement('script');s.src='company-users-admin-v0812.js?v=0812-20260819-COMPANY1';s.dataset.vxCompanyAdmin='1';document.body.appendChild(s);
+  }
 })();
