@@ -1,24 +1,7 @@
-/* VoxAssist Web V0.8.12 — ações seguras de Equipamento e Orçamento sem envolver renderOsDetail */
+/* VoxAssist Web V0.8.12 — total do orçamento; salvamento centralizado no botão global da OS */
 (function(){
   const q=(s,r=document)=>r.querySelector(s);
   const qa=(s,r=document)=>[...r.querySelectorAll(s)];
-
-  function valueOf(el){
-    if(!el) return null;
-    let v=el.value;
-    if(v==='') return null;
-    if(el.type==='number') return Number(String(v).replace(',','.'))||0;
-    return v;
-  }
-
-  function collect(panel,entity){
-    const body={};
-    qa(`[data-entity="${entity}"][data-name]`,panel).forEach(el=>{
-      const name=el.dataset.name;
-      if(name) body[name]=valueOf(el);
-    });
-    return body;
-  }
 
   function parseMoney(v){
     if(typeof v==='number') return v;
@@ -62,74 +45,6 @@
   }
   window.vxUpdateBudgetTotal=updateBudgetTotal;
 
-  async function saveEquipmentComplementary(){
-    const o=state.activeOs;
-    const panel=q('#vx-equip');
-    if(!o?.id || !panel) return toast('Nenhuma OS aberta para salvar.','err');
-    const btn=q('#vxSaveEquipment');
-    if(btn){btn.disabled=true;btn.textContent='SALVANDO...';}
-    try{
-      const equipmentBody=collect(panel,'equipment');
-      const orderBody=collect(panel,'order');
-      if(o.equipment_id && Object.keys(equipmentBody).length){
-        await api(`equipments?id=eq.${encodeURIComponent(o.equipment_id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(equipmentBody)});
-      }
-      if(Object.keys(orderBody).length){
-        orderBody.updated_at=new Date().toISOString();
-        await api(`service_orders?id=eq.${encodeURIComponent(o.id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(orderBody)});
-      }
-      Object.assign(o,orderBody);
-      if(o.equipments&&typeof o.equipments==='object') Object.assign(o.equipments,equipmentBody);
-      toast('Dados complementares do equipamento salvos.');
-    }catch(err){toast('Falha ao salvar equipamento: '+err.message,'err');}
-    finally{if(btn){btn.disabled=false;btn.textContent='SALVAR DADOS COMPLEMENTARES';}}
-  }
-  window.vxSaveEquipment=saveEquipmentComplementary;
-
-  async function saveBudget(){
-    const o=state.activeOs;
-    const panel=q('#vx-orcamento');
-    if(!o?.id || !panel) return toast('Nenhuma OS aberta para salvar.','err');
-    const btn=q('#vxSaveBudget');
-    if(btn){btn.disabled=true;btn.textContent='SALVANDO...';}
-    try{
-      const orderBody=collect(panel,'order');
-      const financialBody=collect(panel,'financial');
-      if(Object.keys(orderBody).length){
-        orderBody.updated_at=new Date().toISOString();
-        await api(`service_orders?id=eq.${encodeURIComponent(o.id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(orderBody)});
-        Object.assign(o,orderBody);
-      }
-      if(Object.keys(financialBody).length){
-        financialBody.service_order_id=o.id;
-        financialBody.updated_at=new Date().toISOString();
-        const existing=await api(`os_financial?service_order_id=eq.${encodeURIComponent(o.id)}&select=id&limit=1`).catch(()=>[]);
-        if(existing?.[0]?.id){
-          await api(`os_financial?id=eq.${encodeURIComponent(existing[0].id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(financialBody)});
-        }else{
-          await api('os_financial',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(financialBody)});
-        }
-      }
-      updateBudgetTotal();
-      toast('Orçamento / análise técnica salvos.');
-    }catch(err){toast('Falha ao salvar orçamento: '+err.message,'err');}
-    finally{if(btn){btn.disabled=false;btn.textContent='SALVAR ORÇAMENTO / ANÁLISE TÉCNICA';}}
-  }
-  window.vxSaveBudget=saveBudget;
-
-  function ensureEquipment(){
-    const panel=q('#vx-equip');
-    if(!panel || q('#vxSaveEquipment',panel)) return;
-    const firstBox=q('.vx-screen-box',panel);
-    if(!firstBox) return;
-    const actions=document.createElement('div');
-    actions.className='vx-client-actions vx-equipment-actions';
-    actions.style.cssText='display:flex;justify-content:flex-end;margin-top:14px;';
-    actions.innerHTML='<button type="button" id="vxSaveEquipment" class="vx-action parts">SALVAR DADOS COMPLEMENTARES</button>';
-    firstBox.appendChild(actions);
-    q('#vxSaveEquipment',actions).onclick=saveEquipmentComplementary;
-  }
-
   function ensureBudget(){
     const panel=q('#vx-orcamento');
     if(!panel) return;
@@ -144,14 +59,6 @@
         updateBudgetTotal();
       }
     }
-    if(!q('#vxSaveBudget',panel)){
-      const btn=document.createElement('button');
-      btn.type='button';btn.id='vxSaveBudget';btn.className='vx-action parts';btn.textContent='SALVAR ORÇAMENTO / ANÁLISE TÉCNICA';
-      btn.style.cssText='margin:12px 0 4px;';
-      const firstBox=q('.vx-screen-box',panel)||panel;
-      firstBox.appendChild(btn);
-      btn.onclick=saveBudget;
-    }
     if(!panel.dataset.vxTotalBound){
       panel.dataset.vxTotalBound='1';
       panel.addEventListener('input',updateBudgetTotal);
@@ -159,10 +66,8 @@
     }
   }
 
-  function ensure(){ensureEquipment();ensureBudget();}
-  const root=document.documentElement;
-  const observer=new MutationObserver(()=>ensure());
-  observer.observe(root,{subtree:true,childList:true});
-  document.addEventListener('click',e=>{if(e.target.closest('.vx-os-tabs'))setTimeout(ensure,0);});
-  setTimeout(ensure,0);
+  const observer=new MutationObserver(()=>ensureBudget());
+  observer.observe(document.documentElement,{subtree:true,childList:true});
+  document.addEventListener('click',e=>{if(e.target.closest('.vx-os-tabs'))setTimeout(ensureBudget,0);});
+  setTimeout(ensureBudget,0);
 })();
