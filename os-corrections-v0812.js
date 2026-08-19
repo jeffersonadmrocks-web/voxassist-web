@@ -4,7 +4,7 @@
   const q=(s,r=document)=>r.querySelector(s);
   const qa=(s,r=document)=>[...r.querySelectorAll(s)];
   const txt=v=>String(v??'');
-  const safe=v=>typeof esc==='function'?esc(v):txt(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const safe=v=>typeof esc==='function'?esc(v):txt(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[m]));
   const brl=v=>typeof money==='function'?money(v):Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 
   function labelField(label){
@@ -47,18 +47,21 @@
   }
 
   function partRows(parts,actions=true){
-    if(!parts?.length)return '<tr><td colspan="8" class="vx-empty">Nenhuma peça lançada nesta O.S.</td></tr>';
-    return parts.map(p=>`<tr data-part-id="${safe(p.id)}"><td>${safe(p.code||'—')}</td><td class="vx-part-desc"><b>${safe(p.description||'SEM DESCRIÇÃO')}</b></td><td>${safe(p.brand||'—')}</td><td>${Number(p.quantity||0)}</td><td>${brl(p.unit_value)}</td><td>${brl(Number(p.quantity||0)*Number(p.unit_value||0))}</td><td>${p.move_stock===false?'NÃO':'SIM'}</td>${actions?`<td class="vx-part-actions"><button type="button" class="vx-mini-edit" onclick="vxEditOsPart('${safe(p.id)}')">ALTERAR</button><button type="button" class="vx-mini-delete" onclick="vxDeleteOsPart('${safe(p.id)}')">EXCLUIR</button></td>`:''}</tr>`).join('');
+    if(!parts?.length)return `<tr><td colspan="${actions?8:6}" class="vx-empty">Nenhuma peça lançada nesta O.S.</td></tr>`;
+    return parts.map(p=>`<tr data-part-id="${safe(p.id)}"><td>${safe(p.code||'—')}</td><td class="vx-part-desc"><b>${safe(p.description||'SEM DESCRIÇÃO')}</b></td><td>${safe(p.brand||'—')}</td><td>${Number(p.quantity||0)}</td><td>${brl(p.unit_value)}</td><td>${brl(Number(p.quantity||0)*Number(p.unit_value||0))}</td>${actions?`<td>${p.move_stock===false?'NÃO':'SIM'}</td><td class="vx-part-actions"><button type="button" class="vx-mini-edit" onclick="vxEditOsPart('${safe(p.id)}')">ALTERAR</button><button type="button" class="vx-mini-delete" onclick="vxDeleteOsPart('${safe(p.id)}')">EXCLUIR</button></td>`:''}</tr>`).join('');
   }
 
   function ensureSummaryParts(){
     const strip=q('#vx-os .vx-budget-strip');
-    if(!strip || q('.vx-summary-parts',strip))return;
+    if(!strip)return;
     const parts=window.__vxCurrentParts||[];
-    const box=document.createElement('div');
-    box.className='vx-summary-parts';
-    box.innerHTML=`<div class="vx-summary-parts-title">PEÇAS LANÇADAS</div>${parts.length?`<div class="vx-summary-parts-list">${parts.map(p=>`<span><b>${safe(p.description||'SEM DESCRIÇÃO')}</b> • Qtd. ${Number(p.quantity||0)} • ${brl(Number(p.quantity||0)*Number(p.unit_value||0))}</span>`).join('')}</div>`:'<div class="vx-summary-parts-empty">Nenhuma peça lançada.</div>'}`;
-    strip.appendChild(box);
+    let box=q('.vx-summary-parts',strip);
+    if(!box){
+      box=document.createElement('div');
+      box.className='vx-summary-parts';
+      strip.appendChild(box);
+    }
+    box.innerHTML=`<div class="vx-summary-parts-title">PEÇAS LANÇADAS NESTA O.S.</div><div class="vx-table-scroll"><table class="vx-grid-table vx-summary-parts-table"><thead><tr><th>CÓDIGO</th><th>DESCRIÇÃO / PEÇA</th><th>MARCA</th><th>QTD.</th><th>UNITÁRIO</th><th>TOTAL</th></tr></thead><tbody>${partRows(parts,false)}</tbody></table></div>`;
   }
 
   function ensureBudgetParts(){
