@@ -1,1 +1,2 @@
 retry deploy multiempresa 2026-08-19 11:43 -03
+retry deploy 2026-08-19 13:05 -03 após retorno da Vercel
