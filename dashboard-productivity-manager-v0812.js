@@ -10,10 +10,21 @@
 
   function findProductivityHost(){
     const app=document.querySelector('#app');if(!app)return null;
-    const nodes=[...app.querySelectorAll('h1,h2,h3,h4,strong,b,div,span')];
-    const title=nodes.find(n=>/PRODUTIVIDADE DO M[ÊE]S/i.test(n.textContent||''));
+    /* Importante: procurar somente elementos de título/folha. Nunca usar DIV/SECTION,
+       pois o container inteiro do dashboard também contém o texto "Produtividade do mês". */
+    const nodes=[...app.querySelectorAll('h1,h2,h3,h4,h5,h6,strong,b,span')];
+    const title=nodes.find(n=>/^\s*PRODUTIVIDADE DO M[ÊE]S\s*$/i.test(n.textContent||''));
     if(!title)return null;
-    return title.closest('.dash-card,.dashboard-card,.card,[class*="card"],section')||title.parentElement;
+    let host=title.closest('.dash-card,.dashboard-card,.card');
+    if(!host){
+      let p=title.parentElement;
+      while(p&&p!==app){
+        if((p.textContent||'').length<3000){host=p;break}
+        p=p.parentElement;
+      }
+    }
+    if(!host||host===app||host.contains(app))return null;
+    return host;
   }
 
   async function loadData(){
@@ -40,8 +51,8 @@
     const store=sec.querySelector('[data-filter="store"]')?.value||'',group=sec.querySelector('[data-filter="group"]')?.value||'',tech=sec.querySelector('[data-filter="tech"]')?.value||'';
     const ready=sec.dataset.kind==='ready';
     const rows=orders.filter(o=>{
-      const dt=ready?dateVal(o,['ready_at','completed_at','pronto_at']):dateVal(o,['delivery_at','delivered_at','saida_at','closed_at']);
-      if(!dt||dt<from)return false;
+      const d=ready?dateVal(o,['ready_at','completed_at','pronto_at']):dateVal(o,['delivery_at','delivered_at','saida_at','closed_at']);
+      if(!d||d<from)return false;
       if(store&&String(o.store_id||'')!==store)return false;
       if(group&&String(o.__group||'')!==group)return false;
       const tid=String(o.technician_id||o.profiles?.id||'');if(tech&&tid!==tech)return false;
@@ -61,15 +72,17 @@
     host.querySelectorAll('.vx-prod-sub').forEach(sec=>{recalc(sec,d.orders);sec.querySelectorAll('select').forEach(s=>s.addEventListener('change',()=>recalc(sec,d.orders)));sec.querySelectorAll('[data-period]').forEach(b=>b.addEventListener('click',()=>{sec.querySelectorAll('[data-period]').forEach(x=>x.classList.remove('active'));b.classList.add('active');recalc(sec,d.orders)}))});
   }
 
-  const style=document.createElement('style');style.id='vxProdManagerStyle';style.textContent=`
-  .vx-productivity-card{padding:12px!important;min-height:auto!important;height:auto!important;overflow:visible!important}
-  .vx-prod-main-head h3{margin:0;font-size:13px;color:#102d49}.vx-prod-main-head small,.vx-prod-sub-head small{display:block;margin-top:2px;font-size:9px;color:#71869a}
-  .vx-prod-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}.vx-prod-sub{border:1px solid #d5e0ea;border-radius:8px;background:#fff;padding:10px;min-width:0}
-  .vx-prod-sub-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.vx-prod-sub-head strong{font-size:11px;color:#163754}
-  .vx-prod-period{display:flex;gap:3px}.vx-prod-period button{border:1px solid #ccd7e0;background:#f6f8fa;color:#516a80;padding:3px 7px;border-radius:4px;font-size:8px;cursor:pointer}.vx-prod-period button.active{background:#173e62;color:white;border-color:#173e62}
-  .vx-prod-metrics{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:9px 0}.vx-prod-metrics>div{border:1px solid #e1e7ed;background:#f7f9fb;border-radius:6px;padding:8px}.vx-prod-metrics span{display:block;font-size:8px;color:#6d8295}.vx-prod-metrics b{display:block;margin-top:2px;font-size:17px;color:#102d49}
-  .vx-prod-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.vx-prod-filters label{font-size:8px;font-weight:700;color:#657b8e}.vx-prod-filters select{width:100%;margin-top:3px;border:1px solid #cbd7e2;background:#fff;padding:5px 6px;border-radius:4px;font-size:9px;color:#18364f}
-  @media(max-width:950px){.vx-prod-grid{grid-template-columns:1fr}.vx-prod-filters{grid-template-columns:1fr}}
-  `;document.head.appendChild(style);
+  if(!document.querySelector('#vxProdManagerStyle')){
+    const style=document.createElement('style');style.id='vxProdManagerStyle';style.textContent=`
+    .vx-productivity-card{padding:12px!important;min-height:auto!important;height:auto!important;overflow:visible!important}
+    .vx-prod-main-head h3{margin:0;font-size:13px;color:#102d49}.vx-prod-main-head small,.vx-prod-sub-head small{display:block;margin-top:2px;font-size:9px;color:#71869a}
+    .vx-prod-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}.vx-prod-sub{border:1px solid #d5e0ea;border-radius:8px;background:#fff;padding:10px;min-width:0}
+    .vx-prod-sub-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.vx-prod-sub-head strong{font-size:11px;color:#163754}
+    .vx-prod-period{display:flex;gap:3px}.vx-prod-period button{border:1px solid #ccd7e0;background:#f6f8fa;color:#516a80;padding:3px 7px;border-radius:4px;font-size:8px;cursor:pointer}.vx-prod-period button.active{background:#173e62;color:white;border-color:#173e62}
+    .vx-prod-metrics{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:9px 0}.vx-prod-metrics>div{border:1px solid #e1e7ed;background:#f7f9fb;border-radius:6px;padding:8px}.vx-prod-metrics span{display:block;font-size:8px;color:#6d8295}.vx-prod-metrics b{display:block;margin-top:2px;font-size:17px;color:#102d49}
+    .vx-prod-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.vx-prod-filters label{font-size:8px;font-weight:700;color:#657b8e}.vx-prod-filters select{width:100%;margin-top:3px;border:1px solid #cbd7e2;background:#fff;padding:5px 6px;border-radius:4px;font-size:9px;color:#18364f}
+    @media(max-width:950px){.vx-prod-grid{grid-template-columns:1fr}.vx-prod-filters{grid-template-columns:1fr}}
+    `;document.head.appendChild(style);
+  }
   const obs=new MutationObserver(()=>setTimeout(mount,40));obs.observe(document.documentElement,{childList:true,subtree:true});setTimeout(mount,250);
 })();
