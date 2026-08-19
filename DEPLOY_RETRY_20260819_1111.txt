@@ -1,1 +1,1 @@
-Retry de deploy solicitado em 19/08/2026 11:11 BRT para publicar ajustes multiempresa/usuarios.
+Retry de deploy solicitado em 19/08/2026 12:26 BRT. Código funcional preservado; tentativa apenas para disparar nova publicação na Vercel.
