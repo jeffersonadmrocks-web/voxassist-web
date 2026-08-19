@@ -10,54 +10,54 @@
     state.openTabs=state.openTabs.filter(v=>{if(seen.has(v))return false;seen.add(v);return true;});
   }
 
-  function bindStableTabs(){
-    const tabs=document.querySelector('#tabs');
-    if(!tabs)return;
-    tabs.querySelectorAll('.tab[data-tab]').forEach(tab=>{
-      const clone=tab.cloneNode(true);
-      tab.replaceWith(clone);
-      clone.addEventListener('click',async e=>{
-        if(e.target.closest('[data-close]'))return;
-        e.preventDefault();
-        e.stopPropagation();
-        const target=clone.dataset.tab;
-        if(!target||target===state.view)return;
-        switching=true;
-        try{
-          dedupeTabs();
-          if(!state.openTabs.includes(target))state.openTabs.push(target);
-          state.view=target;
-          await baseRender(target);
-          dedupeTabs();
-          state.view=target;
-          if(typeof baseRenderTabs==='function')baseRenderTabs();
-          requestAnimationFrame(()=>{
-            document.querySelectorAll('#tabs .tab[data-tab]').forEach(t=>t.classList.toggle('active',t.dataset.tab===target));
-            bindStableTabs();
-          });
-        } finally {
-          switching=false;
-        }
-      },{capture:true});
-      const close=clone.querySelector('[data-close]');
-      if(close){
-        close.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();if(typeof closeTab==='function')closeTab(close.dataset.close);},{capture:true});
-      }
-    });
+  function paintActive(target){
+    document.querySelectorAll('#tabs .tab[data-tab]').forEach(t=>t.classList.toggle('active',t.dataset.tab===target));
   }
 
+  async function switchExisting(target){
+    if(!target||target===state.view||switching)return;
+    switching=true;
+    const tabs=document.querySelector('#tabs');
+    const snapshot=tabs?.innerHTML||'';
+    const renderTabsBefore=window.renderTabs;
+    try{
+      dedupeTabs();
+      if(!state.openTabs.includes(target))state.openTabs.push(target);
+      state.view=target;
+      paintActive(target);
+
+      /* Durante a troca, bloqueia qualquer rotina antiga que tente reconstruir a barra de abas. */
+      window.renderTabs=function(){return;};
+      await baseRender(target);
+
+      dedupeTabs();
+      state.view=target;
+      const now=document.querySelector('#tabs');
+      if(now&&snapshot&&now.innerHTML!==snapshot)now.innerHTML=snapshot;
+      paintActive(target);
+    } finally {
+      window.renderTabs=renderTabsBefore;
+      switching=false;
+    }
+  }
+
+  document.addEventListener('click',function(e){
+    const tab=e.target.closest('#tabs .tab[data-tab]');
+    if(!tab||e.target.closest('[data-close]'))return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    switchExisting(tab.dataset.tab);
+  },true);
+
   window.renderTabs=function(){
-    const r=typeof baseRenderTabs==='function'?baseRenderTabs.apply(this,arguments):undefined;
-    requestAnimationFrame(bindStableTabs);
-    return r;
+    if(switching)return;
+    return typeof baseRenderTabs==='function'?baseRenderTabs.apply(this,arguments):undefined;
   };
 
   window.render=async function(view){
     if(switching)return baseRender(view);
     const r=await baseRender(view);
-    requestAnimationFrame(bindStableTabs);
     return r;
   };
-
-  setTimeout(bindStableTabs,0);
 })();
