@@ -4,19 +4,25 @@
  const norm=s=>String(s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replaceAll('_',' ').replace(/\s+/g,' ').trim();
  const fmtDate=v=>{if(!v)return '—';try{return new Date(v).toLocaleDateString('pt-BR')}catch{return v}};
  const fmtTime=v=>String(v||'').slice(0,5)||'—';
+ function openInternalOsTab(id){
+  if(!id||typeof window.render!=='function')return;
+  const key='os:'+id;
+  if(Array.isArray(state?.openTabs)&&!state.openTabs.includes(key))state.openTabs.push(key);
+  window.render(key);
+ }
  function modal(title,body){
   document.querySelector('#vxDashDataModal')?.remove();
   const el=document.createElement('div');el.id='vxDashDataModal';el.style.cssText='position:fixed;inset:0;z-index:30000;background:rgba(9,27,49,.38);display:flex;align-items:center;justify-content:center;padding:24px';
-  el.innerHTML=`<div style="width:min(980px,96vw);max-height:86vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.22)"><div style="position:sticky;top:0;background:#fff;z-index:2;display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid #e7edf3"><div><strong style="font-size:18px;color:#18344f">${E(title)}</strong><div style="font-size:12px;color:#74879b;margin-top:3px">Clique em uma O.S. para abrir diretamente.</div></div><button id="vxDashModalClose" style="border:0;background:#eef3f8;width:34px;height:34px;border-radius:9px;cursor:pointer;font-size:18px">×</button></div><div style="padding:18px 22px">${body}</div></div>`;
+  el.innerHTML=`<div style="width:min(980px,96vw);max-height:86vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.22)"><div style="position:sticky;top:0;background:#fff;z-index:2;display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid #e7edf3"><div><strong style="font-size:18px;color:#18344f">${E(title)}</strong><div style="font-size:12px;color:#74879b;margin-top:3px">Consulta rápida no Dashboard. Clique em uma O.S. para abrir em uma nova aba interna.</div></div><button id="vxDashModalClose" style="border:0;background:#eef3f8;width:34px;height:34px;border-radius:9px;cursor:pointer;font-size:18px">×</button></div><div style="padding:18px 22px">${body}</div></div>`;
   document.body.appendChild(el);
   el.querySelector('#vxDashModalClose').onclick=()=>el.remove();el.onclick=e=>{if(e.target===el)el.remove();};
-  el.addEventListener('click',e=>{const open=e.target.closest('[data-open-os]');if(!open)return;e.preventDefault();e.stopPropagation();const id=open.dataset.openOs;if(!id)return;el.remove();if(typeof window.render==='function')window.render('os:'+id);});
+  el.addEventListener('click',e=>{const open=e.target.closest('[data-open-os]');if(!open)return;e.preventDefault();e.stopPropagation();const id=open.dataset.openOs;if(!id)return;el.remove();openInternalOsTab(id);});
  }
  function table(headers,rows){if(!rows.length)return '<div style="padding:28px;text-align:center;color:#75879a">Nenhum registro encontrado para este indicador.</div>';return `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>${headers.map(h=>`<th style="text-align:left;padding:10px;border-bottom:1px solid #dfe7ef;color:#5a7086">${E(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td style="padding:10px;border-bottom:1px solid #edf1f5;color:#223c55">${c??'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
  async function orders(){try{return await api('service_orders?select=*,clients(name),equipments(product_type,brand,model)&order=opened_at.desc&limit=500')}catch{return Array.isArray(state?.orders)?state.orders:[]}}
  function isOpen(o){return !['FINALIZADA','CANCELADA'].includes(norm(o.status))}
  function age(o){return Math.max(0,Math.floor((Date.now()-new Date(o.updated_at||o.opened_at||Date.now()))/86400000))}
- function osLink(o){return `<button type="button" data-open-os="${E(o.id)}" title="Abrir O.S. ${E(o.os_number||'')}" style="border:0;background:none;padding:0;color:#0b63ce;font-weight:800;text-decoration:underline;cursor:pointer;font:inherit">${E(o.os_number||'—')}</button>`;}
+ function osLink(o){return `<button type="button" data-open-os="${E(o.id)}" title="Abrir O.S. ${E(o.os_number||'')} em nova aba" style="border:0;background:none;padding:0;color:#0b63ce;font-weight:800;text-decoration:underline;cursor:pointer;font:inherit">${E(o.os_number||'—')}</button>`;}
  function osRows(list){return list.map(o=>[osLink(o),E(o.clients?.name||o.client_name||'—'),E([o.equipments?.product_type,o.equipments?.brand,o.equipments?.model].filter(Boolean).join(' • ')||'—'),E(norm(o.status)||'—'),fmtDate(o.opened_at)]);}
  async function showOrders(title,pred=()=>true){const data=(await orders()).filter(pred);modal(title,table(['O.S.','Cliente','Equipamento','Situação','Entrada'],osRows(data)));}
  async function showTasks(){let rows=[];try{rows=await api('tasks?select=*&order=due_at.asc.nullslast&limit=300')}catch{rows=state?.tasks||[]}modal('Minhas Tarefas',table(['Tarefa','Prioridade','Situação','Prazo'],rows.map(t=>[E(t.title||'—'),E(t.priority||'NORMAL'),E(t.status||'PENDENTE'),fmtDate(t.due_at)])));}
