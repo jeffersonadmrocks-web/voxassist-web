@@ -1,0 +1,7 @@
+/* VoxAssist Web V0.8.12 — resumo técnico e mapa */
+.vx-budget-service{margin:8px 16px 10px;padding:10px 12px;border:1px solid #b9c7d6;background:#f8fafc;display:flex;gap:12px;align-items:flex-start;min-height:48px}
+.vx-budget-service span{font-size:11px;color:#52657a;min-width:130px;text-transform:uppercase}
+.vx-budget-service b{font-size:13px;color:#0c2340;line-height:1.45;white-space:pre-wrap;font-weight:700}
+.vx-map-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.vx-map-actions .vx-action{min-height:34px}
+@media (max-width:700px){.vx-budget-service{flex-direction:column;gap:4px}.vx-budget-service span{min-width:0}.vx-map-actions .vx-action{flex:1 1 140px}}
