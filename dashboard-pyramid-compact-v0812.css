@@ -1,14 +1,93 @@
-/* VoxAssist V0.8.12 — Gestão Visual compacta: faixas identificadas somente pela legenda */
-.vx-approved .vx-a-visual{gap:24px;align-items:end}
-.vx-approved .vx-a-vitem h4{margin:0 0 2px;font-size:11px;font-weight:800;color:#172c43}
-.vx-approved .vx-a-vitem>small{display:block;font-size:8px;color:#73859a;margin-bottom:3px}
-.vx-approved .vx-a-pyr{height:132px;margin-top:5px;gap:3px;justify-content:flex-end}
-.vx-approved .vx-a-band{height:29px;min-height:29px;border-radius:4px;padding:0 8px;gap:6px;box-shadow:0 1px 2px rgba(12,35,64,.08);transition:transform .12s ease,filter .12s ease}
-.vx-approved .vx-a-band:hover{transform:translateY(-1px);filter:brightness(.98)}
-/* Mantém o texto da faixa no DOM para filtros/cliques, mas deixa a identificação visual apenas na legenda inferior. */
-.vx-approved .vx-a-band>span:first-child{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-.vx-approved .vx-a-band strong{font-size:12px;line-height:1;font-weight:900}
-.vx-approved .vx-a-band>span:last-child{font-size:9px;font-weight:800;line-height:1}
-.vx-approved .vx-a-legend{margin-top:9px;gap:15px;font-size:8px;color:#5f7287;flex-wrap:wrap}
-.vx-approved .vx-a-dot{width:7px;height:7px;margin-right:4px}
-@media(max-width:1200px){.vx-approved .vx-a-visual{gap:14px}.vx-approved .vx-a-pyr{height:124px}}
+/* VoxAssist V0.8.12 — Gestão Visual compacta e refinada */
+.vx-approved .vx-a-visual{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:34px;
+  align-items:end;
+  justify-items:center;
+}
+.vx-approved .vx-a-vitem{
+  width:100%;
+  max-width:300px;
+  text-align:center;
+}
+.vx-approved .vx-a-vitem h4{
+  margin:0 0 1px;
+  font-size:10px;
+  font-weight:800;
+  color:#172c43;
+  line-height:1.15;
+}
+.vx-approved .vx-a-vitem>small{
+  display:block;
+  font-size:8px;
+  color:#73859a;
+  margin-bottom:2px;
+}
+.vx-approved .vx-a-pyr{
+  width:100%;
+  max-width:270px;
+  height:94px;
+  margin:5px auto 0;
+  gap:2px;
+  justify-content:flex-end;
+  align-items:center;
+}
+.vx-approved .vx-a-band{
+  height:21px;
+  min-height:21px;
+  max-height:21px;
+  border:0;
+  border-radius:0;
+  padding:0 6px;
+  gap:5px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  box-shadow:none;
+  transition:transform .12s ease,filter .12s ease;
+  clip-path:polygon(8% 0,92% 0,100% 100%,0 100%);
+  line-height:1;
+}
+.vx-approved .vx-a-band:hover{
+  transform:translateY(-1px) scale(1.015);
+  filter:brightness(.97);
+  z-index:2;
+}
+/* A identificação da faixa fica somente na legenda inferior. */
+.vx-approved .vx-a-band>span:first-child{
+  position:absolute!important;
+  width:1px!important;
+  height:1px!important;
+  padding:0!important;
+  margin:-1px!important;
+  overflow:hidden!important;
+  clip:rect(0,0,0,0)!important;
+  white-space:nowrap!important;
+  border:0!important;
+}
+.vx-approved .vx-a-band strong{
+  font-size:10px;
+  line-height:1;
+  font-weight:900;
+}
+.vx-approved .vx-a-band>span:last-child{
+  font-size:8px;
+  font-weight:800;
+  line-height:1;
+}
+.vx-approved .vx-a-legend{
+  margin-top:7px;
+  gap:12px;
+  font-size:8px;
+  color:#5f7287;
+  flex-wrap:wrap;
+  justify-content:center;
+}
+.vx-approved .vx-a-dot{width:6px;height:6px;margin-right:3px}
+
+@media(max-width:1200px){
+  .vx-approved .vx-a-visual{gap:20px}
+  .vx-approved .vx-a-vitem{max-width:270px}
+  .vx-approved .vx-a-pyr{max-width:235px;height:90px}
+}
