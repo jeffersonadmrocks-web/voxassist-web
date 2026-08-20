@@ -67,16 +67,26 @@
     form.onsubmit=async function(e){
       const checked=[...form.querySelectorAll('input[name=vx_store_access]:checked')].map(x=>x.value);
       if(!checked.length){e.preventDefault();toast('Selecione no mínimo uma loja de acesso.','err');return false;}
-      const primary=form.querySelector('select[name=store]'); if(primary)primary.value=checked[0];
+      const primary=form.querySelector('select[name=store]');
+      const activeCompany=String(state?.profile?.active_company_id||'');
+      const selectedStores=checked.map(id=>stores.find(s=>String(s.id)===String(id))).filter(Boolean);
+      const primaryStore=selectedStores.find(s=>String(s.company_id)===activeCompany)||selectedStores[0];
+      if(primary) primary.value=primaryStore?.id||checked[0];
       if(original) await original.call(form,e);
       setTimeout(async()=>{
         try{
           const email=String(form.querySelector('input[name=email]')?.value||'').trim(); if(!email)return;
-          const p=await api(`profiles?email=eq.${encodeURIComponent(email)}&select=id`); const userId=p?.[0]?.id; if(!userId)return;
+          const p=await api(`profiles?email=eq.${encodeURIComponent(email)}&select=id,role`); const userId=p?.[0]?.id; if(!userId)return;
           await api(`user_store_access?user_id=eq.${userId}`,{method:'DELETE'}).catch(()=>{});
-          for(const sid of checked){const s=stores.find(x=>x.id===sid);await api('user_store_access',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({user_id:userId,store_id:sid,company_id:s?.company_id||null})}).catch(()=>{});}
-        }catch{}
-      },800);
+          const companies=[...new Set(selectedStores.map(s=>s.company_id).filter(Boolean))];
+          for(const cid of companies){
+            await api('user_companies',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:userId,company_id:cid,role:String(form.querySelector('select[name=role]')?.value||'ATENDENTE'),active:true})}).catch(()=>{});
+          }
+          for(const s of selectedStores){
+            await api('user_store_access',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:userId,store_id:s.id,company_id:s.company_id})}).catch(()=>{});
+          }
+        }catch(err){console.warn('Falha ao completar acessos multi-loja',err);}
+      },900);
     };
   }
 
