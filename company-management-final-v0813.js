@@ -1,55 +1,89 @@
-/* VoxAssist V0.8.13 — gestão multiempresa final */
+/* VoxAssist V0.8.13 — regra definitiva: Loja Ativa + Configuração global do Gestor */
 (function(){
   const E=window.esc||((v='')=>String(v??''));
+  const isGestor=()=>String(state?.profile?.role||'').toUpperCase()==='GESTOR';
   const uid=()=>state?.session?.user?.id||null;
-  async function memberships(){
+
+  async function allowedStores(){
     if(!uid()) return [];
-    return await api(`user_companies?user_id=eq.${uid()}&active=eq.true&select=company_id,role,store_id,companies(id,legal_name,trade_name,document,code,active)&order=created_at.asc`).catch(()=>[]);
+    if(isGestor()) return await api('stores?select=id,name,code,company_id,active,companies(id,trade_name,legal_name,active)&active=eq.true&order=name').catch(()=>[]);
+    const links=await api(`user_store_access?user_id=eq.${uid()}&select=store_id`).catch(()=>[]);
+    const ids=links.map(x=>x.store_id).filter(Boolean); if(!ids.length) return [];
+    return await api(`stores?id=in.(${ids.join(',')})&active=eq.true&select=id,name,code,company_id,active,companies(id,trade_name,legal_name,active)&order=name`).catch(()=>[]);
   }
-  async function populateTopCompanySelector(){
+
+  async function populateStoreSelector(){
     const sel=document.querySelector('#activeStore'); if(!sel) return;
-    const label=sel.closest('label'); const small=label?.querySelector('small'); if(small) small.textContent='EMPRESA ATIVA';
-    const rows=(await memberships()).filter(r=>r.companies&&r.companies.active!==false);
-    sel.innerHTML=rows.map(r=>`<option value="${E(r.company_id)}" ${String(r.company_id)===String(state.profile?.active_company_id)?'selected':''}>${E(r.companies.trade_name||r.companies.legal_name||'EMPRESA')}</option>`).join('')||'<option value="">NENHUMA EMPRESA ATIVA</option>';
-    sel.disabled=rows.length<2;
+    const label=sel.closest('label'); const small=label?.querySelector('small'); if(small) small.textContent='LOJA ATIVA';
+    const stores=await allowedStores();
+    const current=state?.profile?.store_id;
+    sel.innerHTML=stores.length?stores.map(s=>`<option value="${E(s.id)}" ${String(s.id)===String(current)?'selected':''}>${E(s.code||s.name)}</option>`).join(''):'<option value="">NENHUMA LOJA LIBERADA</option>';
+    sel.disabled=stores.length<2;
     sel.onchange=async()=>{
-      if(!sel.value||sel.value===state.profile?.active_company_id)return;
+      if(!sel.value||String(sel.value)===String(state?.profile?.store_id))return;
       const keep=state.view||'dashboard'; sel.disabled=true;
       try{
-        await api('rpc/switch_company',{method:'POST',body:JSON.stringify({target_company:sel.value})});
-        await loadProfile(); await loadCore(); shell(); await render(keep==='usuarios'?'usuarios':'dashboard'); toast('Empresa ativa alterada.');
-      }catch(e){toast('Falha ao trocar de empresa: '+e.message,'err'); sel.disabled=false;}
+        await api('rpc/switch_store',{method:'POST',body:JSON.stringify({target_store:sel.value})});
+        await loadProfile(); await loadCore(); shell(); await render(keep==='usuarios'?'usuarios':'dashboard'); toast('Loja ativa alterada.');
+      }catch(e){toast('Falha ao trocar de loja: '+e.message,'err'); sel.disabled=false;}
     };
   }
-  function modal(title,body){
-    document.querySelector('#vxCompanyManageModal')?.remove();
-    const ov=document.createElement('div');ov.id='vxCompanyManageModal';ov.className='vx-admin-overlay';ov.innerHTML=`<div class="vx-admin-modal vx-company-full-modal"><div class="vx-admin-modal-head"><h3>${E(title)}</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body">${body}</div></div>`;document.body.appendChild(ov);ov.querySelector('[data-close]').onclick=()=>ov.remove();return ov;
+
+  async function globalConfigView(){
+    if(state?.view!=='usuarios'||!isGestor())return;
+    const page=document.querySelector('.vx-admin-page'); if(!page)return;
+    const companyCard=page.querySelector('.vx-admin-grid .vx-admin-card:first-child');
+    const storeCard=page.querySelector('.vx-admin-grid .vx-admin-card:nth-child(2)');
+    const [companies,stores]=await Promise.all([
+      api('companies?select=*&order=trade_name.nullslast,legal_name').catch(()=>[]),
+      api('stores?select=id,name,code,company_id,active,companies(id,trade_name,legal_name)&order=name').catch(()=>[])
+    ]);
+    if(companyCard){
+      const title=companyCard.querySelector('.vx-admin-title h3'); if(title)title.textContent='EMPRESAS / CNPJ';
+      const badge=companyCard.querySelector('.vx-admin-title span'); if(badge)badge.textContent=String(companies.length);
+      companyCard.querySelectorAll('[data-use],.vx-company-actions-inline em').forEach(x=>x.remove());
+      companyCard.querySelectorAll('.vx-company-actions-inline span').forEach(x=>{ if(x.textContent.trim()==='DISPONÍVEL')x.textContent='ATIVA'; });
+    }
+    if(storeCard){
+      const title=storeCard.querySelector('.vx-admin-title h3'); if(title)title.textContent='TODAS AS LOJAS / UNIDADES';
+      const badge=storeCard.querySelector('.vx-admin-title span'); if(badge)badge.textContent=String(stores.length);
+      [...storeCard.children].forEach(ch=>{if(!ch.classList.contains('vx-admin-title'))ch.remove()});
+      stores.forEach(s=>{const r=document.createElement('div');r.className='vx-company-row';r.innerHTML=`<div><b>${E(s.code||s.name)}</b><small>${E(s.companies?.trade_name||s.companies?.legal_name||'EMPRESA')} • ${E(s.name)}</small></div><span class="${s.active?'vx-ok':'vx-off'}">${s.active?'ATIVA':'INATIVA'}</span>`;storeCard.appendChild(r)});
+    }
+    const hero=page.querySelector('.vx-admin-hero p'); if(hero)hero.textContent='Área administrativa global do Gestor: empresas, lojas/unidades, usuários e permissões. A Loja Ativa do cabeçalho controla apenas a operação diária.';
   }
-  const toDataUrl=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f)});
-  async function editCompany(id){
-    const c=(await api(`companies?id=eq.${id}&select=*`))?.[0]; if(!c)return toast('Empresa não encontrada.','err');
-    const m=modal('Alterar empresa / CNPJ',`<form id="vxCompanyManageForm" class="vx-admin-form">
-      <div class="vx-company-section"><h4>DADOS GERAIS</h4><div class="vx-form-2"><div><label>RAZÃO SOCIAL *</label><input name="legal" required value="${E(c.legal_name||'')}"></div><div><label>NOME FANTASIA</label><input name="trade" value="${E(c.trade_name||'')}"></div></div><div class="vx-form-3"><div><label>CNPJ / CPF</label><input name="doc" value="${E(c.document||'')}"></div><div><label>INSCRIÇÃO ESTADUAL</label><input name="ie" value="${E(c.state_registration||'')}"></div><div><label>INSCRIÇÃO MUNICIPAL</label><input name="im" value="${E(c.municipal_registration||'')}"></div></div></div>
-      <div class="vx-company-section"><h4>CONTATO</h4><div class="vx-form-3"><div><label>TELEFONE</label><input name="phone" value="${E(c.phone||'')}"></div><div><label>CELULAR / WHATSAPP</label><input name="mobile" value="${E(c.mobile||'')}"></div><div><label>E-MAIL</label><input type="email" name="email" value="${E(c.email||'')}"></div></div></div>
-      <div class="vx-company-section"><h4>ENDEREÇO</h4><div class="vx-form-3"><div><label>CEP</label><input name="zip" value="${E(c.zip_code||'')}"></div><div><label>LOGRADOURO</label><input name="address" value="${E(c.address||'')}"></div><div><label>NÚMERO</label><input name="number" value="${E(c.address_number||'')}"></div></div><div class="vx-form-3"><div><label>BAIRRO</label><input name="neighborhood" value="${E(c.neighborhood||'')}"></div><div><label>CIDADE</label><input name="city" value="${E(c.city||'')}"></div><div><label>UF</label><input name="uf" maxlength="2" value="${E(c.state||'')}"></div></div></div>
-      <div class="vx-company-section"><h4>IDENTIDADE VISUAL</h4><div class="vx-logo-row"><div class="vx-logo-preview">${c.logo_url?`<img id="vxEditLogoPreview" src="${E(c.logo_url)}" alt="Logo">`:'<span id="vxEditLogoEmpty">SEM LOGO</span>'}</div><div><label>LOGO DA EMPRESA</label><input type="file" name="logo" accept="image/png,image/jpeg,image/webp"><small>PNG, JPG ou WEBP. A prévia aparece antes de salvar.</small></div></div></div>
-      <div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button class="primary">SALVAR ALTERAÇÕES</button></div></form>`);
-    m.querySelector('[data-cancel]').onclick=()=>m.remove();
-    const fi=m.querySelector('input[name=logo]'); fi.onchange=()=>{const f=fi.files?.[0];if(!f)return;if(!/^image\/(png|jpeg|webp)$/.test(f.type))return toast('Formato de logo inválido.','err');const url=URL.createObjectURL(f);const box=m.querySelector('.vx-logo-preview');box.innerHTML=`<img src="${url}" alt="Prévia da logo" style="max-width:150px;max-height:100px;object-fit:contain">`;};
-    m.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),btn=e.submitter;btn.disabled=true;try{let logo=c.logo_url||null;const lf=f.get('logo');if(lf&&lf.size)logo=await toDataUrl(lf);await api(`companies?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({legal_name:String(f.get('legal')).trim().toUpperCase(),trade_name:String(f.get('trade')||'').trim().toUpperCase()||null,document:f.get('doc')||null,state_registration:f.get('ie')||null,municipal_registration:f.get('im')||null,phone:f.get('phone')||null,mobile:f.get('mobile')||null,email:f.get('email')||null,zip_code:f.get('zip')||null,address:String(f.get('address')||'').trim().toUpperCase()||null,address_number:f.get('number')||null,neighborhood:String(f.get('neighborhood')||'').trim().toUpperCase()||null,city:String(f.get('city')||'').trim().toUpperCase()||null,state:String(f.get('uf')||'').trim().toUpperCase()||null,logo_url:logo,updated_at:new Date().toISOString()})});m.remove();toast('Empresa atualizada.');await render('usuarios');}catch(err){toast('Falha ao alterar empresa: '+err.message,'err');btn.disabled=false;}};
+
+  async function enhanceUserModal(){
+    if(!isGestor())return;
+    const modal=document.querySelector('#vxAdminModal'); const form=modal?.querySelector('#vxUserForm'); if(!form||form.dataset.vxStores==='1')return;
+    form.dataset.vxStores='1';
+    const stores=await api('stores?select=id,name,code,company_id,active,companies(trade_name,legal_name)&active=eq.true&order=name').catch(()=>[]);
+    const oldSelect=form.querySelector('select[name=store]');
+    if(oldSelect){
+      const wrap=document.createElement('div');wrap.className='vx-user-store-access';
+      wrap.innerHTML=`<label>LOJAS DE ACESSO *</label><div class="vx-store-checks">${stores.map(s=>`<label><input type="checkbox" name="vx_store_access" value="${E(s.id)}"> <b>${E(s.code||s.name)}</b><small>${E(s.companies?.trade_name||s.companies?.legal_name||'')}</small></label>`).join('')}</div><small>Selecione no mínimo uma loja. No cabeçalho, o usuário verá somente as lojas liberadas aqui.</small>`;
+      oldSelect.parentElement?.insertBefore(wrap,oldSelect); oldSelect.style.display='none';
+    }
+    const original=form.onsubmit;
+    form.onsubmit=async function(e){
+      const checked=[...form.querySelectorAll('input[name=vx_store_access]:checked')].map(x=>x.value);
+      if(!checked.length){e.preventDefault();toast('Selecione no mínimo uma loja de acesso.','err');return false;}
+      const primary=form.querySelector('select[name=store]'); if(primary)primary.value=checked[0];
+      if(original) await original.call(form,e);
+      setTimeout(async()=>{
+        try{
+          const email=String(form.querySelector('input[name=email]')?.value||'').trim(); if(!email)return;
+          const p=await api(`profiles?email=eq.${encodeURIComponent(email)}&select=id`); const userId=p?.[0]?.id; if(!userId)return;
+          await api(`user_store_access?user_id=eq.${userId}`,{method:'DELETE'}).catch(()=>{});
+          for(const sid of checked){const s=stores.find(x=>x.id===sid);await api('user_store_access',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({user_id:userId,store_id:sid,company_id:s?.company_id||null})}).catch(()=>{});}
+        }catch{}
+      },800);
+    };
   }
-  async function rebuildCompanyCard(){
-    if(state?.view!=='usuarios')return; const page=document.querySelector('.vx-admin-page');if(!page)return;
-    const rows=await memberships(); const card=page.querySelector('.vx-admin-grid .vx-admin-card:first-child');if(!card)return;
-    const title=card.querySelector('.vx-admin-title h3');if(title)title.textContent='EMPRESAS / CNPJ';const badge=card.querySelector('.vx-admin-title span');if(badge)badge.textContent=String(rows.length);
-    [...card.children].forEach(ch=>{if(!ch.classList.contains('vx-admin-title'))ch.remove()});
-    rows.forEach(r=>{const c=r.companies||{},selected=String(r.company_id)===String(state.profile?.active_company_id),active=c.active!==false,row=document.createElement('div');row.className='vx-company-row '+(selected?'active':'');row.innerHTML=`<div><b>${E(c.trade_name||c.legal_name||'EMPRESA')}</b><small>${E(c.legal_name||'')}${c.document?' • CNPJ/CPF '+E(c.document):''}</small></div><div class="vx-company-actions-inline"><span class="${active?'vx-ok':'vx-off'}">${active?'ATIVA':'INATIVA'}</span>${selected?'<em>EM USO</em>':active?`<button type="button" data-use="${E(r.company_id)}">USAR ESTA EMPRESA</button>`:''}<button type="button" data-edit2="${E(r.company_id)}">ALTERAR</button><button type="button" data-toggle="${E(r.company_id)}" data-active="${active?'1':'0'}">${active?'DESATIVAR':'ATIVAR'}</button></div>`;card.appendChild(row)});
-    card.querySelectorAll('[data-use]').forEach(b=>b.onclick=async()=>{await api('rpc/switch_company',{method:'POST',body:JSON.stringify({target_company:b.dataset.use})});await loadProfile();await loadCore();shell();await render('usuarios')});
-    card.querySelectorAll('[data-edit2]').forEach(b=>b.onclick=()=>editCompany(b.dataset.edit2));
-    card.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{const id=b.dataset.toggle,on=b.dataset.active==='1';if(on&&String(id)===String(state.profile?.active_company_id))return toast('Troque para outra empresa antes de desativar a empresa em uso.','err');if(!confirm(`${on?'Desativar':'Ativar'} esta empresa?`))return;try{await api(`companies?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({active:!on,updated_at:new Date().toISOString()})});toast(`Empresa ${on?'desativada':'ativada'}.`);await render('usuarios')}catch(e){toast('Falha ao alterar situação da empresa: '+e.message,'err')}});
-    populateTopCompanySelector();
-  }
-  const mo=new MutationObserver(()=>{setTimeout(()=>{populateTopCompanySelector();rebuildCompanyCard()},20)});mo.observe(document.documentElement,{subtree:true,childList:true});
-  const prior=window.render;window.render=async function(view){const r=await prior(view);setTimeout(()=>{populateTopCompanySelector();if(view==='usuarios')rebuildCompanyCard()},40);return r};
-  const st=document.createElement('style');st.textContent='.vx-company-actions-inline{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.vx-company-actions-inline em{font-style:normal;font-size:8px;font-weight:800;color:#176a43;background:#edf8f2;padding:3px 6px;border-radius:10px}.vx-company-actions-inline button{min-height:28px;padding:3px 8px;font-size:8px;border:1px solid #b8c9da;background:#fff;color:#164f80;cursor:pointer}';document.head.appendChild(st);
+
+  const mo=new MutationObserver(()=>{setTimeout(()=>{populateStoreSelector();globalConfigView();enhanceUserModal()},30)});
+  mo.observe(document.documentElement,{childList:true,subtree:true});
+  const prior=window.render; window.render=async function(view){const r=await prior(view);setTimeout(()=>{populateStoreSelector();if(view==='usuarios')globalConfigView()},60);return r};
+
+  const st=document.createElement('style');st.textContent=`.vx-user-store-access{display:grid;gap:7px;margin:8px 0}.vx-store-checks{display:grid;gap:5px;padding:8px;border:1px solid #dbe5ee;border-radius:7px;background:#f8fafc}.vx-store-checks label{display:grid;grid-template-columns:20px 1fr auto;align-items:center;gap:5px;font-size:10px}.vx-store-checks small{font-size:8px;color:#718397}`;document.head.appendChild(st);
 })();
