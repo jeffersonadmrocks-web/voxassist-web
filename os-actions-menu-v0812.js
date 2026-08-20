@@ -18,4 +18,5 @@
   }
   const base=window.renderOsDetail;if(typeof base==='function')window.renderOsDetail=async function(){const r=await base.apply(this,arguments);await ensure();return r;};setTimeout(ensure,0);
   if(!document.querySelector('script[data-vx-whirlpool-extension]')){const s=document.createElement('script');s.dataset.vxWhirlpoolExtension='1';s.src='os-whirlpool-extension-v0813.js?v=0813-20260820-WPEXT1';document.head.appendChild(s);}
+  if(!document.querySelector('script[data-vx-whirlpool-faithful]')){const s=document.createElement('script');s.dataset.vxWhirlpoolFaithful='1';s.src='whirlpool-faithful-mode-v0813.js?v=0813-20260820-WPFAITHFUL1';document.head.appendChild(s);}
 })();
