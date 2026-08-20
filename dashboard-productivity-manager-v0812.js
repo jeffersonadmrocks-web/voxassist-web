@@ -10,8 +10,6 @@
 
   function findProductivityHost(){
     const app=document.querySelector('#app');if(!app)return null;
-    /* Importante: procurar somente elementos de título/folha. Nunca usar DIV/SECTION,
-       pois o container inteiro do dashboard também contém o texto "Produtividade do mês". */
     const nodes=[...app.querySelectorAll('h1,h2,h3,h4,h5,h6,strong,b,span')];
     const title=nodes.find(n=>/^\s*PRODUTIVIDADE DO M[ÊE]S\s*$/i.test(n.textContent||''));
     if(!title)return null;
@@ -44,7 +42,7 @@
   function optionRows(arr,id='id',label='name'){return arr.map(x=>`<option value="${E(typeof x==='string'?x:x[id])}">${E(typeof x==='string'?x:(x[label]||x.full_name||x.name))}</option>`).join('')}
   function orderValue(o){const f=o.__fin||{};const direct=Number(val(o,['total_amount','budget_total','valor_total','total','amount'])||0);if(direct)return direct;const labor=Number(f.labor_value||0),freight=Number(f.freight_value||0),aux=Number(f.auxiliary_material_value||0),report=Number(f.technical_report_value||0),disc=Number(f.discount_value||0);return Math.max(0,labor+freight+aux+report-disc)}
 
-  function subBlock(kind,title,d){return `<div class="vx-prod-sub" data-kind="${kind}"><div class="vx-prod-sub-head"><div><strong>${title}</strong><small>${kind==='ready'?'Aparelhos que ficaram prontos':'Aparelhos entregues aos clientes'}</small></div><div class="vx-prod-period"><button type="button" data-period="mes" class="active">MÊS</button><button type="button" data-period="semana">SEMANA</button><button type="button" data-period="dia">DIA</button></div></div><div class="vx-prod-metrics"><div><span>APARELHOS</span><b data-count>0</b></div><div><span>VALOR</span><b data-value>R$ 0,00</b></div></div><div class="vx-prod-filters"><label>LOJA<select data-filter="store"><option value="">TODAS</option>${optionRows(d.stores,'id','name')}</select></label><label>GRUPO<select data-filter="group"><option value="">TODOS</option>${optionRows(d.groups)}</select></label><label>TÉCNICO<select data-filter="tech"><option value="">TODOS</option>${optionRows(d.techs,'id','full_name')}</select></label></div></div>`}
+  function subBlock(kind,title,d){return `<div class="vx-prod-sub" data-kind="${kind}"><div class="vx-prod-sub-head"><div><strong>${title}</strong></div><div class="vx-prod-period"><button type="button" data-period="mes" class="active">MÊS</button><button type="button" data-period="semana">SEMANA</button><button type="button" data-period="dia">DIA</button></div></div><div class="vx-prod-metrics"><div><span>APARELHOS</span><b data-count>0</b></div><div><span>VALOR</span><b data-value>R$ 0,00</b></div></div><div class="vx-prod-filters"><label>LOJA<select data-filter="store"><option value="">TODAS</option>${optionRows(d.stores,'id','name')}</select></label><label>GRUPO<select data-filter="group"><option value="">TODOS</option>${optionRows(d.groups)}</select></label><label>TÉCNICO<select data-filter="tech"><option value="">TODOS</option>${optionRows(d.techs,'id','full_name')}</select></label></div></div>`}
 
   function recalc(sec,orders){
     const from=startOf(sec.querySelector('.vx-prod-period .active')?.dataset.period||'mes');
@@ -75,7 +73,7 @@
   if(!document.querySelector('#vxProdManagerStyle')){
     const style=document.createElement('style');style.id='vxProdManagerStyle';style.textContent=`
     .vx-productivity-card{padding:12px!important;min-height:auto!important;height:auto!important;overflow:visible!important}
-    .vx-prod-main-head h3{margin:0;font-size:13px;color:#102d49}.vx-prod-main-head small,.vx-prod-sub-head small{display:block;margin-top:2px;font-size:9px;color:#71869a}
+    .vx-prod-main-head h3{margin:0;font-size:13px;color:#102d49}.vx-prod-main-head small{display:block;margin-top:2px;font-size:9px;color:#71869a}
     .vx-prod-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}.vx-prod-sub{border:1px solid #d5e0ea;border-radius:8px;background:#fff;padding:10px;min-width:0}
     .vx-prod-sub-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.vx-prod-sub-head strong{font-size:11px;color:#163754}
     .vx-prod-period{display:flex;gap:3px}.vx-prod-period button{border:1px solid #ccd7e0;background:#f6f8fa;color:#516a80;padding:3px 7px;border-radius:4px;font-size:8px;cursor:pointer}.vx-prod-period button.active{background:#173e62;color:white;border-color:#173e62}
