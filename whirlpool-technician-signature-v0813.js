@@ -2,8 +2,9 @@
 (function(){
  const $=(s,r=document)=>r.querySelector(s);
  const esc=v=>String(v||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+ const stateRef=()=>typeof state!=='undefined'?state:null;
  async function loadSignature(){
-   const o=window.state?.activeOs;if(!o)return null;
+   const o=stateRef()?.activeOs;if(!o)return null;
    const techId=o.technician_id;
    if(!techId)return {name:o.profiles?.full_name||'',signature:''};
    try{const rows=await api(`profiles?id=eq.${techId}&select=full_name,signature_data`);return {name:rows?.[0]?.full_name||o.profiles?.full_name||'',signature:rows?.[0]?.signature_data||''}}catch(e){return {name:o.profiles?.full_name||'',signature:''}}
@@ -14,4 +15,5 @@
  `;document.head.appendChild(s)}
  async function inject(){const form=$('#vxWpForm');if(!form||form.querySelector('.vx-wp-tech-sign'))return;style();const t=await loadSignature();if(!t)return;const box=document.createElement('div');box.className='vx-wp-tech-sign';box.innerHTML=`<div class="ttl">ASSINATURA DO TÉCNICO</div><div class="area">${t.signature?`<img src="${esc(t.signature)}" alt="Assinatura do técnico">`:`<span class="missing">ASSINATURA NÃO CADASTRADA NO PERFIL DO TÉCNICO</span>`}</div><div class="name">${esc(t.name)}</div>${t.signature?'':'<div class="hint">Cadastre a assinatura no perfil do técnico para inserção automática.</div>'}`;const actions=form.querySelector('.vx-wp-actions');form.insertBefore(box,actions||null)}
  const mo=new MutationObserver(()=>{if($('#vxWpForm'))setTimeout(inject,80)});mo.observe(document.documentElement,{childList:true,subtree:true});setTimeout(inject,600);
+ if(!document.querySelector('script[data-wpfidelity]')){const s=document.createElement('script');s.src='whirlpool-fidelity-validation-v0813.js?v=0813-20260821-WPFIDELITY1';s.dataset.wpfidelity='1';document.head.appendChild(s)}
 })();
