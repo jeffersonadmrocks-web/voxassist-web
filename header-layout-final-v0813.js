@@ -1,0 +1,17 @@
+/* VoxAssist V0.8.13 — cabeçalho estável: saudação por horário + pesquisa ancorada à direita */
+(function(){
+ const STYLE_ID='vxHeaderFinalStyle';
+ function css(){if(document.getElementById(STYLE_ID))return;const s=document.createElement('style');s.id=STYLE_ID;s.textContent=`
+ body main>header, .vx-top-header, header.topbar{display:grid!important;grid-template-columns:minmax(190px,auto) minmax(180px,1fr) minmax(280px,420px) auto!important;align-items:center!important;gap:16px!important;width:100%!important;box-sizing:border-box!important}
+ .vx-header-company{grid-column:1!important}.vx-header-greeting{grid-column:2!important;justify-self:start!important;white-space:nowrap!important}.vx-header-search{grid-column:3!important;justify-self:end!important;width:min(100%,420px)!important;margin-left:auto!important;position:static!important;transform:none!important}.vx-header-search input{width:100%!important;box-sizing:border-box!important}.vx-header-exit{grid-column:4!important;justify-self:end!important;position:static!important;transform:none!important;margin:0!important}
+ @media(max-width:900px){body main>header,.vx-top-header,header.topbar{grid-template-columns:1fr auto!important}.vx-header-company{grid-column:1}.vx-header-greeting{display:none!important}.vx-header-search{grid-column:1!important;grid-row:2!important;justify-self:stretch!important;width:100%!important}.vx-header-exit{grid-column:2!important;grid-row:1!important}}
+ `;document.head.appendChild(s)}
+ function greeting(){const h=new Date().getHours();return h<12?'Bom dia':h<18?'Boa tarde':'Boa noite'}
+ function findHeader(){return document.querySelector('body main>header')||document.querySelector('.vx-top-header')||document.querySelector('header.topbar')}
+ function classify(el){if(!el)return;const kids=[...el.children];kids.forEach(k=>{const txt=(k.textContent||'').trim().toUpperCase();if(k.querySelector?.('select')||txt.includes('EMPRESA ATIVA'))k.classList.add('vx-header-company');if(/BOM DIA|BOA TARDE|BOA NOITE/.test(txt))k.classList.add('vx-header-greeting');if(k.querySelector?.('input[placeholder*="PESQUISAR" i],input[placeholder*="CLIENTE" i]')||k.matches?.('input[placeholder*="PESQUISAR" i]'))k.classList.add('vx-header-search');if(txt==='SAIR'||k.querySelector?.('#logout,[data-action="logout"]'))k.classList.add('vx-header-exit')});
+ const inp=el.querySelector('input[placeholder*="PESQUISAR" i],input[placeholder*="CLIENTE" i]');if(inp){let p=inp.parentElement;if(p&&p!==el)p.classList.add('vx-header-search');else inp.classList.add('vx-header-search')}
+ const exit=[...el.querySelectorAll('button,a')].find(x=>(x.textContent||'').trim().toUpperCase()==='SAIR');if(exit){let p=exit.parentElement;if(p&&p!==el&&p.children.length===1)p.classList.add('vx-header-exit');else exit.classList.add('vx-header-exit')}
+ }
+ function apply(){css();const h=findHeader();if(!h)return;classify(h);const g=h.querySelector('.vx-header-greeting')||[...h.querySelectorAll('*')].find(x=>/^(Bom dia|Boa tarde|Boa noite),/i.test((x.textContent||'').trim()));if(g){const name=(g.textContent||'').replace(/^(Bom dia|Boa tarde|Boa noite)\s*,?\s*/i,'').trim();g.textContent=`${greeting()}, ${name}`;g.classList.add('vx-header-greeting')}}
+ let queued=false;const obs=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;apply()})});obs.observe(document.documentElement,{childList:true,subtree:true});apply();setInterval(apply,60000);
+})();
