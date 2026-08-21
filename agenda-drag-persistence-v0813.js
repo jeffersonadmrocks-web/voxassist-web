@@ -36,18 +36,49 @@
     }
     const ids=cards.map(c=>c.dataset.appt).filter(id=>id&&!String(id).startsWith('new:'));
     ids.splice(index,0,newId||movedId);
-    return ids;
+    return [...new Set(ids)];
   }
 
   async function patch(id,body){
     await api(`appointments?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify({...body,updated_by:uid(),updated_at:new Date().toISOString()})});
   }
 
+  async function appointmentById(id){
+    const rows=await api(`appointments?id=eq.${encodeURIComponent(id)}&select=id,service_order_id,appointment_date,period,technician_id,status&limit=1`).catch(()=>[]);
+    return rows?.[0]||null;
+  }
+
+  async function activeAppointmentsForOs(osId){
+    return await api(`appointments?service_order_id=eq.${encodeURIComponent(osId)}&status=neq.CANCELADO&select=id,service_order_id,appointment_date,period,technician_id,status,route_order&order=appointment_date.asc.nullsfirst`).catch(()=>[]);
+  }
+
+  async function cancelOpenDuplicates(osId,keepId){
+    const rows=await activeAppointmentsForOs(osId);
+    const duplicates=rows.filter(a=>String(a.id)!==String(keepId)&&!a.appointment_date);
+    for(const a of duplicates){
+      await patch(a.id,{status:'CANCELADO',appointment_date:null,period:null,technician_id:null,route_order:999});
+    }
+  }
+
   async function renumber(ids){
-    for(let i=0;i<ids.length;i++) await patch(ids[i],{route_order:i+1});
+    const unique=[...new Set(ids.filter(Boolean))];
+    for(let i=0;i<unique.length;i++) await patch(unique[i],{route_order:i+1});
   }
 
   async function createForPending(osId,lane){
+    const existing=await activeAppointmentsForOs(osId);
+    const reusable=existing.find(a=>!a.appointment_date)||existing[0];
+    if(reusable?.id){
+      await patch(reusable.id,{
+        technician_id:lane.dataset.tech,
+        appointment_date:lane.dataset.date,
+        period:lane.dataset.period,
+        status:'AGENDADO',
+        route_order:999
+      });
+      await cancelOpenDuplicates(osId,reusable.id);
+      return String(reusable.id);
+    }
     const rows=await api('appointments',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
       service_order_id:osId,
       technician_id:lane.dataset.tech,
@@ -61,6 +92,7 @@
     })});
     const a=rows?.[0];
     if(!a?.id)throw new Error('Falha ao criar agendamento');
+    await cancelOpenDuplicates(osId,a.id);
     return String(a.id);
   }
 
@@ -73,10 +105,15 @@
     try{
       if(lane.classList.contains('vx-period-blocked')) throw new Error('Período bloqueado');
       let realId=oldId;
+      let osId=null;
       if(String(oldId).startsWith('new:')){
-        realId=await createForPending(String(oldId).slice(4),lane);
+        osId=String(oldId).slice(4);
+        realId=await createForPending(osId,lane);
       }else{
+        const current=await appointmentById(realId);
+        osId=current?.service_order_id||null;
         await patch(realId,{appointment_date:lane.dataset.date,period:lane.dataset.period,technician_id:lane.dataset.tech,status:'AGENDADO',route_order:999});
+        if(osId)await cancelOpenDuplicates(osId,realId);
       }
       const targetIds=targetSequence(lane,oldId,e.clientY,realId);
       await renumber(targetIds);
@@ -98,7 +135,9 @@
     if(String(drag.id).startsWith('new:'))return;
     busy=true;
     try{
+      const current=await appointmentById(drag.id);
       await patch(drag.id,{appointment_date:null,period:null,technician_id:null,status:'ABERTO',route_order:999});
+      if(current?.service_order_id)await cancelOpenDuplicates(current.service_order_id,drag.id);
       if(drag.sourceLane)await renumber(sourceSequence(drag.sourceLane,drag.id));
       toast('Atendimento devolvido para Agendamentos em aberto.');
       drag=null;
