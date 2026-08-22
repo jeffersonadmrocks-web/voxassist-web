@@ -13,11 +13,20 @@
  function tr(...cells){const r=document.createElement('tr');cells.forEach(c=>r.appendChild(c));return r}
  function tbl(cls='wp-exact-table'){const t=document.createElement('table');t.className=cls;return t}
  function ensureAuthName(form){let el=form.querySelector('[name="responsavelAutorizacao"]');if(!el){const l=document.createElement('label');l.style.display='none';l.innerHTML='<span>RESPONSÁVEL PELA AUTORIZAÇÃO</span><input name="responsavelAutorizacao">';form.appendChild(l);el=l.querySelector('input');const consumidor=form.querySelector('[name="consumidor"]');if(consumidor&&!el.value)el.value=consumidor.value||''}return field(form,'responsavelAutorizacao','')}
+ function headerLeft(form){
+   const box=document.createElement('div');box.className='wp-header-left';
+   [field(form,'autorizada','AUTORIZADA:'),field(form,'enderecoAutorizada',''),field(form,'cnpjAutorizada','CNPJ:')].filter(Boolean).forEach(x=>box.appendChild(x));
+   const last=document.createElement('div');last.className='wp-header-phone-ie';
+   const fone=field(form,'foneAutorizada','FONE:');
+   const ie=field(form,'inscEstadualAutorizada','INSC. ESTADUAL:');
+   if(fone)last.appendChild(fone); if(ie)last.appendChild(ie); box.appendChild(last);
+   return box;
+ }
  function build(form){
    const old=$('.wpf-doc',form); if(!old||old.dataset.exactFactory==='1')return;
    const doc=document.createElement('div');doc.className='wpf-doc wp-exact-doc';doc.dataset.exactFactory='1';
    let t=tbl('wp-exact-table wp-header');
-   t.appendChild(tr(td([field(form,'autorizada','AUTORIZADA:'),field(form,'enderecoAutorizada',''),field(form,'cnpjAutorizada','CNPJ:'),field(form,'foneAutorizada','FONE:'),field(form,'inscEstadualAutorizada','INSC. ESTADUAL:')],{width:'70%'}),td([field(form,'centralAtendimento','CENTRAL DE ATENDIMENTO'),field(form,'foneCentral1','FONE:'),field(form,'foneCentral2','FONE:')],{width:'30%'})));doc.appendChild(t);
+   t.appendChild(tr(td(headerLeft(form),{width:'70%'}),td([field(form,'centralAtendimento','CENTRAL DE ATENDIMENTO'),field(form,'foneCentral1','FONE:'),field(form,'foneCentral2','FONE:')],{width:'30%'})));doc.appendChild(t);
    t=tbl();t.appendChild(tr(td(field(form,'numeroOS','NÚMERO DA OS'),{width:'14%',textAlign:'center',verticalAlign:'middle'}),td(field(form,'tecnico','TÉCNICO'),{width:'12%',textAlign:'center',verticalAlign:'middle'}),td('<div class="wp-exact-label-target">COLE AQUI A ETIQUETA DO PRODUTO</div>',{width:'44%',textAlign:'center',verticalAlign:'middle'}),td([field(form,'dataAgenda','DATA AGENDA:'),field(form,'dataChamado','DATA CHAMADO:'),field(form,'periodo','PERÍODO:'),field(form,'tipoAgenda','TIPO AGENDA:')],{width:'30%',verticalAlign:'middle'})));doc.appendChild(t);
    t=tbl('wp-exact-table wp-noinner');t.appendChild(tr(td(field(form,'consumidor','CONSUMIDOR:'),{colSpan:2}),td(field(form,'cep','CEP:')),td(field(form,'regiao','REGIÃO:'))));t.appendChild(tr(td(field(form,'endereco','ENDEREÇO:'),{colSpan:2}),td(field(form,'bairro','BAIRRO:'),{colSpan:2})));t.appendChild(tr(td(field(form,'complemento','COMPLEMENTO:'),{colSpan:2}),td(field(form,'cidade','CIDADE:')),td(field(form,'uf','UF:'))));t.appendChild(tr(td(field(form,'cnpjCpf','CNPJ/CPF:'),{colSpan:2}),td(field(form,'enderecoEletronico','ENDEREÇO ELETRÔNICO:'),{colSpan:2})));const ph=td([field(form,'foneResidencia','FONE RESIDÊNCIA:'),field(form,'foneComercial','FONE COMERCIAL:'),field(form,'foneOutros','FONE (OUTROS):')],{colSpan:4});ph.classList.add('wp-exact-inline-group');t.appendChild(tr(ph));t.appendChild(tr(td(field(form,'localizacao','LOCALIZAÇÃO:'),{colSpan:4})));doc.appendChild(t);
    t=tbl('wp-exact-table wp-noinner');t.appendChild(tr(td(field(form,'produto','PRODUTO:'),{colSpan:2}),td(field(form,'marca','MARCA:'),{colSpan:2})));t.appendChild(tr(td(field(form,'produtoConsumidor','PRODUTO CONSUMIDOR:'),{colSpan:2}),td(field(form,'linha','LINHA:'),{colSpan:2})));t.appendChild(tr(td(field(form,'serie','SÉRIE:')),td(field(form,'nomeComercial','NOME COMERCIAL:')),td(field(form,'tempoUso','TEMPO DE USO:'),{colSpan:2})));t.appendChild(tr(td(field(form,'tipoOS','TIPO DE OS:'),{colSpan:4})));const fiscal=td([field(form,'nrNotaFiscal','NR NOTA FISCAL:'),field(form,'dataCompra','DATA COMPRA:'),field(form,'cor','COR:'),field(form,'voltagem','VOLTAGEM:'),field(form,'capacidade','CAPACIDADE:')],{colSpan:4});fiscal.classList.add('wp-exact-inline-group');t.appendChild(tr(fiscal));doc.appendChild(t);
@@ -41,6 +50,9 @@
  #vxWpForm .wp-exact-field input,#vxWpForm .wp-exact-field textarea{display:inline!important;flex:1 1 auto!important;width:auto!important;min-width:0!important;min-height:12px!important;height:auto!important;padding:0!important;margin:0!important;border:0!important;background:transparent!important;font:8.4px Arial!important;line-height:1.18!important;resize:none!important;overflow:hidden!important}
  #vxWpForm .wp-exact-inline-group{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
  #vxWpForm .wp-exact-inline-group .wp-exact-field{display:inline-flex!important;flex:0 1 auto}
+ #vxWpForm .wp-header-phone-ie{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;column-gap:18mm!important;align-items:baseline!important}
+ #vxWpForm .wp-header-phone-ie .wp-exact-field{display:flex!important;min-width:0!important}
+ #vxWpForm .wp-header-phone-ie .wp-exact-field input{min-width:0!important;width:100%!important}
  #vxWpForm .wp-exact-label-target{font-family:'Courier New',monospace;font-size:10px;padding:23px 0}
  #vxWpForm .wp-exact-box{border:1px solid #000;border-top:0;padding:5px 6px;font-size:8.2px}
  #vxWpForm .wp-exact-title{text-align:center;font-weight:700;font-size:9.5px}
