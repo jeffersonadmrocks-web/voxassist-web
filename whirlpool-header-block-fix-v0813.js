@@ -34,4 +34,12 @@
   }
   const mo=new MutationObserver(()=>requestAnimationFrame(apply));mo.observe(document.documentElement,{childList:true,subtree:true});
   apply();setTimeout(apply,300);setTimeout(apply,1000);
+
+  /* Hotfix 23/08: carrega o refinamento que unifica Cliente/Aparelho e corrige o endereço superior. */
+  if(!document.querySelector('script[data-wp-client-equipment-fix]')){
+    const sc=document.createElement('script');
+    sc.src='whirlpool-client-equipment-block-fix-v0813.js?v=0813-20260823-WPCLIENTEQ1';
+    sc.dataset.wpClientEquipmentFix='1';
+    document.head.appendChild(sc);
+  }
 })();
