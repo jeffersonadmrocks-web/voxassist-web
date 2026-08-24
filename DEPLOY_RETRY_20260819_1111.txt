@@ -1,1 +1,1 @@
-Retry de deploy solicitado em 19/08/2026 12:26 BRT. Código funcional preservado; tentativa apenas para disparar nova publicação na Vercel.
+Retry de deploy solicitado em 24/08/2026 08:46 BRT. Incluído módulo independente Electrolux > Relatórios, carregado por electrolux-reports-v0813.js. Nenhuma integração de dados com o Supabase operacional do VoxAssist foi adicionada. Commit no branch main para disparar nova publicação pela integração existente.
