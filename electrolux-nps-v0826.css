@@ -1,0 +1,26 @@
+/* VoxAssist V0.8.13 — só estilos NOVOS da Gestão de NPS. Reaproveita
+   .module-action-card/.card/.vx-modal-*/.vx-appt já existentes — não
+   redefine nada do hub Electrolux ou de outros módulos. */
+.module-action-card.teal{background:#0d7d7d;color:#fff}
+.vx-nps{padding:16px;display:flex;flex-direction:column;gap:16px}
+.vx-nps-head h2{margin:4px 0 0}
+.vx-nps-head button#npsBack{background:none;border:none;color:inherit;cursor:pointer;font-size:13px;opacity:.8}
+.vx-nps-indicators{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.vx-nps-ind{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:10px 12px;background:#fff}
+.vx-nps-ind span{display:block;font-size:11px;color:#667;margin-bottom:4px}
+.vx-nps-ind b{font-size:20px}
+.vx-nps-ind-warn{border-color:#e87a00}
+.vx-nps-ind-warn b{color:#e87a00}
+.vx-nps-filters{display:flex;gap:8px;flex-wrap:wrap}
+.vx-nps-filters input,.vx-nps-filters select{border:1px solid rgba(0,0,0,.15);border-radius:8px;padding:7px 10px;font-size:13px}
+.vx-nps-table-wrap{overflow-x:auto}
+.vx-nps-table{width:100%;border-collapse:collapse;font-size:13px}
+.vx-nps-table th,.vx-nps-table td{padding:8px 10px;border-bottom:1px solid rgba(0,0,0,.06);text-align:left;white-space:nowrap}
+.vx-nps-modal{max-width:640px;max-height:85vh;overflow-y:auto}
+.vx-nps-alert{background:#fff1df;color:#8b5200;border-radius:8px;padding:8px 12px;font-size:13px}
+.vx-nps-actions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.vx-nps-secondary-link{font-size:12px;align-self:center;color:#0d7d7d}
+.vx-nps-history{display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;font-size:12px}
+.vx-nps-hist-row{display:flex;gap:8px;align-items:baseline;border-bottom:1px dashed rgba(0,0,0,.06);padding-bottom:4px}
+.vx-nps-hist-row span{color:#889;font-size:11px}
+@media(max-width:900px){.vx-nps-indicators{grid-template-columns:repeat(2,1fr)}}

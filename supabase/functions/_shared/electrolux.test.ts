@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { deriveStatus, derivePeriod, normalizeName, mapOrderToRow } from "./electrolux.ts";
+import { deriveStatus, derivePeriod, normalizeName, mapOrderToRow, resolveConcludedAt } from "./electrolux.ts";
 
 Deno.test("deriveStatus - Cancelada vira CANCELADO mesmo com data futura", () => {
   assertEquals(
@@ -61,6 +61,7 @@ Deno.test("mapOrderToRow - mapeia só os campos mínimos, sem inventar dado", ()
     claimedDefect: "Geladeira não gela",
     status: "Em andamento",
     internalStatus: "AGENDADA",
+    createdDate: "2026-08-10T09:00:00Z",
     appointmentDate: "2026-09-01T14:00:00Z",
     updatedAt: "2026-08-20T10:00:00Z",
   });
@@ -72,4 +73,21 @@ Deno.test("mapOrderToRow - mapeia só os campos mínimos, sem inventar dado", ()
   assertEquals(row.appointment_date, "2026-09-01");
   assertEquals(row.client_name, "Maria Souza");
   assertEquals(row.notes, "Geladeira não gela");
+  assertEquals(row.external_created_at, "2026-08-10T09:00:00Z");
+});
+
+Deno.test("resolveConcludedAt - não sobrescreve um concluded_at já existente", () => {
+  assertEquals(resolveConcludedAt("CONCLUIDO", "2026-08-01T00:00:00Z"), "2026-08-01T00:00:00Z");
+});
+
+Deno.test("resolveConcludedAt - seta na primeira vez que o status vira CONCLUIDO", () => {
+  const result = resolveConcludedAt("CONCLUIDO", null);
+  assertEquals(typeof result, "string");
+  assertEquals(new Date(result as string).toString() !== "Invalid Date", true);
+});
+
+Deno.test("resolveConcludedAt - não seta pra status que não é CONCLUIDO", () => {
+  assertEquals(resolveConcludedAt("ABERTO", null), null);
+  assertEquals(resolveConcludedAt("AGENDADO", null), null);
+  assertEquals(resolveConcludedAt("CANCELADO", null), null);
 });

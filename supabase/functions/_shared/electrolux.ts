@@ -11,6 +11,7 @@ export type ElectroluxOrder = {
   claimedDefect: string;
   status: string;
   internalStatus: string;
+  createdDate: string;
   appointmentDate: string | null;
   updatedAt: string;
   technicianName?: string | null;
@@ -52,10 +53,25 @@ export function mapOrderToRow(order: ElectroluxOrder) {
     client_name: order.clientName,
     client_phone: order.clientPhone,
     notes: order.claimedDefect,
+    external_created_at: order.createdDate,
     external_updated_at: order.updatedAt,
     last_synced_at: new Date().toISOString(),
     sync_error: null,
   };
+}
+
+// concluded_at só pode ser setado uma vez (nunca sobrescrito depois que o
+// pedido já foi observado como concluído) — por isso fica de fora do
+// mapeamento puro acima e é decidido pelo chamador, que tem acesso à linha
+// já existente. Usada tanto no upsert normal quanto na resolução de pedido
+// "sumido" da listagem.
+export function resolveConcludedAt(
+  newStatus: "ABERTO" | "AGENDADO" | "CONCLUIDO" | "CANCELADO",
+  existingConcludedAt: string | null | undefined
+): string | null {
+  if (existingConcludedAt) return existingConcludedAt;
+  if (newStatus === "CONCLUIDO") return new Date().toISOString();
+  return null;
 }
 
 const DIACRITICS_PATTERN = new RegExp("[\\u0300-\\u036f]", "g");

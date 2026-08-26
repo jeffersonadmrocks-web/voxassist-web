@@ -4,7 +4,7 @@
 // Nunca escreve em appointments/service_orders nativas. Agendada via
 // Supabase Cron a cada 10min (mesma cadência do cron interno da Electrolux).
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { mapOrderToRow, type ElectroluxOrder } from "../_shared/electrolux.ts";
+import { mapOrderToRow, resolveConcludedAt, type ElectroluxOrder } from "../_shared/electrolux.ts";
 import { matchOrCreateTechnician } from "../_shared/technicianMatch.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -20,6 +20,7 @@ type ExistingRow = {
   technician_id: string | null;
   appointment_date: string | null;
   period: string | null;
+  concluded_at: string | null;
 };
 
 Deno.serve(async () => {
@@ -37,7 +38,7 @@ Deno.serve(async () => {
 
     const { data: existingRowsRaw } = await supabase
       .from("external_appointments")
-      .select("id, external_id, status, technician_id, appointment_date, period")
+      .select("id, external_id, status, technician_id, appointment_date, period, concluded_at")
       .eq("origin", "ELECTROLUX");
     const existingRows = (existingRowsRaw || []) as ExistingRow[];
     const existingById = new Map(existingRows.map((r) => [r.external_id, r]));
@@ -56,6 +57,7 @@ Deno.serve(async () => {
       const upsertRow = {
         ...row,
         technician_id: technicianId ?? existing?.technician_id ?? null,
+        concluded_at: resolveConcludedAt(row.status, existing?.concluded_at),
       };
 
       const { data: saved, error } = await supabase
@@ -127,7 +129,11 @@ Deno.serve(async () => {
 
       await supabase
         .from("external_appointments")
-        .update({ status: resolvedStatus, last_synced_at: new Date().toISOString() })
+        .update({
+          status: resolvedStatus,
+          concluded_at: resolveConcludedAt(resolvedStatus, existing.concluded_at),
+          last_synced_at: new Date().toISOString(),
+        })
         .eq("id", existing.id);
 
       await supabase.from("external_appointment_history").insert({
