@@ -21,12 +21,26 @@
     btn.setAttribute('aria-label', 'Abrir Pulse IA em nova aba');
     btn.innerHTML = `
       <span class="pulse-ia-icon" aria-hidden="true">
-        <svg viewBox="0 0 64 64" role="img">
-          <path d="M6 34h9l5-15 8 27 6-21 4 9h20" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="50" cy="17" r="4" fill="currentColor"/>
-          <circle cx="59" cy="30" r="3" fill="currentColor"/>
-          <circle cx="50" cy="43" r="3" fill="currentColor"/>
-          <path d="M50 17l9 13M59 30l-9 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <svg viewBox="0 0 64 64" role="img" aria-label="Pulse IA">
+          <defs>
+            <mask id="pulse-ia-p-mask">
+              <rect width="64" height="64" fill="#000"/>
+              <path d="M10 59V5h27c15 0 24 8.2 24 21.5S52 48 37 48H26v11H10Z" fill="#fff"/>
+              <path d="M27 15.5h11c7.7 0 12.5 4.2 12.5 10.8S45.7 37 38 37h-5.2l-7.3 5.1 2.2-6.7c-3.9-1.9-6.2-5-6.2-9.1 0-6.6 2.5-10.8 5.5-10.8Z" fill="#000"/>
+            </mask>
+          </defs>
+          <rect width="64" height="64" fill="currentColor" mask="url(#pulse-ia-p-mask)"/>
+          <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M36 22.5 29.5 31M36 22.5 43 31M29.5 31H43" stroke-width="1.25"/>
+            <circle cx="36" cy="21" r="4.15" stroke-width="1.2"/>
+            <circle cx="29" cy="32" r="4.15" stroke-width="1.2"/>
+            <circle cx="43.5" cy="32" r="4.15" stroke-width="1.2"/>
+            <path d="M34.3 18.8c-.5.7-.4 2 .4 3.1.8 1.1 2 1.7 2.8 1.4l.8-.9-1.5-1-.6.5c-.5-.2-1.1-.8-1.3-1.3l.4-.6-1-1.4-.0.2Z" stroke-width=".9"/>
+            <rect x="26.9" y="29.9" width="4.2" height="4.2" rx="1.15" stroke-width=".95"/>
+            <circle cx="29" cy="32" r=".85" stroke-width=".8"/>
+            <circle cx="30.4" cy="30.7" r=".22" fill="currentColor" stroke="none"/>
+            <path d="M44.4 35v-3h1.05l.18-1.2h-1.23v-.65c0-.35.18-.6.65-.6h.7v-1.05c-.3-.05-.65-.1-1.05-.1-1.05 0-1.7.65-1.7 1.8v.6h-.95V32h.95v3" stroke-width="1.05"/>
+          </g>
         </svg>
       </span>
       <span class="pulse-ia-copy"><strong>PULSE IA</strong><small>Redes sociais com apoio de IA</small></span>`;
