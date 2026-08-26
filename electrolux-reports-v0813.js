@@ -1,10 +1,121 @@
-/* VoxAssist Web V0.8.13 — módulo Electrolux / Relatórios isolado */
+/* VoxAssist Web V0.8.13 — módulo Electrolux (Painel de Triagem de SVOs)
+   Réplica nativa do layout do voxassist/electrolux-voxanalytics, usando o
+   design system Desktop já existente no VoxAssist (.daily-hero,
+   .desktop-metrics, .desktop-filterbar, .desktop-panel). Módulo isolado:
+   os dados vêm exclusivamente da API própria do Electrolux (configurável
+   abaixo), nunca do Supabase operacional do VoxAssist. */
 (function(){
   const VIEW='electrolux';
-  const CONFIG_KEY='voxassist_electrolux_reports_url';
+  const CONFIG_KEY='voxassist_electrolux_api_url';
+  const VIEW_MODE_KEY='voxassist_electrolux_view_mode';
   const SOURCE_REPO='https://github.com/jeffersonadmrocks-web/electrolux-voxanalytics';
+  const POLL_MS=15000;
 
   try{ if(typeof navMap!=='undefined') navMap[VIEW]='Electrolux'; }catch(_e){}
+
+  /* ---------- Regras de negócio (portadas 1:1 de dashboard/src/lib/types.ts) ---------- */
+  const SAE_STATUSES=['Open','Aguardando aceite do Técnico','Agendamento rejeitado pelo Técnico','Despachada para o Técnico','Aguardando atendimento','Aguardando reagendamento','Consumidor ausente','Endereço não localizado','Sem contato consumidor','Técnico em deslocamento','Em atendimento','Enviado para Diagnostico remoto','Aguardando adequação do local','Aguardando aprovação','Aguardando aprovação ADM','Aguardando aprovação orçamento','Orçamento aprovado Aguardando pagamento','Orçamento Aprovado. Pagamento Selecionado','Erro no pagamento','Orçamento não aprovado 15 dias','Orçamento reprovado','Consumidor não aceita reparo','Aguardando correção','Devolvido pelo Técnico','Aguardando retorno do suporte (técnico/administrativo)','Aguardando retorno Engenharia','Retorno do suporte – concluído','Aguardando análise SAC','Aguardando peça','Peça entregue','Pedido faturado','Produto liberado','Produto na oficina','Produto S.O.S','Coletar produto','Aguardando Consumidor Entregar Produto','Atendimento concluído'];
+  const OUTROS_STATUS='Outros';
+  const KANBAN_COLUMNS=[...SAE_STATUSES,OUTROS_STATUS];
+  function kanbanColumnFor(status){return SAE_STATUSES.includes(status)?status:OUTROS_STATUS}
+
+  const RESCHEDULE_TRIGGER_STATUSES=new Set(['Aguardando atendimento','Aguardando reagendamento','Coletar produto','Consumidor ausente','Em atendimento','Endereço não localizado','Open','Peça entregue','Produto liberado','Sem contato consumidor','Técnico em deslocamento']);
+  function needsRescheduleAlert(so){if(!RESCHEDULE_TRIGGER_STATUSES.has(so.status))return false;if(!so.firstQueuedDateTime)return true;return new Date(so.firstQueuedDateTime).getTime()<Date.now();}
+  function needsPhoneAlert(so){return !so.clientPhone;}
+
+  function normalizeSearchText(v){return String(v||'').normalize('NFKD').replace(/\p{Diacritic}/gu,'').toLowerCase();}
+  function matchesSearch(so,query){
+    const trimmed=(query||'').trim();if(!trimmed)return true;
+    const digitsQuery=trimmed.replace(/\D/g,'');
+    if(digitsQuery.length>=4 && so.clientPhone && String(so.clientPhone).includes(digitsQuery))return true;
+    const normalizedQuery=normalizeSearchText(trimmed);
+    const haystack=normalizeSearchText([so.svoNumber,so.clientName,so.productName,so.claimedDefect].filter(Boolean).join(' '));
+    return haystack.includes(normalizedQuery);
+  }
+  const DATE_FILTER_OPTIONS=[{value:'all',label:'TODOS OS PERÍODOS'},{value:'7',label:'ÚLTIMOS 7 DIAS'},{value:'15',label:'ÚLTIMOS 15 DIAS'},{value:'30',label:'ÚLTIMOS 30 DIAS'},{value:'60',label:'ÚLTIMOS 60 DIAS'}];
+  function matchesDateFilter(so,filter){if(filter==='all')return true;const cutoff=Date.now()-Number(filter)*86400000;return new Date(so.createdDate).getTime()>=cutoff;}
+  function matchesStatusFilter(so,selected){if(selected.size===0)return true;return selected.has(so.status);}
+  const ORDER_TYPES=['Garantia','Fora de Garantia','Fora de Garantia c/ Autorização','Atendimento Seguradora'];
+  const OUTROS_ORDER_TYPE='Outros';
+  function orderTypeCategoryFor(orderType){
+    const t=orderType||'';
+    if(/seguradora/i.test(t))return 'Atendimento Seguradora';
+    if(/fora de garantia/i.test(t) && /autoriza/i.test(t))return 'Fora de Garantia c/ Autorização';
+    if(/fora de garantia/i.test(t))return 'Fora de Garantia';
+    if(/garantia/i.test(t))return 'Garantia';
+    return OUTROS_ORDER_TYPE;
+  }
+  function matchesOrderTypeFilter(so,selected){if(selected.size===0)return true;return selected.has(orderTypeCategoryFor(so.orderType));}
+  function slaLevel(agingDays){if(agingDays>=5)return 'red';if(agingDays>=3)return 'yellow';return 'green';}
+
+  /* Os 9 menus definidos pelo usuário — cada situação real da SAE entra em exatamente um.
+     Usado tanto para os cards do hub (module-action-card) quanto para as seções do quadro
+     Kanban: o card de cada SVO sempre mostra o status real individual (svoCard), só a seção
+     que agrupa várias situações próximas. */
+  const GROUPS=[
+    {key:'ag_agendamento',label:'AG AGENDAMENTO',icon:'◷',color:'purple',desc:'Depende de contato com o consumidor ou retorno de peça/reparo para agendar.',statuses:['Open','Aguardando atendimento','Aguardando reagendamento','Consumidor ausente','Endereço não localizado','Sem contato consumidor','Aguardando adequação do local','Devolvido pelo Técnico','Coletar produto','Aguardando Consumidor Entregar Produto','Orçamento aprovado Aguardando pagamento','Orçamento Aprovado. Pagamento Selecionado','Retorno do suporte – concluído']},
+    {key:'ag_pecas',label:'AG PEÇAS',icon:'▦',color:'cyan',desc:'Aguardando chegada da peça para o reparo.',statuses:['Aguardando peça']},
+    {key:'peca_entregue',label:'PEÇA ENTREGUE',icon:'▣',color:'blue',desc:'Peça entregue ou pedido já faturado.',statuses:['Peça entregue','Pedido faturado']},
+    {key:'ag_aprovacao',label:'AG APROVAÇÃO',icon:'$',color:'green',desc:'Orçamento enviado, aguardando aprovação do consumidor.',statuses:['Aguardando aprovação','Aguardando aprovação orçamento']},
+    {key:'concluido',label:'CONCLUÍDO',icon:'✓',color:'teal',desc:'Atendimentos finalizados, sem aprovação ou encerrados por outro motivo.',statuses:['Erro no pagamento','Orçamento não aprovado 15 dias','Orçamento reprovado','Consumidor não aceita reparo','Produto liberado','Atendimento concluído']},
+    {key:'em_atendimento',label:'EM ATENDIMENTO',icon:'⚒',color:'orange',desc:'Técnico a caminho, atendimento em andamento ou produto na oficina.',statuses:['Técnico em deslocamento','Em atendimento','Produto na oficina']},
+    {key:'ag_electrolux',label:'AG ELECTROLUX',icon:'↻',color:'red',desc:'Pendência de retorno da própria Electrolux (SAC, engenharia, suporte, diagnóstico).',statuses:['Enviado para Diagnostico remoto','Aguardando aprovação ADM','Aguardando retorno do suporte (técnico/administrativo)','Aguardando retorno Engenharia','Aguardando análise SAC']},
+    {key:'correcao',label:'CORREÇÃO',icon:'⚙',color:'brown',desc:'Aguardando correção técnica do atendimento.',statuses:['Aguardando correção']},
+    {key:'outros_atendimentos',label:'OUTROS ATENDIMENTOS',icon:'⚑',color:'gray',desc:'Aceite/rejeição do técnico e demais casos que não se encaixam nos outros menus.',statuses:['Aguardando aceite do Técnico','Agendamento rejeitado pelo Técnico','Produto S.O.S','Despachada para o Técnico']},
+  ];
+  const GROUP_STATUS_MAP=new Map();
+  GROUPS.forEach(g=>g.statuses.forEach(s=>GROUP_STATUS_MAP.set(s,g.key)));
+  function groupFor(status){return GROUP_STATUS_MAP.get(status)||'outros';}
+
+  /* Dias corridos desde a última alteração real de um campo "de fábrica" (status incluído) —
+     backend só grava updatedAt quando algo muda de fato (ver syncService.hasChanges). */
+  function daysSinceUpdate(so){if(!so.updatedAt)return 0;return Math.max(0,Math.floor((Date.now()-new Date(so.updatedAt).getTime())/86400000));}
+
+  /* ---------- Estado local do módulo ---------- */
+  const elx={orders:[],error:null,selected:null,detail:null,detailLoading:false,
+    screen:'home',activeGroupKey:null,staleFilter:false,agingFilter:null,homeFilter:null,
+    viewMode:localStorage.getItem(VIEW_MODE_KEY)||'kanban',
+    search:'',dateFilter:'all',statusFilter:new Set(),orderTypeFilter:new Set(),
+    syncing:false,lastSyncAt:null,loading:false,pollTimer:null};
+
+  /* Filtro ativado pelos 5 cards de resumo do hub — fica na tela inicial (não navega pro
+     board) e recalcula a contagem dos 9 cards de menu abaixo. */
+  function matchesHomeFilter(so){
+    if(!elx.homeFilter)return true;
+    if(elx.homeFilter.type==='stale')return daysSinceUpdate(so)>=2;
+    if(elx.homeFilter.type==='aging')return so.agingDays>elx.homeFilter.over;
+    if(elx.homeFilter.type==='orderType')return orderTypeCategoryFor(so.orderType)===elx.homeFilter.value;
+    return true;
+  }
+  function homeFilterToBoardOpts(){
+    if(!elx.homeFilter)return {};
+    if(elx.homeFilter.type==='stale')return {stale:true};
+    if(elx.homeFilter.type==='aging')return {agingOver:elx.homeFilter.over};
+    if(elx.homeFilter.type==='orderType')return {orderTypes:[elx.homeFilter.value]};
+    return {};
+  }
+
+  function apiBase(){return (localStorage.getItem(CONFIG_KEY)||'').trim().replace(/\/+$/,'');}
+  async function getJson(path){
+    const base=apiBase(); if(!base) throw new Error('Configure o endereço da API do Electrolux abaixo.');
+    let r;
+    try{ r=await fetch(base+path,{cache:'no-store',credentials:'include'}); }
+    catch(_e){ throw new Error('Não foi possível conectar em '+base+' (provável bloqueio de CORS ou servidor fora do ar).'); }
+    if(!r.ok) throw new Error('HTTP '+r.status+' em '+path);
+    return r.json();
+  }
+  async function postJson(path){
+    const base=apiBase(); if(!base) throw new Error('Configure o endereço da API do Electrolux abaixo.');
+    let r;
+    try{ r=await fetch(base+path,{method:'POST',cache:'no-store',credentials:'include'}); }
+    catch(_e){ throw new Error('Não foi possível conectar em '+base+' (provável bloqueio de CORS ou servidor fora do ar).'); }
+    if(!r.ok) throw new Error('HTTP '+r.status+' em '+path);
+    return r.json();
+  }
+  const fetchServiceOrders=()=>getJson('/api/dashboard/service-orders');
+  const fetchServiceOrder=id=>getJson('/api/dashboard/service-orders/'+encodeURIComponent(id));
+  const fetchSyncStatus=()=>getJson('/api/dashboard/sync-status');
+  const triggerSyncNow=()=>postJson('/api/admin/sync-now');
 
   function installStyle(){
     if(document.getElementById('vxElectroluxReportsStyle')) return;
@@ -12,13 +123,79 @@
     s.id='vxElectroluxReportsStyle';
     s.textContent=`
       .nav[data-view="electrolux"]{border-left:3px solid #1b5fa7}
-      .vx-elx-page{padding:18px 22px 30px;display:grid;gap:16px}
-      .vx-elx-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;background:linear-gradient(135deg,#102a43,#174f86);color:#fff;border-radius:14px;padding:20px 22px;box-shadow:0 8px 24px rgba(15,45,76,.16)}
-      .vx-elx-head h2{margin:2px 0 6px;font-size:24px}.vx-elx-head p{margin:0;opacity:.9}.vx-elx-badge{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:7px 11px;background:rgba(255,255,255,.13);font-size:12px;font-weight:700;white-space:nowrap}
-      .vx-elx-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.vx-elx-card{background:#fff;border:1px solid #dfe7ef;border-radius:12px;padding:15px;min-height:118px}.vx-elx-card b{display:block;font-size:15px;margin-bottom:6px;color:#17324d}.vx-elx-card p{font-size:13px;color:#65788b;line-height:1.45;margin:0}
-      .vx-elx-panel{background:#fff;border:1px solid #dfe7ef;border-radius:12px;overflow:hidden}.vx-elx-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid #e8eef4}.vx-elx-toolbar strong{color:#17324d}.vx-elx-actions{display:flex;gap:8px;flex-wrap:wrap}.vx-elx-actions button,.vx-elx-actions a{font:inherit;border:1px solid #cbd8e5;background:#fff;color:#174f86;padding:8px 11px;border-radius:8px;text-decoration:none;cursor:pointer}.vx-elx-actions .primary{background:#174f86;color:#fff;border-color:#174f86}
-      .vx-elx-frame{width:100%;height:68vh;border:0;background:#f4f7fa}.vx-elx-empty{padding:34px 24px;text-align:center;background:#f7f9fb}.vx-elx-empty h3{margin:0 0 8px;color:#17324d}.vx-elx-empty p{max-width:720px;margin:0 auto 18px;color:#66798c;line-height:1.5}.vx-elx-note{font-size:12px;color:#64778a;background:#eef4f8;border-radius:9px;padding:10px 12px}
-      @media(max-width:980px){.vx-elx-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.vx-elx-head{flex-direction:column}.vx-elx-frame{height:72vh}}@media(max-width:620px){.vx-elx-grid{grid-template-columns:1fr}.vx-elx-page{padding:12px}.vx-elx-toolbar{align-items:flex-start;flex-direction:column}}
+      .vx-elx-page{display:grid;gap:11px}
+      .vx-elx-config{background:#fff;border:1px solid #cad3dc;padding:10px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:11px;color:#516375}
+      .vx-elx-config input{flex:1;min-width:240px;font:inherit;border:1px solid #aeb5bc;padding:6px 8px}
+      .vx-elx-config button{font:inherit;border:1px solid #174f86;background:#174f86;color:#fff;padding:7px 11px;cursor:pointer}
+      .vx-elx-config button.secondary{background:#fff;color:#174f86}
+      .vx-elx-error{background:#fde8e8;border:1px solid #f3b9b9;color:#8a1f1f;padding:10px 12px;font-size:12px}
+      .vx-elx-filterbar{grid-template-columns:1fr 150px 190px 190px auto!important}
+      .vx-elx-msel{position:relative}
+      .vx-elx-msel-btn{width:100%;height:23px;border:1px solid #aeb5bc;background:#e8e5e0;font-size:10px;text-align:left;padding:0 6px;cursor:pointer}
+      .vx-elx-msel-panel{display:none;position:absolute;top:calc(100% + 3px);left:0;min-width:230px;max-height:260px;overflow:auto;background:#fff;border:1px solid #aeb5bc;box-shadow:0 8px 18px rgba(15,42,68,.14);z-index:40;padding:6px}
+      .vx-elx-msel.open .vx-elx-msel-panel{display:block}
+      .vx-elx-msel-panel label{display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 5px;cursor:pointer}
+      .vx-elx-msel-panel label:hover{background:#f4f7fa}
+      .vx-elx-filtercount{align-self:center;font-size:10px;color:#73869a;white-space:nowrap}
+      .vx-elx-board{display:flex;flex-direction:column;gap:14px}
+      .vx-elx-section{background:#fff;border:1px solid #cad3dc}
+      .vx-elx-section-head{padding:10px 12px;border-bottom:1px solid #e3e8ed;display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:#17324d;letter-spacing:.02em}
+      .vx-elx-section-body{padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+      .vx-elx-col-count{background:#eef2f6;border-radius:999px;padding:2px 8px;font-size:10px;color:#516375;font-weight:700}
+      .vx-elx-empty-board{background:#fff;border:1px solid #cad3dc;padding:34px 20px;text-align:center;color:#66798c;font-size:12px}
+      .vx-elx-svo-card{background:#fff;border:1px solid #dfe7ef;border-left:3px solid #cad3dc;padding:8px 9px;cursor:pointer;transition:box-shadow .12s ease}
+      .vx-elx-svo-card:hover{box-shadow:0 3px 10px rgba(15,42,68,.12)}
+      .vx-elx-svo-card.green{border-left-color:#13904b}.vx-elx-svo-card.yellow{border-left-color:#ef8500}.vx-elx-svo-card.red{border-left-color:#cf3542}
+      .vx-elx-svo-top{display:flex;justify-content:space-between;align-items:center;gap:6px}
+      .vx-elx-svo-num{font-family:Consolas,monospace;font-size:10.5px;font-weight:700;color:#516375}
+      .vx-elx-sla{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 7px;font-size:9.5px;font-weight:700;white-space:nowrap}
+      .vx-elx-sla.green{background:#e7f5ec;color:#176a38}.vx-elx-sla.yellow{background:#fff1df;color:#8b5200}.vx-elx-sla.red{background:#fde8e8;color:#b3261e}
+      .vx-elx-sla i{width:6px;height:6px;border-radius:50%;display:inline-block}
+      .vx-elx-sla.green i{background:#13904b}.vx-elx-sla.yellow i{background:#ef8500}.vx-elx-sla.red i{background:#cf3542;animation:vxElxPing 1.3s ease-in-out infinite}
+      @keyframes vxElxPing{0%{box-shadow:0 0 0 0 rgba(207,53,66,.55)}70%{box-shadow:0 0 0 5px rgba(207,53,66,0)}100%{box-shadow:0 0 0 0 rgba(207,53,66,0)}}
+      .vx-elx-svo-client{margin:5px 0 1px;font-size:12px;font-weight:700;color:#17324d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .vx-elx-svo-product{margin:0;font-size:10.5px;color:#65788b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .vx-elx-type{display:inline-flex;border-radius:999px;padding:2px 8px;margin-top:6px;font-size:9px;font-weight:700;border:1px solid transparent}
+      .vx-elx-type.garantia{background:#e7f0fb;color:#1671d8;border-color:#c7dcf5}
+      .vx-elx-type.foradegarantia{background:#eef1f3;color:#516375;border-color:#dbe1e6}
+      .vx-elx-type.foradegarantiacautorizacao{background:#f1ebfc;color:#7650d6;border-color:#ddccf5}
+      .vx-elx-type.atendimentoseguradora{background:#fff1df;color:#8b5200;border-color:#f5dcb0}
+      .vx-elx-type.outros{background:#eef2f6;color:#516375;border-color:#dbe1e6}
+      .vx-elx-alert{display:flex;align-items:center;gap:5px;margin-top:6px;padding:4px 7px;border-radius:5px;font-size:9.5px;font-weight:700}
+      .vx-elx-alert.phone{background:#fde8e8;color:#b3261e}.vx-elx-alert.reschedule{background:#fff1df;color:#8b5200}
+      .vx-elx-modal-wrap{position:fixed;inset:0;background:rgba(10,25,40,.45);display:flex;justify-content:flex-end;z-index:80}
+      .vx-elx-modal{background:#fff;width:420px;max-width:94vw;height:100%;overflow-y:auto;box-shadow:-8px 0 24px rgba(0,0,0,.18)}
+      .vx-elx-modal-head{position:sticky;top:0;background:#0d3153;color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+      .vx-elx-modal-head h3{margin:0 0 3px;font-size:16px}.vx-elx-modal-head small{opacity:.85}
+      .vx-elx-modal-close{background:transparent;border:0;color:#fff;font-size:18px;cursor:pointer;line-height:1}
+      .vx-elx-modal-body{padding:16px 18px;display:grid;gap:12px}
+      .vx-elx-kv{display:grid;grid-template-columns:120px 1fr;gap:4px 10px;font-size:12px}
+      .vx-elx-kv b{color:#73869a;font-weight:600;font-size:10.5px;text-transform:uppercase}
+      .vx-elx-kv span{color:#17324d}
+      .vx-elx-modal-section{border-top:1px solid #e3e8ed;padding-top:10px}
+      .vx-elx-modal-section h4{margin:0 0 6px;font-size:11px;color:#516375;text-transform:uppercase;letter-spacing:.03em}
+      .vx-elx-part{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px dashed #e3e8ed}
+      .vx-elx-msg{padding:7px 9px;border-radius:8px;font-size:11.5px;margin-bottom:6px;max-width:88%}
+      .vx-elx-msg.OUTBOUND{background:#e7f0fb;margin-left:auto}.vx-elx-msg.INBOUND{background:#f1f3f5}
+      .vx-elx-group-count{position:absolute;top:16px;right:18px;font-size:22px;font-weight:700;color:var(--accent,#1f73d0)}
+      .module-summary-card[data-summary]{font:inherit;cursor:pointer;width:100%}
+      .module-summary-card[data-summary]:hover{background:#f9fbfd}
+      .module-summary-card.vx-elx-summary-active{background:var(--accent,#2674d9);border-color:var(--accent,#2674d9)}
+      .module-summary-card.vx-elx-summary-active span{color:rgba(255,255,255,.85)}
+      .module-summary-card.vx-elx-summary-active b{color:#fff}
+      .vx-elx-summary-5{grid-template-columns:repeat(5,minmax(0,1fr))}
+      @media(max-width:1200px){.vx-elx-summary-5{grid-template-columns:repeat(3,minmax(0,1fr))}}
+      @media(max-width:720px){.vx-elx-summary-5{grid-template-columns:1fr 1fr}}
+      .vx-elx-view-toggle{display:flex;gap:0;margin-bottom:8px}
+      .vx-elx-view-btn{border:1px solid #aeb5bc;background:#e8e5e0;font-size:10px;padding:7px 14px;cursor:pointer;color:#3c4c5c}
+      .vx-elx-view-btn:first-child{border-right:0}
+      .vx-elx-view-btn.active{background:#174f86;color:#fff;border-color:#174f86}
+      .vx-elx-status-pill{display:inline-block;background:#e7f0fb;color:#174f86;border-radius:5px;padding:3px 9px;font-size:10px;font-weight:700;white-space:nowrap}
+      .desktop-table tbody tr[data-svo]{cursor:pointer}
+      .vx-elx-board-head{background:#fff;border:1px solid #cfd7e1;padding:14px 16px;margin-bottom:0;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+      .vx-elx-board-head h2{font-size:19px;margin:8px 0 0;color:#101b2b}
+      .vx-elx-back{border:1px solid #bac4cf;background:#eef1f4;color:#23364e;padding:6px 12px;font-size:11px;cursor:pointer}
+      @media(max-width:900px){.vx-elx-filterbar{grid-template-columns:1fr 1fr!important}}
     `;
     document.head.appendChild(s);
   }
@@ -27,39 +204,342 @@
     const side=document.querySelector('.sidebar');
     if(!side || side.querySelector('.nav[data-view="electrolux"]')) return;
     const btn=document.createElement('button');
-    btn.className='nav';btn.dataset.view=VIEW;btn.textContent='Electrolux';
+    btn.className='nav';btn.dataset.view=VIEW;btn.innerHTML='▥ <span>ELECTROLUX</span>';
     const configBtn=side.querySelector('.nav[data-view="usuarios"]');
-    if(configBtn) side.insertBefore(btn,configBtn); else side.appendChild(btn);
+    if(configBtn && configBtn.parentElement){
+      configBtn.parentElement.insertBefore(btn,configBtn);
+    } else {
+      (side.querySelector('.desktop-menu')||side).appendChild(btn);
+    }
     btn.onclick=()=>window.render(VIEW);
   }
 
-  function reportUrl(){return (localStorage.getItem(CONFIG_KEY)||'').trim();}
-  function safeUrl(value){try{const u=new URL(value);return /^https?:$/.test(u.protocol)?u.href:''}catch{return ''}}
+  function metricCard(label,value,color){
+    return `<button class="desk-metric" style="--metric:${color};cursor:default"><span>${label}</span><b>${value==null?'—':value}</b></button>`;
+  }
+
+  function svoBadgeClass(name){return String(name||'').normalize('NFKD').replace(/\p{Diacritic}/gu,'').toLowerCase().replace(/[^a-z0-9]/g,'');}
+
+  function svoCard(so){
+    const level=slaLevel(so.agingDays);
+    const category=orderTypeCategoryFor(so.orderType);
+    return `<div class="vx-elx-svo-card ${level}" data-svo="${esc(so.id)}">
+      <div class="vx-elx-svo-top"><span class="vx-elx-svo-num">${esc(so.svoNumber)}</span><span class="vx-elx-sla ${level}"><i></i>${so.agingDays}d</span></div>
+      <p class="vx-elx-svo-client">${esc(so.clientName||'—')}</p>
+      <p class="vx-elx-svo-product">⚒ ${esc(so.productName||'—')} — ${esc(so.claimedDefect||'—')}</p>
+      <span class="vx-elx-type ${svoBadgeClass(category)}">${esc(category==='Outros'?so.orderType:category)}</span>
+      ${needsPhoneAlert(so)?`<div class="vx-elx-alert phone">☎ Sem telefone cadastrado</div>`:''}
+      ${needsRescheduleAlert(so)?`<div class="vx-elx-alert reschedule">◷ Contatar consumidor p/ agendar</div>`:''}
+    </div>`;
+  }
+
+  function filteredOrders(){
+    return elx.orders.filter(so=>matchesSearch(so,elx.search)&&matchesDateFilter(so,elx.dateFilter)&&matchesStatusFilter(so,elx.statusFilter)&&matchesOrderTypeFilter(so,elx.orderTypeFilter)
+      &&(!elx.activeGroupKey||groupFor(so.status)===elx.activeGroupKey)
+      &&(!elx.staleFilter||daysSinceUpdate(so)>=2)
+      &&(!elx.agingFilter||so.agingDays>elx.agingFilter));
+  }
+
+  function renderMetrics(){
+    const box=document.getElementById('vxElxMetrics');if(!box)return;
+    const list=filteredOrders();
+    const total=elx.orders.length?list.length:null;
+    const acima7=elx.orders.length?list.filter(so=>so.agingDays>7).length:null;
+    const stale=elx.orders.length?list.filter(so=>daysSinceUpdate(so)>=2).length:null;
+    box.innerHTML=metricCard('SVOs NESTA VISÃO',total,'#1876d2')
+      +metricCard('ATRASADAS (>7 DIAS)',acima7,acima7?'#cf3542':'#8fa3b6')
+      +metricCard('SEM ALTERAÇÃO HÁ +2 DIAS',stale,stale?'#ef8500':'#8fa3b6');
+  }
+
+  function renderBoard(){
+    const box=document.getElementById('vxElxBoard');if(!box)return;
+    if(!apiBase()){box.innerHTML=`<div class="vx-elx-empty-board">Configure o endereço da API do Electrolux abaixo para carregar as SVOs.</div>`;return;}
+    if(elx.loading){box.innerHTML=`<div class="vx-elx-empty-board">Carregando SVOs…</div>`;return;}
+    if(!elx.orders.length){box.innerHTML=`<div class="vx-elx-empty-board">Nenhuma SVO carregada ainda.</div>`;return;}
+    if(elx.viewMode==='list')return renderListView(box);
+    return renderKanbanView(box);
+  }
+
+  function renderKanbanView(box){
+    const list=filteredOrders();
+    const byStatus=new Map();KANBAN_COLUMNS.forEach(c=>byStatus.set(c,[]));
+    list.forEach(so=>byStatus.get(kanbanColumnFor(so.status)).push(so));
+    const sections=KANBAN_COLUMNS.map(status=>{
+      const items=byStatus.get(status)||[];
+      if(!items.length)return '';
+      return `<div class="vx-elx-section"><div class="vx-elx-section-head"><span>${esc(status)}</span><span class="vx-elx-col-count">${items.length}</span></div><div class="vx-elx-section-body">${items.map(svoCard).join('')}</div></div>`;
+    }).join('');
+    box.innerHTML=sections||`<div class="vx-elx-empty-board">Nenhuma SVO corresponde aos filtros atuais.</div>`;
+    box.querySelectorAll('[data-svo]').forEach(el=>el.onclick=()=>openDetail(el.dataset.svo));
+  }
+
+  function renderListView(box){
+    const list=filteredOrders();
+    if(!list.length){box.innerHTML=`<div class="vx-elx-empty-board">Nenhuma SVO corresponde aos filtros atuais.</div>`;return;}
+    box.innerHTML=`<div class="desktop-table-wrap"><table class="desktop-table"><thead><tr>
+      <th>SVO</th><th>CLIENTE</th><th>PRODUTO / DEFEITO</th><th>SITUAÇÃO</th><th>TIPO</th><th>SLA</th><th>ABERTA EM</th>
+      </tr></thead><tbody>${list.map(so=>{
+        const level=slaLevel(so.agingDays);
+        const category=orderTypeCategoryFor(so.orderType);
+        return `<tr data-svo="${esc(so.id)}">
+          <td><b>${esc(so.svoNumber)}</b></td>
+          <td>${esc(so.clientName||'—')}${needsPhoneAlert(so)?` <span title="Sem telefone cadastrado" style="color:#cf3542">☎</span>`:''}${needsRescheduleAlert(so)?` <span title="Contatar consumidor p/ agendar" style="color:#ef8500">◷</span>`:''}</td>
+          <td>${esc(so.productName||'—')} — ${esc(so.claimedDefect||'—')}</td>
+          <td><span class="vx-elx-status-pill">${esc(so.status)}</span></td>
+          <td><span class="vx-elx-type ${svoBadgeClass(category)}">${esc(category==='Outros'?so.orderType:category)}</span></td>
+          <td><span class="vx-elx-sla ${level}"><i></i>${so.agingDays}d</span></td>
+          <td>${so.createdDate?new Date(so.createdDate).toLocaleString('pt-BR'):'—'}</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>`;
+    box.querySelectorAll('[data-svo]').forEach(el=>el.onclick=()=>openDetail(el.dataset.svo));
+  }
+
+  function renderFilterCount(){
+    const el=document.getElementById('vxElxFilterCount');if(!el)return;
+    const active=elx.search||elx.dateFilter!=='all'||elx.statusFilter.size||elx.orderTypeFilter.size;
+    el.textContent=active?`${filteredOrders().length} de ${elx.orders.length} SVO(s)`:'';
+  }
+
+  function renderDynamic(){renderMetrics();renderBoard();renderFilterCount();}
+
+  function multiSelectPanel(group,options,selected){
+    return options.map(opt=>`<label><input type="checkbox" data-msel-group="${group}" value="${esc(opt)}" ${selected.has(opt)?'checked':''}>${esc(opt)}</label>`).join('');
+  }
+
+  function bindMultiSelect(id,group,selectedSet){
+    const wrap=document.getElementById(id);if(!wrap)return;
+    const btn=wrap.querySelector('.vx-elx-msel-btn');
+    btn.onclick=e=>{e.stopPropagation();document.querySelectorAll('.vx-elx-msel.open').forEach(o=>{if(o!==wrap)o.classList.remove('open')});wrap.classList.toggle('open');};
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb=>cb.onchange=()=>{
+      if(cb.checked)selectedSet.add(cb.value);else selectedSet.delete(cb.value);
+      btn.textContent=(selectedSet.size?selectedSet.size+' selecionado(s)':'Selecionar')+' ▾';
+      renderDynamic();
+    });
+  }
+
+  function closeDetail(){elx.selected=null;elx.detail=null;const m=document.getElementById('vxElxModalWrap');if(m)m.remove();}
+
+  function detailKv(label,value){return `<div class="vx-elx-kv"><b>${esc(label)}</b><span>${value?esc(value):'—'}</span></div>`;}
+
+  function renderModal(){
+    let wrap=document.getElementById('vxElxModalWrap');
+    if(!wrap){
+      wrap=document.createElement('div');wrap.id='vxElxModalWrap';wrap.className='vx-elx-modal-wrap';
+      wrap.onclick=e=>{if(e.target===wrap)closeDetail();};
+      document.body.appendChild(wrap);
+    }
+    const so=elx.selected,d=elx.detail;
+    const level=slaLevel(so.agingDays);
+    wrap.innerHTML=`<div class="vx-elx-modal">
+      <div class="vx-elx-modal-head"><div><h3>${esc(so.svoNumber)}</h3><small>${esc(so.status)}</small></div><button class="vx-elx-modal-close" id="vxElxModalClose">✕</button></div>
+      <div class="vx-elx-modal-body">
+        <div class="vx-elx-kv"><b>SLA</b><span class="vx-elx-sla ${level}"><i></i>${so.agingDays} dia(s) em aberto</span></div>
+        ${detailKv('Cliente',so.clientName)}
+        ${detailKv('Telefone',d?.cellPhone||d?.phone||so.clientPhone)}
+        ${detailKv('Produto',so.productName)}
+        ${detailKv('Defeito relatado',so.claimedDefect)}
+        ${detailKv('Tipo de SVO',so.orderType)}
+        ${detailKv('Aberta em',so.createdDate?new Date(so.createdDate).toLocaleString('pt-BR'):'')}
+        ${detailKv('Agendamento',so.appointmentDate?new Date(so.appointmentDate).toLocaleString('pt-BR'):'')}
+        ${d?.address?detailKv('Endereço',[d.address.street,d.address.neighborhood,d.address.city,d.address.state].filter(Boolean).join(', ')):''}
+        ${d?`<div class="vx-elx-modal-section"><h4>Peças (${d.parts?.length||0})</h4>${(d.parts||[]).map(p=>`<div class="vx-elx-part"><span>${esc(p.codigo)} ${esc(p.descricao||'')}</span><span>${p.disponivel===true?'Disponível':p.disponivel===false?'Indisponível':'—'}</span></div>`).join('')||'<small>Nenhuma peça vinculada.</small>'}</div>
+        <div class="vx-elx-modal-section"><h4>Mensagens (${d.messages?.length||0})</h4>${(d.messages||[]).map(m=>`<div class="vx-elx-msg ${esc(m.direction)}">${esc(m.content)}</div>`).join('')||'<small>Sem mensagens registradas.</small>'}</div>`
+        :`<div class="vx-elx-modal-section"><button class="secondary" id="vxElxLoadDetail" ${elx.detailLoading?'disabled':''}>${elx.detailLoading?'Carregando…':'Carregar detalhes completos'}</button></div>`}
+      </div>
+    </div>`;
+    document.getElementById('vxElxModalClose').onclick=closeDetail;
+    const loadBtn=document.getElementById('vxElxLoadDetail');
+    if(loadBtn)loadBtn.onclick=async()=>{
+      elx.detailLoading=true;renderModal();
+      try{elx.detail=await fetchServiceOrder(so.id);}catch(e){toast?.(e.message,'err');}
+      elx.detailLoading=false;renderModal();
+    };
+  }
+
+  function openDetail(id){
+    const so=elx.orders.find(o=>String(o.id)===String(id));if(!so)return;
+    elx.selected=so;elx.detail=null;renderModal();
+  }
+
+  function rerender(){if(elx.screen==='board')renderDynamic();else renderHome();}
+
+  async function refresh(){
+    elx.loading=elx.orders.length===0;rerender();
+    try{
+      elx.orders=await fetchServiceOrders();
+      elx.error=null;
+    }catch(e){elx.error=e.message;}
+    elx.loading=false;
+    rerender();
+    const errBox=document.getElementById('vxElxError');
+    if(errBox)errBox.textContent=elx.error||'';
+    if(errBox)errBox.style.display=elx.error?'block':'none';
+    try{const s=await fetchSyncStatus();elx.lastSyncAt=s.lastSyncAt;}catch(_e){}
+    const syncLabel=document.getElementById('vxElxLastSync');
+    if(syncLabel)syncLabel.textContent=elx.lastSyncAt?('Última sincronização às '+new Date(elx.lastSyncAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})):'';
+  }
+
+  function stopPoll(){if(elx.pollTimer){clearInterval(elx.pollTimer);elx.pollTimer=null;}}
+  function startPoll(){
+    stopPoll();
+    elx.pollTimer=setInterval(()=>{if(state.view!==VIEW){stopPoll();return;}refresh();},POLL_MS);
+  }
+
+  function apiConfigBlock(){
+    const base=apiBase();
+    return `<div class="vx-elx-config">
+      <span>API Electrolux:</span>
+      <input type="url" id="vxElxApiInput" placeholder="https://endereco-do-backend-electrolux" value="${esc(base)}">
+      <button id="vxElxApiSave">Salvar</button>
+      ${base?`<button class="secondary" id="vxElxApiClear">Remover</button>`:''}
+      <a href="${SOURCE_REPO}" target="_blank" rel="noopener" style="margin-left:auto;color:#174f86;font-size:10.5px">Projeto no GitHub ↗</a>
+    </div>`;
+  }
+  function bindApiConfig(){
+    document.getElementById('vxElxApiInput').onclick=e=>e.stopPropagation();
+    document.getElementById('vxElxApiSave').onclick=()=>{
+      const input=document.getElementById('vxElxApiInput');const value=(input.value||'').trim().replace(/\/+$/,'');
+      if(!/^https?:\/\//.test(value)){toast?.('Informe um endereço http(s) válido.','err');return;}
+      localStorage.setItem(CONFIG_KEY,value);toast?.('Endereço salvo.');elx.orders=[];elx.error=null;renderHome();refresh();startPoll();
+    };
+    const clearBtn=document.getElementById('vxElxApiClear');
+    if(clearBtn)clearBtn.onclick=()=>{localStorage.removeItem(CONFIG_KEY);stopPoll();elx.orders=[];renderHome();};
+  }
+
+  /* ---------- Tela inicial: hub no padrão dos demais módulos (module-summary-card +
+     module-action-card, ver all-menus-layout.js / atendimento(), oficina() etc.) ---------- */
+  function renderHome(){
+    elx.screen='home';elx.activeGroupKey=null;elx.staleFilter=false;elx.agingFilter=null;
+    const app=document.querySelector('#app');if(!app)return;
+    const all=elx.orders;
+    const stale=all.filter(so=>daysSinceUpdate(so)>=2).length;
+    const garantia=all.filter(so=>orderTypeCategoryFor(so.orderType)==='Garantia').length;
+    const foraGarantia=all.filter(so=>orderTypeCategoryFor(so.orderType)==='Fora de Garantia').length;
+    const atrasadas15=all.filter(so=>so.agingDays>15).length;
+    const active=key=>elx.homeFilter&&elx.homeFilter.key===key;
+    const filtered=all.filter(matchesHomeFilter);
+    const groupCards=GROUPS.map(g=>{
+      const n=filtered.filter(so=>groupFor(so.status)===g.key).length;
+      return `<button type="button" class="module-action-card ${g.color}" data-group="${g.key}"><span class="icon">${g.icon}</span><span><strong>${esc(g.label)}</strong><small>${esc(g.desc)}</small></span><b class="vx-elx-group-count">${n}</b></button>`;
+    }).join('');
+    const outrosCount=filtered.length-GROUPS.reduce((acc,g)=>acc+filtered.filter(so=>groupFor(so.status)===g.key).length,0);
+    const outrosCard=outrosCount>0?`<button type="button" class="module-action-card gray" data-group="outros"><span class="icon">⚑</span><span><strong>OUTROS STATUS</strong><small>Situações da SAE ainda não mapeadas nos grupos acima.</small></span><b class="vx-elx-group-count">${outrosCount}</b></button>`:'';
+
+    app.innerHTML=`<div class="module-home">
+      <div class="module-home-head">
+        <div><h2>Electrolux</h2><p>PAINEL DE TRIAGEM • SVOs SAE ELECTROLUX</p></div>
+        <div class="module-head-actions">
+          <span id="vxElxLastSync" style="align-self:center;color:#60728a;font-size:11px;margin-right:2px"></span>
+          <button class="blue" id="vxElxSync">↻ SINCRONIZAR AGORA</button>
+          <button class="gray" id="vxElxViewAll">VER TODAS AS SVOs</button>
+        </div>
+      </div>
+      <div class="vx-elx-error" id="vxElxError" style="display:none"></div>
+      <div class="module-summary vx-elx-summary-5">
+        <button type="button" class="module-summary-card ${active('abertas')?'vx-elx-summary-active':''}" style="--accent:#2674d9" data-summary="abertas"><span>SVOs ABERTAS</span><b>${all.length}</b></button>
+        <button type="button" class="module-summary-card ${active('stale')?'vx-elx-summary-active':''}" style="--accent:${stale?'#e87a00':'#2674d9'}" data-summary="stale"><span>SEM ALTERAÇÃO HÁ +2 DIAS</span><b>${stale}</b></button>
+        <button type="button" class="module-summary-card ${active('atrasadas15')?'vx-elx-summary-active':''}" style="--accent:${atrasadas15?'#cf3542':'#2674d9'}" data-summary="atrasadas15"><span>ABERTAS HÁ MAIS DE 15 DIAS</span><b>${atrasadas15}</b></button>
+        <button type="button" class="module-summary-card ${active('garantia')?'vx-elx-summary-active':''}" style="--accent:#2674d9" data-summary="garantia"><span>GARANTIA</span><b>${garantia}</b></button>
+        <button type="button" class="module-summary-card ${active('foradegarantia')?'vx-elx-summary-active':''}" style="--accent:#60728a" data-summary="foradegarantia"><span>FORA DE GARANTIA</span><b>${foraGarantia}</b></button>
+      </div>
+      ${elx.homeFilter?`<div class="vx-elx-filtercount" style="padding:0 2px">Mostrando os 9 menus filtrados por: <b>${esc(elx.homeFilter.label)}</b> (${filtered.length} de ${all.length} SVO(s)) — clique novamente no card pra limpar.</div>`:''}
+      <div class="module-action-grid">${groupCards}${outrosCard}</div>
+      ${apiConfigBlock()}
+    </div>`;
+
+    app.querySelectorAll('[data-group]').forEach(b=>b.onclick=()=>{
+      const g=GROUPS.find(x=>x.key===b.dataset.group);
+      renderBoardScreen({label:g?g.label:'OUTROS STATUS',groupKey:b.dataset.group,...homeFilterToBoardOpts()});
+    });
+    app.querySelectorAll('[data-summary]').forEach(b=>b.onclick=()=>{
+      const key=b.dataset.summary;
+      const defs={
+        stale:{key:'stale',type:'stale',label:'Sem alteração há mais de 2 dias'},
+        atrasadas15:{key:'atrasadas15',type:'aging',over:15,label:'Abertas há mais de 15 dias'},
+        garantia:{key:'garantia',type:'orderType',value:'Garantia',label:'Garantia'},
+        foradegarantia:{key:'foradegarantia',type:'orderType',value:'Fora de Garantia',label:'Fora de Garantia'},
+      };
+      const next=defs[key]||null; // 'abertas' não tem def -> limpa o filtro
+      elx.homeFilter=(elx.homeFilter&&elx.homeFilter.key===key)?null:next;
+      renderHome();
+    });
+    document.getElementById('vxElxViewAll').onclick=()=>renderBoardScreen({label:'Todas as SVOs',...homeFilterToBoardOpts()});
+    document.getElementById('vxElxSync').onclick=async()=>{
+      const btn=document.getElementById('vxElxSync');if(btn){btn.disabled=true;btn.textContent='SINCRONIZANDO…';}
+      try{await triggerSyncNow();await refresh();}catch(e){toast?.(e.message,'err');}
+      if(btn){btn.disabled=false;btn.textContent='↻ SINCRONIZAR AGORA';}
+    };
+    bindApiConfig();
+    if(!elx.orders.length && !elx.loading && apiBase()){refresh();}
+  }
+
+  /* ---------- Tela de board: Kanban filtrado (por grupo, tipo ou atraso), com busca. ---------- */
+  function renderBoardScreen(opts){
+    opts=opts||{};
+    elx.screen='board';elx.activeGroupKey=opts.groupKey||null;
+    elx.staleFilter=!!opts.stale;
+    elx.agingFilter=opts.agingOver||null;
+    elx.statusFilter=new Set();
+    elx.orderTypeFilter=new Set(opts.orderTypes||[]);
+    elx.search='';elx.dateFilter='all';
+    const app=document.querySelector('#app');if(!app)return;
+    const label=opts.label||'Todas as SVOs';
+    app.innerHTML=`<div class="vx-elx-page">
+      <div class="vx-elx-board-head">
+        <div><button type="button" class="vx-elx-back" id="vxElxBack">← VOLTAR</button><h2>${esc(label)}</h2></div>
+        <span id="vxElxLastSync" style="color:#60728a;font-size:11px"></span>
+      </div>
+      <div class="vx-elx-error" id="vxElxError" style="display:none"></div>
+      <div class="desktop-metrics" id="vxElxMetrics" style="grid-template-columns:repeat(3,1fr)"></div>
+      <div class="desktop-filterbar vx-elx-filterbar">
+        <label>BUSCAR<input id="vxElxSearch" placeholder="SVO, cliente, telefone, modelo..." value="${esc(elx.search)}"></label>
+        <label>PERÍODO<select id="vxElxDateFilter">${DATE_FILTER_OPTIONS.map(o=>`<option value="${o.value}" ${o.value===elx.dateFilter?'selected':''}>${o.label}</option>`).join('')}</select></label>
+        <label>STATUS DA SVO<div class="vx-elx-msel" id="vxElxStatusMsel"><button type="button" class="vx-elx-msel-btn">${elx.statusFilter.size?elx.statusFilter.size+' selecionado(s)':'Selecionar'} ▾</button><div class="vx-elx-msel-panel">${multiSelectPanel('status',SAE_STATUSES,elx.statusFilter)}</div></div></label>
+        <label>TIPO DA SVO<div class="vx-elx-msel" id="vxElxTypeMsel"><button type="button" class="vx-elx-msel-btn">${elx.orderTypeFilter.size?elx.orderTypeFilter.size+' selecionado(s)':'Selecionar'} ▾</button><div class="vx-elx-msel-panel">${multiSelectPanel('type',ORDER_TYPES,elx.orderTypeFilter)}</div></div></label>
+        <span class="vx-elx-filtercount" id="vxElxFilterCount"></span>
+      </div>
+      <div class="vx-elx-view-toggle">
+        <button type="button" class="vx-elx-view-btn ${elx.viewMode==='kanban'?'active':''}" data-mode="kanban">▦ QUADRO</button>
+        <button type="button" class="vx-elx-view-btn ${elx.viewMode==='list'?'active':''}" data-mode="list">☰ LISTA</button>
+      </div>
+      <div class="vx-elx-board" id="vxElxBoard"></div>
+    </div>`;
+
+    document.getElementById('vxElxBack').onclick=()=>renderHome();
+    document.getElementById('vxElxSearch').oninput=e=>{elx.search=e.target.value;renderDynamic();};
+    document.getElementById('vxElxDateFilter').onchange=e=>{elx.dateFilter=e.target.value;renderDynamic();};
+    bindMultiSelect('vxElxStatusMsel','status',elx.statusFilter);
+    bindMultiSelect('vxElxTypeMsel','type',elx.orderTypeFilter);
+    app.querySelectorAll('.vx-elx-view-btn').forEach(b=>b.onclick=()=>{
+      elx.viewMode=b.dataset.mode;localStorage.setItem(VIEW_MODE_KEY,elx.viewMode);
+      app.querySelectorAll('.vx-elx-view-btn').forEach(x=>x.classList.toggle('active',x===b));
+      renderDynamic();
+    });
+
+    renderDynamic();
+    const syncLabel=document.getElementById('vxElxLastSync');
+    if(syncLabel)syncLabel.textContent=elx.lastSyncAt?('Última sincronização às '+new Date(elx.lastSyncAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})):'';
+    if(!elx.orders.length && !elx.loading && apiBase()){refresh();}
+  }
 
   function renderPage(){
     installStyle();ensureNav();
     try{state.view=VIEW;if(typeof addTab==='function')addTab(VIEW,'Electrolux');}catch(_e){}
-    const title=document.querySelector('#title');if(title)title.textContent='Electrolux • Relatórios';
+    const title=document.querySelector('#title');if(title)title.textContent='Electrolux';
     document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view===VIEW));
     try{if(typeof renderTabs==='function')renderTabs('Electrolux');}catch(_e){}
-    const app=document.querySelector('#app');if(!app)return;
-    const url=safeUrl(reportUrl());
-    app.innerHTML=`<div class="vx-elx-page">
-      <div class="vx-elx-head"><div><small>MÓDULO INDEPENDENTE</small><h2>Electrolux • Relatórios</h2><p>Área separada do banco operacional do VoxAssist. Nenhum cliente, OS, estoque, financeiro ou agenda do VoxAssist é combinado com os dados Electrolux nesta etapa.</p></div><span class="vx-elx-badge">🔒 DADOS ISOLADOS</span></div>
-      <div class="vx-elx-grid">
-        <div class="vx-elx-card"><b>Visão de SVOs</b><p>Estrutura preparada para consultar o painel de ordens e status reais do SAE Electrolux.</p></div>
-        <div class="vx-elx-card"><b>Indicadores</b><p>Área dedicada a SVOs abertas, atrasos, aging e RCT sem contaminar indicadores do VoxAssist.</p></div>
-        <div class="vx-elx-card"><b>Relatórios</b><p>Consulta e análise do VoxAnalytics preservando sua aplicação e backend próprios.</p></div>
-        <div class="vx-elx-card"><b>Integração controlada</b><p>Qualquer futura troca de dados com o VoxAssist dependerá de uma integração explícita e separada.</p></div>
-      </div>
-      <div class="vx-elx-panel"><div class="vx-elx-toolbar"><strong>Painel VoxAnalytics</strong><div class="vx-elx-actions">${url?`<button class="primary" id="vxElxReload">Atualizar painel</button><a href="${url}" target="_blank" rel="noopener">Abrir em nova janela</a>`:`<a class="primary" href="${SOURCE_REPO}" target="_blank" rel="noopener">Projeto Electrolux</a>`}</div></div>
-      ${url?`<iframe class="vx-elx-frame" src="${url}" title="VoxAnalytics Electrolux" referrerpolicy="no-referrer"></iframe>`:`<div class="vx-elx-empty"><h3>Menu publicado e isolamento concluído</h3><p>O VoxAnalytics já está referenciado como aplicação independente. Assim que o dashboard/backend Electrolux possuir um endereço web acessível, ele poderá ser exibido diretamente aqui sem compartilhar tabelas ou dados com o Supabase operacional do VoxAssist.</p><div class="vx-elx-note">Fonte preservada: jeffersonadmrocks-web/electrolux-voxanalytics • nenhuma leitura/gravação no banco do VoxAssist foi adicionada.</div></div>`}
-      </div></div>`;
-    const reload=document.getElementById('vxElxReload');if(reload)reload.onclick=()=>{const frame=document.querySelector('.vx-elx-frame');if(frame)frame.src=frame.src;};
+    renderHome();
+    if(apiBase()){startPoll();}
   }
 
   const priorRender=window.render;
-  window.render=function(view){if(view===VIEW)return renderPage();return priorRender.apply(this,arguments)};
+  window.render=function(view){
+    if(view!==VIEW)stopPoll();
+    if(view===VIEW)return renderPage();
+    return priorRender.apply(this,arguments);
+  };
+
+  document.addEventListener('click',()=>{document.querySelectorAll('.vx-elx-msel.open').forEach(o=>o.classList.remove('open'));});
 
   const mo=new MutationObserver(()=>ensureNav());
   mo.observe(document.documentElement,{childList:true,subtree:true});

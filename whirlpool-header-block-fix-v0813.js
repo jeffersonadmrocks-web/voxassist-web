@@ -42,12 +42,4 @@
     sc.dataset.wpClientEquipmentFix='1';
     document.head.appendChild(sc);
   }
-
-  /* 24/08: carrega o módulo Electrolux isolado de relatórios. */
-  if(!document.querySelector('script[data-electrolux-reports]')){
-    const sc=document.createElement('script');
-    sc.src='electrolux-reports-v0813.js?v=0813-20260824-ELX1';
-    sc.dataset.electroluxReports='1';
-    document.head.appendChild(sc);
-  }
 })();
