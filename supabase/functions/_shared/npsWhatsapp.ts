@@ -8,13 +8,13 @@ export type FilialLabel = "Vitória" | "Serra";
 
 export function buildApprovedMessage(clientFirstName: string, filial: FilialLabel): string {
   return [
-    `Olá, ${clientFirstName}!`,
+    `Olá, ${clientFirstName}! 😊`,
     "",
-    `Seu atendimento foi finalizado. A Electrolux enviará uma pesquisa pelo número ${ELECTROLUX_SURVEY_PHONE_DISPLAY}, referente ao atendimento da nossa equipe - técnico e atendente.`,
+    `Seu atendimento foi finalizado. A Electrolux enviará uma pesquisa pelo número ${ELECTROLUX_SURVEY_PHONE_DISPLAY}, referente ao atendimento da nossa equipe — técnico e atendente.`,
     "",
-    "Poderia reservar um momento para respondê-la? Sua avaliação é muito importante para continuarmos aprimorando nosso atendimento!",
+    "No NPS, as notas 9 e 10 representam uma avaliação positiva para nossa empresa. Poderia reservar um momento para responder conforme sua experiência? Sua avaliação é muito importante para continuarmos aprimorando nosso atendimento! 🙌",
     "",
-    `Vox Eletrônica - ${filial}`,
+    `Vox Eletrônica – ${filial}`,
   ].join("\n");
 }
 

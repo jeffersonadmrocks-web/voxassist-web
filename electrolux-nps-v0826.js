@@ -1,8 +1,12 @@
-/* VoxAssist V0.8.13 — Gestão de NPS (Electrolux → Gestão de NPS).
-   NÃO edita electrolux-reports-v0813.js. Injeta um card a mais no hub
-   Electrolux (mesmo padrão .module-action-card já usado pelos 9 grupos de
-   status) e, ao clicar, substitui #app pela própria tela. "Voltar" chama
-   window.render('electrolux') de novo, igual o botão nativo já faz.
+/* VoxAssist V0.8.13 — NPS Electrolux (Atividades → NPS Electrolux).
+   NÃO edita all-menus-layout.js. Injeta um card a mais na grid do hub
+   Atividades (mesmo padrão .module-action-card, ancorado no card nativo
+   "agenda-operacional" pra não vazar pra outros hubs) e, ao clicar,
+   substitui #app pela própria tela. "Voltar" chama window.render('agenda')
+   de novo, voltando pro hub Atividades. Carência de 6h desde concluded_at
+   antes de um caso virar elegível pra contato (ver isEligibleForContact em
+   supabase/functions/_shared/npsClassification.ts — a promoção em si roda
+   no sync-electrolux-nps, este arquivo só lê/mostra o estado já resolvido).
    Nunca responde pelo cliente, nunca infere resposta, nunca envia nada
    sozinho — cada ação de contato exige confirmação explícita de quem clicou. */
 (function(){
@@ -19,7 +23,8 @@
 
   const CLASS_LABEL={ALTA:'Alta prioridade',MEDIA:'Prioridade média',ATENCAO:'Caso de atenção',NAO_ELEGIVEL:'Não elegível'};
   const SIT_LABEL={
-    AGUARDANDO_CONTATO:'Aguardando contato',
+    AGUARDANDO_ELEGIBILIDADE:'Aguardando 6h',
+    ELEGIVEL_PARA_NPS:'Elegível para NPS',
     PRIMEIRO_CONTATO_ENVIADO:'Primeiro contato enviado',
     AGUARDANDO_RESPOSTA:'Aguardando resposta',
     LEMBRETE_ENVIADO:'Lembrete enviado',
@@ -31,30 +36,46 @@
     FINALIZADO:'Finalizado',
   };
   const FILIAL_LABEL={VITORIA:'Vitória',SERRA:'Serra'};
+  // Contatado mas ainda sem desfecho — cobre primeiro contato, lembrete e o
+  // estado manual "aguardando resposta" propriamente dito.
+  const CONTACTED_SITUACOES=['PRIMEIRO_CONTATO_ENVIADO','LEMBRETE_ENVIADO','AGUARDANDO_RESPOSTA'];
+  function isAttention(c){return c.classification==='ATENCAO'||c.situacao==='CASO_DE_ATENCAO'}
 
-  /* ---------- entrada no hub Electrolux ---------- */
+  /* ---------- entrada no hub Atividades (ao lado de Agenda/Compromissos) ----------
+     Ancorado no título do hub ("Atividades" — único entre os 7 hubs, ver
+     home() em all-menus-layout.js) pra injetar só ali. data-target=
+     "agenda-operacional" sozinho NÃO seria suficiente pra identificar o
+     hub: o card "CASOS / TAREFAS" do hub Relatórios usa o mesmo target.
+     Antes desta correção ensureEntryCard() pegava QUALQUER
+     .module-action-grid (bug: o card aparecia em todos os hubs). */
   function ensureEntryCard(){
+    const title=document.querySelector('.module-home-head h2');
+    if(!title||title.textContent.trim()!=='Atividades')return;
     const grid=document.querySelector('.module-action-grid');
     if(!grid||grid.querySelector('[data-nps-entry]'))return;
     const btn=document.createElement('button');
     btn.type='button';
     btn.className='module-action-card teal';
     btn.dataset.npsEntry='1';
-    btn.innerHTML=`<span class="icon">★</span><span><strong>GESTÃO DE NPS</strong><small>Pesquisa de satisfação Electrolux</small></span>`;
+    btn.innerHTML=`<span class="icon">★</span><span><strong>NPS ELECTROLUX</strong><small>Pesquisa de satisfação Electrolux</small></span>`;
     btn.onclick=openNpsScreen;
     grid.appendChild(btn);
   }
   const observer=new MutationObserver(()=>{
     if(npsScreenActive)return;
-    if(document.querySelector('.module-action-grid'))ensureEntryCard();
+    ensureEntryCard();
   });
   observer.observe(document.querySelector('#app')||document.body,{childList:true,subtree:true});
 
   /* ---------- dados ---------- */
-  let cache={cases:[],filter:{filial:'',situacao:'',classification:'',search:''}};
+  let cache={cases:[],contactsToday:[],filter:{filial:'',situacao:'',classification:'',search:''}};
 
   async function loadCases(){
     cache.cases=await api('nps_cases?select=*,external_appointments(external_order_number,client_name,client_phone,technician_id,appointment_date)&order=created_at.desc');
+  }
+  async function loadContactsToday(){
+    const startOfDay=new Date();startOfDay.setHours(0,0,0,0);
+    cache.contactsToday=await api(`nps_contacts?select=nps_case_id,sent_at&sent_at=gte.${startOfDay.toISOString()}`).catch(()=>[]);
   }
   async function loadContacts(caseId){
     return api(`nps_contacts?nps_case_id=eq.${caseId}&order=sent_at.desc`).catch(()=>[]);
@@ -92,7 +113,7 @@
   }
   function firstName(name){return String(name||'').trim().split(/\s+/)[0]||name||'cliente'}
   function buildMessage(clientName,filial){
-    return `Olá, ${firstName(clientName)}!\n\nSeu atendimento foi finalizado. A Electrolux enviará uma pesquisa pelo número ${ELX_SURVEY_PHONE_DISPLAY}, referente ao atendimento da nossa equipe - técnico e atendente.\n\nPoderia reservar um momento para respondê-la? Sua avaliação é muito importante para continuarmos aprimorando nosso atendimento!\n\nVox Eletrônica - ${FILIAL_LABEL[filial]||'[filial]'}`;
+    return `Olá, ${firstName(clientName)}! 😊\n\nSeu atendimento foi finalizado. A Electrolux enviará uma pesquisa pelo número ${ELX_SURVEY_PHONE_DISPLAY}, referente ao atendimento da nossa equipe — técnico e atendente.\n\nNo NPS, as notas 9 e 10 representam uma avaliação positiva para nossa empresa. Poderia reservar um momento para responder conforme sua experiência? Sua avaliação é muito importante para continuarmos aprimorando nosso atendimento! 🙌\n\nVox Eletrônica – ${FILIAL_LABEL[filial]||'[filial]'}`;
   }
 
   /* ---------- navegação ---------- */
@@ -102,36 +123,56 @@
     if(!app)return;
     app.innerHTML='<div class="vx-nps"><div class="vx-loading">Carregando Gestão de NPS…</div></div>';
     try{
-      await loadCases();
+      await Promise.all([loadCases(),loadContactsToday()]);
       renderNpsScreen();
     }catch(e){
       app.innerHTML=`<div class="vx-nps"><div class="card error-card"><h3>Falha ao carregar Gestão de NPS</h3><p>${E(e.message||'Erro desconhecido.')}</p><button id="npsBackErr">← Voltar</button></div></div>`;
       document.getElementById('npsBackErr').onclick=goBack;
     }
   }
-  function goBack(){npsScreenActive=false;window.render('electrolux')}
+  function goBack(){npsScreenActive=false;window.render('agenda')}
 
   /* ---------- indicadores ---------- */
   function indicators(){
     const cs=cache.cases;
-    const total=cs.length;
-    const alta=cs.filter(c=>c.classification==='ALTA').length;
-    const aguardando=cs.filter(c=>c.situacao==='AGUARDANDO_CONTATO').length;
-    const primeiroContato=cs.filter(c=>c.situacao!=='AGUARDANDO_CONTATO').length;
-    const lembrete=cs.filter(c=>c.situacao==='LEMBRETE_ENVIADO').length;
-    const confirmou=cs.filter(c=>c.situacao==='CLIENTE_CONFIRMOU_RESPOSTA').length;
-    const semResposta=cs.filter(c=>['CLIENTE_NAO_RESPONDEU','AGUARDANDO_RESPOSTA'].includes(c.situacao)).length;
-    const atencao=cs.filter(c=>c.classification==='ATENCAO'||c.situacao==='CASO_DE_ATENCAO').length;
-    const withDates=cs.filter(c=>c.opened_at&&c.concluded_at);
-    const ate10=withDates.length?Math.round(100*withDates.filter(c=>(new Date(c.concluded_at)-new Date(c.opened_at))/86400000<=10).length/withDates.length):0;
-    const umaVisita=total?Math.round(100*cs.filter(c=>c.visit_count===1).length/total):0;
-    return{total,alta,aguardando,primeiroContato,lembrete,confirmou,semResposta,atencao,ate10,umaVisita};
+    const aguardando6h=cs.filter(c=>c.situacao==='AGUARDANDO_ELEGIBILIDADE').length;
+    const elegiveisAgora=cs.filter(c=>c.situacao==='ELEGIVEL_PARA_NPS').length;
+    const altaOportunidade=cs.filter(c=>c.classification==='ALTA'&&!['FINALIZADO','CASO_DE_ATENCAO'].includes(c.situacao)).length;
+    const contatadosHoje=new Set(cache.contactsToday.map(ct=>ct.nps_case_id)).size;
+    const aguardandoResposta=cs.filter(c=>CONTACTED_SITUACOES.includes(c.situacao)).length;
+    const casosAtencao=cs.filter(isAttention).length;
+    return{aguardando6h,elegiveisAgora,altaOportunidade,contatadosHoje,aguardandoResposta,casosAtencao};
   }
 
-  /* ---------- filtro/listagem ---------- */
+  /* ---------- filtro/listagem/ordenação ----------
+     Fila de NPS: elegíveis agora primeiro (Alta antes de Média), depois
+     quem já foi contatado, depois quem ainda aguarda as 6h, depois
+     desfechos manuais — dentro do mesmo grupo, quem ficou elegível há mais
+     tempo primeiro (concluded_at ascendente). Casos de atenção nunca
+     entram nessa fila — vão pra tabela separada (seção 5 do pedido). */
+  const CLASS_RANK={ALTA:0,MEDIA:1};
+  function queueTier(c){
+    if(c.situacao==='ELEGIVEL_PARA_NPS')return 0;
+    if(CONTACTED_SITUACOES.includes(c.situacao))return 1;
+    if(c.situacao==='AGUARDANDO_ELEGIBILIDADE')return 2;
+    return 3;
+  }
+  function sortQueue(list){
+    return [...list].sort((a,b)=>{
+      const ta=queueTier(a),tb=queueTier(b);
+      if(ta!==tb)return ta-tb;
+      if(ta===0){
+        const ra=CLASS_RANK[a.classification]??2,rb=CLASS_RANK[b.classification]??2;
+        if(ra!==rb)return ra-rb;
+      }
+      const da=a.concluded_at?new Date(a.concluded_at).getTime():Infinity;
+      const db=b.concluded_at?new Date(b.concluded_at).getTime():Infinity;
+      return da-db;
+    });
+  }
   function filteredCases(){
     const f=cache.filter;
-    return cache.cases.filter(c=>{
+    const base=cache.cases.filter(c=>{
       if(f.filial&&c.filial!==f.filial)return false;
       if(f.situacao&&c.situacao!==f.situacao)return false;
       if(f.classification&&c.classification!==f.classification)return false;
@@ -143,6 +184,10 @@
       }
       return true;
     });
+    return{
+      queue:sortQueue(base.filter(c=>!isAttention(c))),
+      attention:base.filter(isAttention),
+    };
   }
 
   function row(c){
@@ -159,26 +204,28 @@
     </tr>`;
   }
 
+  function tableHead(){
+    return `<thead><tr>
+      <th>Cliente</th><th>OS Electrolux</th><th>Filial</th><th>Classificação</th><th>Situação</th><th>Concluído em</th><th>Visitas</th><th></th>
+    </tr></thead>`;
+  }
+
   function renderNpsScreen(){
     const app=document.querySelector('#app');
     if(!app)return;
     const ind=indicators();
-    const list=filteredCases();
+    const{queue,attention}=filteredCases();
     app.innerHTML=`<div class="vx-nps">
       <div class="vx-nps-head">
-        <div><button id="npsBack">← Voltar</button><h2>Gestão de NPS</h2><small>Acompanhamento da pesquisa de satisfação Electrolux</small></div>
+        <div><button id="npsBack">← Voltar</button><h2>NPS Electrolux</h2><small>Acompanhamento da pesquisa de satisfação Electrolux</small></div>
       </div>
       <div class="vx-nps-indicators">
-        <div class="vx-nps-ind"><span>Concluídos</span><b>${ind.total}</b></div>
-        <div class="vx-nps-ind"><span>Alta prioridade</span><b>${ind.alta}</b></div>
-        <div class="vx-nps-ind"><span>Aguardando contato</span><b>${ind.aguardando}</b></div>
-        <div class="vx-nps-ind"><span>Primeiro contato realizado</span><b>${ind.primeiroContato}</b></div>
-        <div class="vx-nps-ind"><span>Lembrete enviado</span><b>${ind.lembrete}</b></div>
-        <div class="vx-nps-ind"><span>Cliente confirmou resposta</span><b>${ind.confirmou}</b></div>
-        <div class="vx-nps-ind"><span>Sem resposta</span><b>${ind.semResposta}</b></div>
-        <div class="vx-nps-ind vx-nps-ind-warn"><span>Casos de atenção</span><b>${ind.atencao}</b></div>
-        <div class="vx-nps-ind"><span>Concluído em até 10 dias</span><b>${ind.ate10}%</b></div>
-        <div class="vx-nps-ind"><span>Resolvido em 1 visita</span><b>${ind.umaVisita}%</b></div>
+        <div class="vx-nps-ind"><span>Aguardando 6h</span><b>${ind.aguardando6h}</b></div>
+        <div class="vx-nps-ind"><span>Elegíveis agora</span><b>${ind.elegiveisAgora}</b></div>
+        <div class="vx-nps-ind"><span>Alta oportunidade</span><b>${ind.altaOportunidade}</b></div>
+        <div class="vx-nps-ind"><span>Contatados hoje</span><b>${ind.contatadosHoje}</b></div>
+        <div class="vx-nps-ind"><span>Aguardando resposta</span><b>${ind.aguardandoResposta}</b></div>
+        <div class="vx-nps-ind vx-nps-ind-warn"><span>Casos de atenção</span><b>${ind.casosAtencao}</b></div>
       </div>
       <div class="vx-nps-filters">
         <input id="npsSearch" placeholder="Buscar cliente ou OS Electrolux…" value="${E(cache.filter.search)}">
@@ -186,9 +233,10 @@
         <select id="npsClassificacao"><option value="">Classificação: todas</option>${Object.entries(CLASS_LABEL).map(([k,l])=>`<option value="${k}" ${cache.filter.classification===k?'selected':''}>${l}</option>`).join('')}</select>
         <select id="npsSituacao"><option value="">Situação: todas</option>${Object.entries(SIT_LABEL).map(([k,l])=>`<option value="${k}" ${cache.filter.situacao===k?'selected':''}>${l}</option>`).join('')}</select>
       </div>
-      <div class="vx-nps-table-wrap"><table class="vx-nps-table"><thead><tr>
-        <th>Cliente</th><th>OS Electrolux</th><th>Filial</th><th>Classificação</th><th>Situação</th><th>Concluído em</th><th>Visitas</th><th></th>
-      </tr></thead><tbody>${list.map(row).join('')||'<tr><td colspan="8">Nenhum caso encontrado com esse filtro.</td></tr>'}</tbody></table></div>
+      <h3 class="vx-nps-section-title">Fila de NPS</h3>
+      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${queue.map(row).join('')||'<tr><td colspan="8">Nenhum caso na fila com esse filtro.</td></tr>'}</tbody></table></div>
+      <h3 class="vx-nps-section-title vx-nps-section-warn">Casos de atenção</h3>
+      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${attention.map(row).join('')||'<tr><td colspan="8">Nenhum caso de atenção com esse filtro.</td></tr>'}</tbody></table></div>
     </div>`;
 
     document.getElementById('npsBack').onclick=goBack;
@@ -221,6 +269,8 @@
     const lembrete=lastContactOfType(contacts,'LEMBRETE');
     const lastContact=contacts[0]||null;
     const recente=lastContact&&hoursSince(lastContact.sent_at)<24;
+    const aguardandoElegibilidade=c.situacao==='AGUARDANDO_ELEGIBILIDADE';
+    const eligibleAt=c.concluded_at?new Date(new Date(c.concluded_at).getTime()+6*36e5):null;
 
     const bg=modal(`
       <h3>Atendimento Electrolux · OS ${E(ea.external_order_number||'—')}</h3>
@@ -238,8 +288,9 @@
         </select></label>
       </div>
       ${recente?'<div class="vx-nps-alert">⚠ Contato recente (menos de 24h) registrado para este caso.</div>':''}
+      ${aguardandoElegibilidade?`<div class="vx-nps-alert">⏳ Ainda em carência — elegível para contato a partir de ${eligibleAt?eligibleAt.toLocaleString('pt-BR'):'—'}.</div>`:''}
       <div class="vx-nps-actions">
-        <button id="npsSendFirst" ${!canWrite()||primeiro?'disabled':''}>Enviar primeiro contato</button>
+        <button id="npsSendFirst" ${!canWrite()||primeiro||aguardandoElegibilidade?'disabled':''}>Enviar primeiro contato</button>
         <button id="npsSendReminder" ${!canWrite()||!primeiro||(lembrete&&!isGestor())?'disabled':''}>${lembrete?'Autorizar novo lembrete (gestor)':'Enviar lembrete'}</button>
         <a href="${ELX_SURVEY_LINK}" target="_blank" rel="noopener" class="vx-nps-secondary-link">Enviar separadamente (Electrolux)</a>
       </div>

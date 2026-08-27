@@ -4,7 +4,7 @@
 // carga extra e um segundo poller. Roda a cada 15-30min (menos urgente que
 // a agenda). Nunca escreve em appointments/service_orders/external_appointments.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { classifyCase, isValidBrazilianPhone, estimateVisitCount, daysBetween, FOLLOW_UP_WINDOW_DAYS } from "../_shared/npsClassification.ts";
+import { classifyCase, isValidBrazilianPhone, estimateVisitCount, daysBetween, isEligibleForContact, FOLLOW_UP_WINDOW_DAYS } from "../_shared/npsClassification.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -61,7 +61,7 @@ Deno.serve(async () => {
         daysSinceConclusion,
       });
 
-      const situacao = classification === "NAO_ELEGIVEL" ? "FINALIZADO" : "AGUARDANDO_CONTATO";
+      const situacao = classification === "NAO_ELEGIVEL" ? "FINALIZADO" : "AGUARDANDO_ELEGIBILIDADE";
       const surveyDeadline = new Date(new Date(appt.concluded_at!).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
       const { data: saved, error } = await supabase
@@ -92,6 +92,34 @@ Deno.serve(async () => {
       });
     }
 
+    // Promove pra ELEGIVEL_PARA_NPS quem já cumpriu a carência das 6h desde
+    // concluded_at. Roda a cada ciclo (15-30min), granularidade de sobra
+    // pra uma carência medida em horas.
+    let promoted = 0;
+    const { data: waitingRaw } = await supabase
+      .from("nps_cases")
+      .select("id, concluded_at, classification, situacao")
+      .eq("situacao", "AGUARDANDO_ELEGIBILIDADE");
+    const waiting = (waitingRaw || []) as Array<{ id: string; concluded_at: string | null; classification: string; situacao: string }>;
+    const now = new Date();
+
+    for (const c of waiting) {
+      if (!c.concluded_at || !isEligibleForContact(c.concluded_at, now)) continue;
+      const { error: promoteError } = await supabase
+        .from("nps_cases")
+        .update({ situacao: "ELEGIVEL_PARA_NPS", updated_at: now.toISOString() })
+        .eq("id", c.id);
+      if (promoteError) continue;
+      promoted++;
+      await supabase.from("nps_case_history").insert({
+        nps_case_id: c.id,
+        action: "ELEGIVEL_PARA_NPS",
+        previous_data: { situacao: c.situacao },
+        new_data: { situacao: "ELEGIVEL_PARA_NPS" },
+        changed_by: null,
+      });
+    }
+
     await supabase.from("integration_sync_runs").insert({
       origin: "ELECTROLUX_NPS",
       started_at: startedAt,
@@ -100,7 +128,7 @@ Deno.serve(async () => {
       orders_processed: processed,
     });
 
-    return new Response(JSON.stringify({ ok: true, processed, followUpWindowDays: FOLLOW_UP_WINDOW_DAYS }), {
+    return new Response(JSON.stringify({ ok: true, processed, promoted, followUpWindowDays: FOLLOW_UP_WINDOW_DAYS }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (e) {

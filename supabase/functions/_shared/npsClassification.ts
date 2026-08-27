@@ -67,3 +67,13 @@ export function daysBetween(a: string | Date, b: string | Date): number {
   const end = new Date(b).getTime();
   return Math.round((end - start) / (1000 * 60 * 60 * 24));
 }
+
+// Carência obrigatória antes de um caso concluído virar elegível para
+// contato de NPS — cliente precisa de um tempo mínimo pra "esfriar" antes
+// de ser abordado. Contada a partir de concluded_at (setado uma única vez).
+export const ELIGIBILITY_GATE_HOURS = 6;
+
+export function isEligibleForContact(concludedAt: string, now: Date = new Date()): boolean {
+  const gateEndsAt = new Date(concludedAt).getTime() + ELIGIBILITY_GATE_HOURS * 60 * 60 * 1000;
+  return now.getTime() >= gateEndsAt;
+}

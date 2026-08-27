@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { classifyCase, isValidBrazilianPhone, estimateVisitCount, daysBetween } from "./npsClassification.ts";
+import { classifyCase, isValidBrazilianPhone, estimateVisitCount, daysBetween, isEligibleForContact, ELIGIBILITY_GATE_HOURS } from "./npsClassification.ts";
 
 const base = {
   daysToConclude: 5,
@@ -88,4 +88,26 @@ Deno.test("estimateVisitCount - conta trocas reais de appointment_date", () => {
 
 Deno.test("daysBetween - calcula diferença em dias inteiros", () => {
   assertEquals(daysBetween("2026-08-01T00:00:00Z", "2026-08-11T00:00:00Z"), 10);
+});
+
+Deno.test("isEligibleForContact - antes das 6h ainda não é elegível", () => {
+  const concludedAt = "2026-08-27T10:00:00Z";
+  const now = new Date("2026-08-27T15:59:59Z"); // 5h59min59s depois
+  assertEquals(isEligibleForContact(concludedAt, now), false);
+});
+
+Deno.test("isEligibleForContact - exatamente nas 6h já é elegível", () => {
+  const concludedAt = "2026-08-27T10:00:00Z";
+  const now = new Date("2026-08-27T16:00:00Z"); // exatamente 6h depois
+  assertEquals(isEligibleForContact(concludedAt, now), true);
+});
+
+Deno.test("isEligibleForContact - depois das 6h é elegível", () => {
+  const concludedAt = "2026-08-27T10:00:00Z";
+  const now = new Date("2026-08-28T10:00:00Z"); // 24h depois
+  assertEquals(isEligibleForContact(concludedAt, now), true);
+});
+
+Deno.test("isEligibleForContact - ELIGIBILITY_GATE_HOURS é 6", () => {
+  assertEquals(ELIGIBILITY_GATE_HOURS, 6);
 });

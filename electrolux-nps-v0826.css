@@ -5,12 +5,14 @@
 .vx-nps{padding:16px;display:flex;flex-direction:column;gap:16px}
 .vx-nps-head h2{margin:4px 0 0}
 .vx-nps-head button#npsBack{background:none;border:none;color:inherit;cursor:pointer;font-size:13px;opacity:.8}
-.vx-nps-indicators{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.vx-nps-indicators{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .vx-nps-ind{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:10px 12px;background:#fff}
 .vx-nps-ind span{display:block;font-size:11px;color:#667;margin-bottom:4px}
 .vx-nps-ind b{font-size:20px}
 .vx-nps-ind-warn{border-color:#e87a00}
 .vx-nps-ind-warn b{color:#e87a00}
+.vx-nps-section-title{margin:4px 0 -6px;font-size:14px}
+.vx-nps-section-warn{color:#e87a00}
 .vx-nps-filters{display:flex;gap:8px;flex-wrap:wrap}
 .vx-nps-filters input,.vx-nps-filters select{border:1px solid rgba(0,0,0,.15);border-radius:8px;padding:7px 10px;font-size:13px}
 .vx-nps-table-wrap{overflow-x:auto}
@@ -23,4 +25,5 @@
 .vx-nps-history{display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;font-size:12px}
 .vx-nps-hist-row{display:flex;gap:8px;align-items:baseline;border-bottom:1px dashed rgba(0,0,0,.06);padding-bottom:4px}
 .vx-nps-hist-row span{color:#889;font-size:11px}
+.vx-nps-alert+.vx-nps-alert{margin-top:-4px}
 @media(max-width:900px){.vx-nps-indicators{grid-template-columns:repeat(2,1fr)}}

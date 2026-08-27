@@ -3,14 +3,19 @@ import { buildApprovedMessage, buildClientWhatsappLink, toWhatsappDigits, firstN
 
 Deno.test("buildApprovedMessage - preenche nome e filial corretamente, texto igual ao aprovado", () => {
   const msg = buildApprovedMessage("Maria", "Vitória");
-  assertStringIncludes(msg, "Olá, Maria!");
-  assertStringIncludes(msg, "Vox Eletrônica - Vitória");
+  assertStringIncludes(msg, "Olá, Maria! 😊");
+  assertStringIncludes(msg, "Vox Eletrônica – Vitória");
   assertStringIncludes(msg, "+55 41 4042-1506");
 });
 
 Deno.test("buildApprovedMessage - funciona com filial Serra", () => {
   const msg = buildApprovedMessage("João", "Serra");
-  assertStringIncludes(msg, "Vox Eletrônica - Serra");
+  assertStringIncludes(msg, "Vox Eletrônica – Serra");
+});
+
+Deno.test("buildApprovedMessage - inclui a orientação aprovada sobre notas 9 e 10", () => {
+  const msg = buildApprovedMessage("Maria", "Vitória");
+  assertStringIncludes(msg, "No NPS, as notas 9 e 10 representam uma avaliação positiva para nossa empresa.");
 });
 
 Deno.test("toWhatsappDigits - adiciona código do país quando ausente", () => {
