@@ -2,12 +2,61 @@
    Reaproveita .vx-appt/.vx-card-actions/.vx-modal-* já definidas em
    field-agenda-complete-v0813.css — não redefine nada existente, só
    sobrescreve pontualmente pra este card (.vx-appt-external), sem afetar
-   os cartões nativos que reaproveitam a mesma .vx-appt. */
-.vx-appt-external{border:1px solid #CEDBED;border-left:3px solid #2563EB;background:#F3F7FD}
-.vx-appt-external .vx-appt-os{color:#334155}
-.vx-appt-external .vx-appt-name{color:#172033}
-.vx-elx-badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:700;letter-spacing:.2px;color:#174EA6;background:#E8F1FF;border:1px solid #B8D0F5;border-radius:999px;padding:2px 8px;margin-right:6px;vertical-align:middle}
-.vx-elx-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:#2563EB;flex:0 0 auto}
+   os cartões nativos que reaproveitam a mesma .vx-appt.
+   Paleta: Comando_Refinamento_Visual_Agenda_Electrolux (2026-08-28). */
+.vx-appt.vx-appt-external {
+  background: #f3f7fd;
+  border: 1px solid #cedbed;
+  border-left: 4px solid #2563eb;
+  border-radius: 9px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  color: #334155;
+}
+
+.vx-appt-external .vx-elx-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; margin-right: 6px;
+  color: #174ea6; background: #e8f1ff;
+  border: 1px solid #b8d0f5; border-radius: 999px;
+  font-size: 10px; font-weight: 600; line-height: 1.2;
+  letter-spacing: 0; text-transform: none; vertical-align: middle;
+}
+
+.vx-appt-external .vx-elx-badge-dot {
+  width: 6px; height: 6px; flex: 0 0 6px;
+  display: inline-block; background: #2563eb; border-radius: 50%;
+}
+
+.vx-appt-external .vx-appt-name {
+  margin-top: 6px; color: #334155; font-size: 13px;
+  font-weight: 600; line-height: 1.3; text-transform: none;
+  letter-spacing: 0;
+}
+
+.vx-appt-external .vx-appt-os {
+  color: #475569; font-size: 10.5px; font-weight: 600;
+  line-height: 1.2;
+}
+
+.vx-appt-external > small {
+  color: #64748b; font-size: 11px; font-weight: 400;
+  line-height: 1.3;
+}
+
+.vx-appt-external .vx-state-text {
+  color: #64748b; font-size: 11px; font-weight: 400;
+}
+
+.vx-appt-external .vx-card-actions button {
+  color: #334155; background: #ffffff;
+  border: 1px solid #d6e0ed; font-weight: 500;
+}
+
+.vx-appt.vx-appt-external:hover {
+  border-color: #b8cbea; border-left-color: #1d4ed8;
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.08);
+}
+
 .vx-elx-filter-wrap{margin-left:auto}
 .vx-elx-filter-wrap select{border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 10px;font-size:12px;background:transparent;color:inherit}
 .vx-elx-filter-voxassist .vx-appt-external{display:none}
