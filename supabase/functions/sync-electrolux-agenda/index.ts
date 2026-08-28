@@ -12,6 +12,10 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ELECTROLUX_API_URL = Deno.env.get("ELECTROLUX_API_URL")!;
 const ELECTROLUX_API_USER = Deno.env.get("ELECTROLUX_API_USER")!;
 const ELECTROLUX_API_PASSWORD = Deno.env.get("ELECTROLUX_API_PASSWORD")!;
+// profiles é escopado por RLS via user_companies — sem isso, um técnico
+// provisório criado pelo sync existe no banco mas fica invisível em
+// qualquer tela carregada pela sessão de um usuário normal.
+const ELECTROLUX_DEFAULT_COMPANY_ID = Deno.env.get("ELECTROLUX_DEFAULT_COMPANY_ID") || null;
 
 type ExistingRow = {
   id: string;
@@ -55,6 +59,7 @@ Deno.serve(async () => {
       const technicianId = await matchOrCreateTechnician(supabase, {
         externalTechnicianId: order.technicianExternalId,
         candidateName: order.technicianName,
+        defaultCompanyId: ELECTROLUX_DEFAULT_COMPANY_ID,
       });
 
       const upsertRow = {

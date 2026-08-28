@@ -15,6 +15,13 @@ type SupabaseLike = {
 export type TechnicianMatchInput = {
   externalTechnicianId?: string | null;
   candidateName?: string | null;
+  // profiles é escopado por RLS via user_companies — sem vincular o
+  // técnico provisório a uma empresa, ele existe no banco mas fica
+  // invisível em qualquer tela que a sessão do usuário logado carregue
+  // (só a service_role, que ignora RLS, o enxerga). Passado pelo chamador
+  // (variável de ambiente ELECTROLUX_DEFAULT_COMPANY_ID) porque este
+  // módulo não lê env var diretamente.
+  defaultCompanyId?: string | null;
 };
 
 export async function matchOrCreateTechnician(
@@ -23,6 +30,7 @@ export async function matchOrCreateTechnician(
 ): Promise<string | null> {
   const externalTechnicianId = input.externalTechnicianId || null;
   const candidateName = input.candidateName || null;
+  const defaultCompanyId = input.defaultCompanyId || null;
   if (!externalTechnicianId && !candidateName) return null;
 
   if (externalTechnicianId) {
@@ -116,7 +124,7 @@ export async function matchOrCreateTechnician(
       // criar um técnico provisório em vez de ficar sem opção.
     }
 
-    return await createProvisionalTechnician(supabase, { externalTechnicianId, candidateName });
+    return await createProvisionalTechnician(supabase, { externalTechnicianId, candidateName, defaultCompanyId });
   }
 
   return null;
@@ -124,7 +132,7 @@ export async function matchOrCreateTechnician(
 
 async function createProvisionalTechnician(
   supabase: SupabaseLike,
-  input: { externalTechnicianId: string | null; candidateName: string }
+  input: { externalTechnicianId: string | null; candidateName: string; defaultCompanyId: string | null }
 ): Promise<string | null> {
   const baseRow = {
     full_name: input.candidateName,
@@ -163,5 +171,20 @@ async function createProvisionalTechnician(
     .select("id")
     .single();
   if (error || !data) return null;
+
+  // Best-effort: sem isso o técnico existe mas fica invisível pra
+  // qualquer sessão de usuário normal (ver comentário em
+  // TechnicianMatchInput.defaultCompanyId). Não falha a criação do
+  // técnico se o vínculo em si não puder ser gravado.
+  if (input.defaultCompanyId) {
+    try {
+      await supabase
+        .from("user_companies")
+        .insert({ user_id: data.id, company_id: input.defaultCompanyId, role: "TECNICO", active: true, is_default: true });
+    } catch {
+      // best-effort — não bloqueia a criação do técnico se o vínculo falhar.
+    }
+  }
+
   return data.id;
 }

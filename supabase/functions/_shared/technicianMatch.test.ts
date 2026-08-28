@@ -51,6 +51,28 @@ Deno.test("nome parecido mas diferente (Carlos Silva vs Carlos da Silva) NÃO ge
   assertEquals(suggestions.length, 0);
 });
 
+Deno.test("técnico provisório criado com defaultCompanyId ganha vínculo em user_companies (senão fica invisível por RLS)", async () => {
+  const supabase = createMockSupabase({ profiles: [] });
+  const id = await matchOrCreateTechnician(supabase, {
+    candidateName: "Nova Tecnica",
+    defaultCompanyId: "company-1",
+  });
+  assertNotEquals(id, null);
+  const links = supabase.tables.get("user_companies") || [];
+  assertEquals(links.length, 1);
+  assertEquals(links[0].user_id, id);
+  assertEquals(links[0].company_id, "company-1");
+  assertEquals(links[0].role, "TECNICO");
+});
+
+Deno.test("sem defaultCompanyId (não informado) -> cria o técnico normalmente, sem tentar vincular empresa nenhuma", async () => {
+  const supabase = createMockSupabase({ profiles: [] });
+  const id = await matchOrCreateTechnician(supabase, { candidateName: "Sem Empresa" });
+  assertNotEquals(id, null);
+  const links = supabase.tables.get("user_companies") || [];
+  assertEquals(links.length, 0);
+});
+
 Deno.test("nenhum candidato -> cria técnico provisório com registration_status PENDENTE_COMPLEMENTACAO e sem login", async () => {
   const supabase = createMockSupabase({ profiles: [] });
   const id = await matchOrCreateTechnician(supabase, {
