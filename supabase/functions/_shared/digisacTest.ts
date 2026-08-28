@@ -89,3 +89,26 @@ export function messageForMissingVar(v: MissingConfigVar): string {
 export function isAuthorizedRole(role: string | null): boolean {
   return role === "GESTOR";
 }
+
+// CORS — a function é chamada direto do navegador (cross-origin: o front
+// fica em voxassist-web.vercel.app, a function em *.supabase.co), então o
+// navegador manda um preflight OPTIONS antes do POST real sempre que há
+// headers customizados (Authorization/apikey). Sem isso, o preflight é
+// bloqueado e o fetch nunca sai — foi exatamente essa a causa real do
+// "Falha ao chamar a função de teste" reportado em produção: a function
+// nunca respondia OPTIONS nem mandava nenhum header CORS em resposta
+// nenhuma. Allowlist explícita (nunca "*") — origem fora da lista não
+// recebe Access-Control-Allow-Origin, e o navegador bloqueia sozinho.
+export const ALLOWED_ORIGINS = ["https://voxassist-web.vercel.app"];
+
+export function buildCorsHeaders(origin: string | null, allowedOrigins: string[] = ALLOWED_ORIGINS): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
+    "Vary": "Origin",
+  };
+  if (origin && allowedOrigins.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
+}

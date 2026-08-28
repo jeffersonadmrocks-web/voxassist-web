@@ -95,17 +95,28 @@
     </div>`;
   }
 
+  /* ---------- teste de conexão ----------
+     Diferencia os motivos de falha em vez de um "verifique sua conexão"
+     genérico (achado real em produção: um bloqueio de CORS e uma queda de
+     rede geram o MESMO tipo de exceção no fetch() do navegador — a
+     especificação de CORS existe justamente pra esconder o motivo exato
+     de um script, então não dá pra distinguir os dois com certeza aqui;
+     o texto abaixo é honesto sobre essa ambiguidade). Sessão
+     ausente/expirada (401) e falta de permissão GESTOR (403) já vêm como
+     código HTTP da própria function e são diferenciados normalmente. */
   async function runTest(){
     renderScreen({phase:'loading'});
+    let res;
     try{
-      const res=await fetch(CFG.url+'/functions/v1/digisac-test',{method:'POST',headers:authHeaders()});
-      const data=await res.json().catch(()=>({}));
-      if(res.status===401){renderScreen({phase:'blocked',message:'Sua sessão expirou — faça login novamente.'});return}
-      if(res.status===403){renderScreen({phase:'blocked',message:'Este teste é restrito a usuários GESTOR.'});return}
-      if(!res.ok||!data||typeof data.status!=='string'){renderScreen({phase:'blocked',message:'A função de teste não respondeu como esperado.'});return}
-      renderScreen({phase:'done',result:data});
+      res=await fetch(CFG.url+'/functions/v1/digisac-test',{method:'POST',headers:authHeaders()});
     }catch(e){
-      renderScreen({phase:'blocked',message:'Falha ao chamar a função de teste — verifique sua conexão.'});
+      renderScreen({phase:'blocked',message:'Não foi possível chamar a função de teste (bloqueio de CORS/rede ou instabilidade de conexão) — verifique se o domínio atual está liberado na function e tente novamente.'});
+      return;
     }
+    if(res.status===401){renderScreen({phase:'blocked',message:'Sessão ausente ou expirada — faça login novamente.'});return}
+    if(res.status===403){renderScreen({phase:'blocked',message:'Este teste é restrito a usuários GESTOR — seu perfil não tem essa permissão.'});return}
+    const data=await res.json().catch(()=>null);
+    if(!res.ok||!data||typeof data.status!=='string'){renderScreen({phase:'blocked',message:'A função de teste respondeu, mas com um formato inesperado — erro retornado pela Edge Function.'});return}
+    renderScreen({phase:'done',result:data});
   }
 })();
