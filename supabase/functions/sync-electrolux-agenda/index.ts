@@ -28,6 +28,7 @@ type ExistingRow = {
   nps_missing_count: number;
   nps_missing_since: string | null;
   nps_closed_inferred_at: string | null;
+  company_id: string | null;
 };
 
 Deno.serve(async () => {
@@ -45,7 +46,7 @@ Deno.serve(async () => {
 
     const { data: existingRowsRaw } = await supabase
       .from("external_appointments")
-      .select("id, external_id, status, technician_id, appointment_date, period, concluded_at, nps_missing_count, nps_missing_since, nps_closed_inferred_at")
+      .select("id, external_id, status, technician_id, appointment_date, period, concluded_at, nps_missing_count, nps_missing_since, nps_closed_inferred_at, company_id")
       .eq("origin", "ELECTROLUX");
     const existingRows = (existingRowsRaw || []) as ExistingRow[];
     const existingById = new Map(existingRows.map((r) => [r.external_id, r]));
@@ -65,6 +66,12 @@ Deno.serve(async () => {
       const upsertRow = {
         ...row,
         technician_id: technicianId ?? existing?.technician_id ?? null,
+        // external_appointments é escopado por RLS via company_id (ver
+        // electrolux_company_isolation_fix_20260828.sql) — sem isso, o
+        // registro ficava com company_id null e invisível em qualquer
+        // sessão de usuário normal, ou pior, ficava visível pra todas as
+        // empresas ao mesmo tempo antes desse fix existir.
+        company_id: existing?.company_id ?? ELECTROLUX_DEFAULT_COMPANY_ID,
         concluded_at: resolveConcludedAt(row.status, existing?.concluded_at),
         // Se voltou a aparecer, qualquer inferência de encerramento por
         // ausência é cancelada. O histórico do atendimento é preservado.
