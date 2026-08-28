@@ -1,0 +1,28 @@
+/* VoxAssist V0.8.13 — só estilos NOVOS da Minha Jornada. Reaproveita
+   .module-action-card/.vx-modal-*/.vx-nps-table (grid de tarefas) já
+   existentes — não redefine nada de outros módulos. */
+.module-action-card.jornada-card{background:#0c6b8c;color:#fff}
+.vx-jornada{padding:16px;display:flex;flex-direction:column;gap:16px}
+.vx-jornada-head h2{margin:4px 0 0}
+.vx-jornada-head button#jornadaBack{background:none;border:none;color:inherit;cursor:pointer;font-size:13px;opacity:.8}
+.vx-jornada-transparency{background:#eaf6fb;color:#0c4a5e;border-radius:10px;padding:10px 14px;font-size:12px;line-height:1.5}
+.vx-jornada-section-title{margin:4px 0 -6px;font-size:14px}
+.vx-jornada-section-warn{color:#e87a00}
+.vx-jornada-next{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:14px 16px;background:#fff}
+.vx-jornada-next strong{display:block;font-size:15px}
+.vx-jornada-next small{color:#667;font-size:12px}
+.vx-jornada-empty{color:#667;font-style:italic}
+.vx-jornada-scoreboard{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.vx-jornada-score{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:10px 12px;background:#fff}
+.vx-jornada-score span{display:block;font-size:11px;color:#667;margin-bottom:4px}
+.vx-jornada-score b{font-size:20px}
+.vx-jornada-score-warn{border-color:#e87a00}
+.vx-jornada-score-warn b{color:#e87a00}
+.vx-jornada-alerts{display:flex;flex-direction:column;gap:8px}
+.vx-jornada-alert{display:flex;justify-content:space-between;align-items:center;gap:12px;border-radius:10px;padding:10px 14px;background:#fff3e0}
+.vx-jornada-alert div>b{display:block;font-size:12px}
+.vx-jornada-alert div>span{font-size:12px;color:#555}
+.vx-jornada-alert-critico{background:#fde3e3}
+.vx-jornada-alert-actions{display:flex;gap:6px;flex-shrink:0}
+.vx-jornada-modal{max-width:480px}
+@media(max-width:900px){.vx-jornada-scoreboard{grid-template-columns:repeat(2,1fr)}}
