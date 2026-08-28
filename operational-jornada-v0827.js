@@ -27,19 +27,24 @@
     OUTRO:'Outro motivo',
   };
 
-  /* ---------- entrada no hub Atividades (primeiro card da grid) ---------- */
+  /* ---------- entrada na tela real de Atividades ----------
+     Mesma correção aplicada em electrolux-nps-v0826.js: a tela real que
+     aparece ao clicar "Atividades" é renderAgenda() de
+     field-agenda-complete-v0813.js (o board "Agenda Externa"), não o hub
+     de cards atividades() de all-menus-layout.js — esse é código morto,
+     inalcançável (field-agenda-complete-v0813.js intercepta
+     view==='agenda' e nunca delega pro hub). Âncora correta:
+     .vx-agenda-controls, confirmado lendo renderAgenda() diretamente. */
   function ensureEntryCard(){
-    const title=document.querySelector('.module-home-head h2');
-    if(!title||title.textContent.trim()!=='Atividades')return;
-    const grid=document.querySelector('.module-action-grid');
-    if(!grid||grid.querySelector('[data-jornada-entry]'))return;
+    const controls=document.querySelector('.vx-agenda-controls');
+    if(!controls||controls.querySelector('[data-jornada-entry]'))return;
     const btn=document.createElement('button');
     btn.type='button';
-    btn.className='module-action-card jornada-card';
     btn.dataset.jornadaEntry='1';
-    btn.innerHTML=`<span class="icon">☀</span><span><strong>MINHA JORNADA</strong><small>Fila do dia, prioridades e alertas</small></span>`;
+    btn.className='primary';
+    btn.textContent='Minha Jornada';
     btn.onclick=openJornadaScreen;
-    grid.insertBefore(btn,grid.firstChild);
+    controls.insertBefore(btn,controls.firstChild);
   }
   const observer=new MutationObserver(()=>{
     if(jornadaScreenActive)return;

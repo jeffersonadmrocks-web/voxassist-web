@@ -41,25 +41,26 @@
   const CONTACTED_SITUACOES=['PRIMEIRO_CONTATO_ENVIADO','LEMBRETE_ENVIADO','AGUARDANDO_RESPOSTA'];
   function isAttention(c){return c.classification==='ATENCAO'||c.situacao==='CASO_DE_ATENCAO'}
 
-  /* ---------- entrada no hub Atividades (ao lado de Agenda/Compromissos) ----------
-     Ancorado no título do hub ("Atividades" — único entre os 7 hubs, ver
-     home() em all-menus-layout.js) pra injetar só ali. data-target=
-     "agenda-operacional" sozinho NÃO seria suficiente pra identificar o
-     hub: o card "CASOS / TAREFAS" do hub Relatórios usa o mesmo target.
-     Antes desta correção ensureEntryCard() pegava QUALQUER
-     .module-action-grid (bug: o card aparecia em todos os hubs). */
+  /* ---------- entrada na tela real de Atividades ----------
+     A tela "Atividades" do menu NÃO é o hub de cards atividades() de
+     all-menus-layout.js — esse hub é código morto: field-agenda-v0813.js
+     e depois field-agenda-complete-v0813.js reenvolvem window.render e
+     interceptam view==='agenda' direto, sem nunca delegar pro hub. Quem
+     realmente aparece é renderAgenda() (field-agenda-complete-v0813.js),
+     a tela "Agenda Externa". Âncora correta: .vx-agenda-controls (a
+     barra de botões "Agenda/Lista/Mapa/Feriado/Jornada" no topo dessa
+     tela), confirmado lendo renderAgenda() diretamente — não suposição.
+     Corrige um bug real: o card nunca apareceu em produção porque
+     ancorava num hub inalcançável. */
   function ensureEntryCard(){
-    const title=document.querySelector('.module-home-head h2');
-    if(!title||title.textContent.trim()!=='Atividades')return;
-    const grid=document.querySelector('.module-action-grid');
-    if(!grid||grid.querySelector('[data-nps-entry]'))return;
+    const controls=document.querySelector('.vx-agenda-controls');
+    if(!controls||controls.querySelector('[data-nps-entry]'))return;
     const btn=document.createElement('button');
     btn.type='button';
-    btn.className='module-action-card teal';
     btn.dataset.npsEntry='1';
-    btn.innerHTML=`<span class="icon">★</span><span><strong>NPS ELECTROLUX</strong><small>Pesquisa de satisfação Electrolux</small></span>`;
+    btn.textContent='NPS Electrolux';
     btn.onclick=openNpsScreen;
-    grid.appendChild(btn);
+    controls.appendChild(btn);
   }
   const observer=new MutationObserver(()=>{
     if(npsScreenActive)return;

@@ -1,7 +1,9 @@
 /* VoxAssist V0.8.13 — só estilos NOVOS da Minha Jornada. Reaproveita
-   .module-action-card/.vx-modal-*/.vx-nps-table (grid de tarefas) já
-   existentes — não redefine nada de outros módulos. */
-.module-action-card.jornada-card{background:#0c6b8c;color:#fff}
+   .vx-agenda button/.vx-modal-*/.vx-nps-table (grid de tarefas) já
+   existentes — não redefine nada de outros módulos. O botão de entrada
+   ("Minha Jornada") fica dentro de .vx-agenda-controls e já herda o
+   estilo de botão daquela tela (field-agenda-complete-v0813.css), sem
+   precisar de classe própria. */
 .vx-jornada{padding:16px;display:flex;flex-direction:column;gap:16px}
 .vx-jornada-head h2{margin:4px 0 0}
 .vx-jornada-head button#jornadaBack{background:none;border:none;color:inherit;cursor:pointer;font-size:13px;opacity:.8}
