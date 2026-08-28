@@ -12,7 +12,10 @@
 // teria pego esse bug (like não pegou o anterior).
 type Row = Record<string, unknown>;
 
+const IS_NULL = Symbol("IS_NULL");
+
 function matchesEq(row: Row, col: string, val: unknown): boolean {
+  if (val === IS_NULL) return row[col] === null || row[col] === undefined;
   return row[col] === val;
 }
 
@@ -28,8 +31,8 @@ function matchesOrExpr(row: Row, expr: string): boolean {
 class QueryBuilder {
   private filters: Array<{ col: string; val: unknown }> = [];
   private orExpr: string | null = null;
-  private insertPayload: Row | null = null;
-  private updatePayload: Row | null = null;
+  private pendingOp: { type: "insert" | "update"; payload: Row } | null = null;
+  private writeResult: { data: Row | null; error: { code: string; message: string } | null } | null = null;
 
   constructor(
     private tables: Map<string, Row[]>,
@@ -42,6 +45,14 @@ class QueryBuilder {
 
   eq(col: string, val: unknown) {
     this.filters.push({ col, val });
+    return this;
+  }
+
+  // .is(col, null) — diferente de .eq(col, null): trata undefined e null
+  // como "coluna vazia", igual IS NULL no Postgres (eq literal nunca bate
+  // com null, por isso technicianMatch.ts usa .is() pra esse caso).
+  is(col: string, val: null) {
+    this.filters.push({ col, val: IS_NULL });
     return this;
   }
 
@@ -64,35 +75,51 @@ class QueryBuilder {
     return { data: found, error: null };
   }
 
+  // insert/update só GRAVAM quando a query é finalmente resolvida
+  // (.single() ou await direto) — não no momento de .insert()/.update()
+  // em si, porque no encadeamento real (`update(row).eq('id', x)`) o
+  // filtro só chega DEPOIS. Resolver cedo demais aplicaria o update sem
+  // filtro nenhum (a primeira linha da tabela, erro sutil já pego pelos
+  // testes ao migrar pra esse desenho).
   insert(row: Row) {
-    this.insertPayload = { ...row };
+    this.pendingOp = { type: "insert", payload: row };
     return this;
   }
 
   update(row: Row) {
-    this.updatePayload = { ...row };
+    this.pendingOp = { type: "update", payload: row };
     return this;
   }
 
-  async single() {
-    if (this.updatePayload) {
-      const arr = this.tables.get(this.table) || [];
+  private resolveWrite() {
+    if (this.writeResult) return this.writeResult;
+    if (!this.pendingOp) return null;
+
+    const arr = this.tables.get(this.table) || [];
+    if (this.pendingOp.type === "insert") {
+      const created = { id: `generated-${arr.length + 1}`, ...this.pendingOp.payload };
+      arr.push(created);
+      this.tables.set(this.table, arr);
+      this.writeResult = { data: created, error: null };
+    } else {
       const idx = arr.findIndex((r) => this.filters.every((f) => matchesEq(r, f.col, f.val)));
       if (idx < 0) {
         // PostgREST: update que não bate em nenhuma linha + .single() =
         // erro (0 rows), não sucesso silencioso.
-        return { data: null, error: { code: "PGRST116", message: "no rows updated (fixture)" } };
+        this.writeResult = { data: null, error: { code: "PGRST116", message: "no rows updated (fixture)" } };
+      } else {
+        arr[idx] = { ...arr[idx], ...this.pendingOp.payload };
+        this.tables.set(this.table, arr);
+        this.writeResult = { data: arr[idx], error: null };
       }
-      arr[idx] = { ...arr[idx], ...this.updatePayload };
-      this.tables.set(this.table, arr);
-      return { data: { id: arr[idx].id }, error: null };
     }
+    return this.writeResult;
+  }
 
-    const arr = this.tables.get(this.table) || [];
-    const row = { id: `generated-${arr.length + 1}`, ...(this.insertPayload || {}) };
-    arr.push(row);
-    this.tables.set(this.table, arr);
-    return { data: { id: row.id }, error: null };
+  async single() {
+    const written = this.resolveWrite();
+    if (written) return { data: written.data ? { id: written.data.id } : null, error: written.error };
+    return { data: this.rows()[0] || null, error: null };
   }
 
   async upsert(row: Row, opts: { onConflict: string }) {
@@ -108,15 +135,17 @@ class QueryBuilder {
     return { data: null, error: null };
   }
 
-  // Torna o builder "thenable" pra permitir
-  // `const { data } = await supabase.from(...).select().eq().or()` sem
-  // precisar de um `.exec()`/`.maybeSingle()` terminal explícito — é assim
-  // que matchOrCreateTechnician busca a lista de técnicos candidatos.
+  // Torna o builder "thenable" pra permitir tanto
+  // `const { data } = await supabase.from(...).select().eq().or()` (busca)
+  // quanto `await supabase.from(...).insert(row)` sem `.select().single()`
+  // encadeado — é assim que technicianMatch.ts grava a pendência.
   then<TResult1, TResult2>(
-    onFulfilled?: ((value: { data: Row[]; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
+    onFulfilled?: ((value: { data: Row[] | Row | null; error: unknown }) => TResult1 | PromiseLike<TResult1>) | null,
     onRejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
   ): PromiseLike<TResult1 | TResult2> {
-    return Promise.resolve({ data: this.rows(), error: null }).then(onFulfilled, onRejected);
+    const written = this.resolveWrite();
+    const result = written ?? { data: this.rows(), error: null };
+    return Promise.resolve(result).then(onFulfilled, onRejected);
   }
 }
 

@@ -76,28 +76,40 @@ export async function matchOrCreateTechnician(
       // pendência a cada ciclo de sync.
       let anyStillPending = false;
       for (const match of matches) {
-        const { data: existingSuggestion } = await supabase
+        // externalTechnicianId é sempre null na prática (a Electrolux não
+        // manda esse campo hoje) — .eq(col, null) no PostgREST NÃO
+        // equivale a "IS NULL" (compara literalmente, nunca bate), então
+        // usa .is() nesse caso. Sem isso, uma confirmação VINCULADO nunca
+        // seria encontrada de novo no próximo ciclo de sync.
+        let suggestionQuery = supabase
           .from("external_technician_link_suggestions")
           .select("status")
           .eq("origin", "ELECTROLUX")
-          .eq("external_technician_id", externalTechnicianId)
-          .eq("suggested_profile_id", match.id)
-          .maybeSingle();
+          .eq("suggested_profile_id", match.id);
+        suggestionQuery = externalTechnicianId
+          ? suggestionQuery.eq("external_technician_id", externalTechnicianId)
+          : suggestionQuery.is("external_technician_id", null);
+        const { data: existingSuggestion } = await suggestionQuery.maybeSingle();
 
         if (existingSuggestion?.status === "VINCULADO") return match.id;
         if (existingSuggestion?.status === "SEPARADO") continue;
 
         anyStillPending = true;
-        await supabase.from("external_technician_link_suggestions").upsert(
-          {
+        if (!existingSuggestion) {
+          // Mesma razão pra não usar upsert(onConflict) aqui: com
+          // external_technician_id null, o Postgres nunca considera duas
+          // linhas em conflito (NULL <> NULL pra fins de unicidade) — toda
+          // chamada criaria uma pendência duplicada nova em vez de
+          // atualizar a existente. Já verificamos acima que não existe
+          // (existingSuggestion é null), então um insert simples basta.
+          await supabase.from("external_technician_link_suggestions").insert({
             origin: "ELECTROLUX",
             external_technician_id: externalTechnicianId,
             candidate_name: candidateName,
             suggested_profile_id: match.id,
             status: "PENDENTE",
-          },
-          { onConflict: "origin,external_technician_id,suggested_profile_id" }
-        );
+          });
+        }
       }
       if (anyStillPending) return null;
       // Todos os candidatos já foram explicitamente separados -> segue pra

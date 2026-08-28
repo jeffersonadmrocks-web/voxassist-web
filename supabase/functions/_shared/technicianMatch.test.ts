@@ -117,6 +117,29 @@ Deno.test("sugestão já SEPARADA -> não fica reabrindo pendência, resolve cri
   assertEquals(suggestions[0].status, "SEPARADO");
 });
 
+Deno.test("sugestão já VINCULADA sem id externo (caso real: Electrolux nunca manda id) -> usa o perfil direto, não reabre pendência", async () => {
+  // Cenário real de uma reconciliação manual (ex.: um GESTOR confirmando
+  // que "Andre Rodrigues Muniz" da Electrolux é o mesmo "ANDRE MUNIZ" já
+  // cadastrado): a sugestão fica com external_technician_id null, porque
+  // é isso que a Electrolux sempre manda. Sem o .is() correto (em vez de
+  // .eq() com null), essa confirmação nunca seria reencontrada.
+  const supabase = createMockSupabase({
+    profiles: [{ id: "tech-9", full_name: "Andre Rodrigues Muniz", active: true, role: "TECNICO" }],
+    external_technician_link_suggestions: [
+      {
+        origin: "ELECTROLUX",
+        external_technician_id: null,
+        suggested_profile_id: "tech-9",
+        status: "VINCULADO",
+      },
+    ],
+  });
+  const id = await matchOrCreateTechnician(supabase, { candidateName: "Andre Rodrigues Muniz" });
+  assertEquals(id, "tech-9");
+  const suggestions = supabase.tables.get("external_technician_link_suggestions") || [];
+  assertEquals(suggestions.length, 1); // não criou pendência nova por cima
+});
+
 Deno.test("nome bate com um perfil que o próprio sync já criou (origin=ELECTROLUX) -> reaproveita direto, sem pendência", async () => {
   const supabase = createMockSupabase({
     profiles: [{ id: "tech-8", full_name: "Farley Gaigher Rabelo", active: true, role: "TECNICO", origin: "ELECTROLUX" }],
