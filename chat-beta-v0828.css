@@ -1,0 +1,25 @@
+/* VoxAssist V0.8.13 — só estilos novos do Chat — Beta. O item de menu
+   (.nav[data-chat-beta-entry]) já herda o visual nativo do menu lateral,
+   sem precisar de classe própria. */
+.vx-chatbeta{padding:16px;display:flex;flex-direction:column;gap:16px;max-width:640px}
+.vx-chatbeta-head button#chatBetaBack{background:none;border:none;color:inherit;cursor:pointer;font-size:13px;opacity:.8}
+.vx-chatbeta-head h2{margin:4px 0 0}
+.vx-chatbeta-notice{background:#eaf6fb;color:#0c4a5e;border-radius:10px;padding:10px 14px;font-size:12px;line-height:1.5}
+.vx-chatbeta-card{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:16px;background:#fff;display:flex;flex-direction:column;gap:10px}
+.vx-chatbeta-card h3{margin:0}
+.vx-chatbeta-sub{margin:0;font-size:12px;color:#667}
+.vx-chatbeta-sub code{background:#f1f4f8;padding:1px 5px;border-radius:4px}
+.vx-chatbeta-result{border-radius:10px;padding:12px 14px;font-size:13px}
+.vx-chatbeta-result p{margin:4px 0 0;font-size:12px}
+.vx-chatbeta-loading{background:#f1f4f8;color:#445}
+.vx-chatbeta-status{display:flex;align-items:center;gap:10px}
+.vx-chatbeta-status b{font-size:14px}
+.vx-chatbeta-status span{font-size:11px;color:#667;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:999px;padding:1px 8px}
+.vx-chatbeta-ok{background:#e8f6ee;color:#0f5a30}
+.vx-chatbeta-err{background:#fde3e3;color:#7a1616}
+.vx-chatbeta-warn{background:#fff3e0;color:#7a4a00}
+.vx-chatbeta-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+.vx-chatbeta-fields div{background:rgba(255,255,255,.6);border-radius:8px;padding:6px 10px}
+.vx-chatbeta-fields span{display:block;font-size:10px;opacity:.75}
+.vx-chatbeta-fields b{font-size:13px}
+@media(max-width:640px){.vx-chatbeta-fields{grid-template-columns:1fr}}
