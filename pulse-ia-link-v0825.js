@@ -1,11 +1,23 @@
 /* VoxAssist Web V0.8.13 — atalho pro Pulse IA (app externo, GitHub/Supabase/deploy
    próprios) logo acima do card de Loja Virtual, mesmo padrão visual do bloco especial.
-   Abre em nova aba do navegador — sem iframe, sem SSO, sem sessão/cookies compartilhados
-   com o VoxAssist. Nenhum dado do Pulse IA (token, chave, segredo) existe neste arquivo,
-   só a URL pública do app. */
+   O clique passa pelo App Gateway (edge function app-gateway-launch): o front nunca
+   guarda/decide a URL de destino, só manda o slug 'pulse-ia' e abre o que o backend
+   validado devolver. Abre em nova aba do navegador — sem iframe, sem SSO, sem
+   sessão/cookies compartilhados com o VoxAssist. Nenhum dado do Pulse IA (token,
+   chave, segredo) existe neste arquivo. */
 (function(){
-  const PULSE_IA_URL = 'https://pulse-ia-eight.vercel.app';
   const previousShell = window.shell;
+
+  async function launchApp(slug){
+    const res = await fetch(CFG.url + '/functions/v1/app-gateway-launch', {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, origin: 'sidebar' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || 'launch_failed');
+    return data;
+  }
 
   function ensurePulseCard(){
     const sidebar = document.querySelector('.desktop-sidebar');
@@ -44,7 +56,18 @@
         </svg>
       </span>
       <span class="pulse-ia-copy"><strong>PULSE IA</strong><small>Redes sociais com apoio de IA</small></span>`;
-    btn.onclick = () => window.open(PULSE_IA_URL, '_blank', 'noopener');
+    btn.onclick = async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      try {
+        const data = await launchApp('pulse-ia');
+        window.open(data.url, '_blank', 'noopener');
+      } catch (e) {
+        toast?.('Não foi possível abrir o Pulse IA no momento.', 'err');
+      } finally {
+        btn.disabled = false;
+      }
+    };
 
     const storeCard = special.querySelector('.virtual-store-card');
     special.insertBefore(btn, storeCard || special.firstChild);
