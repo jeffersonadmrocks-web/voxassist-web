@@ -1,8 +1,8 @@
 /* VoxAssist V0.8.13 — só classes NOVAS da ponte Electrolux→Agenda.
    Reaproveita .vx-appt/.vx-card-actions/.vx-modal-* já definidas em
    field-agenda-complete-v0813.css — não redefine nada existente. */
-.vx-appt-external{border-left:3px solid #ff6a00}
-.vx-elx-badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.4px;color:#fff;background:#ff6a00;border-radius:999px;padding:2px 7px;margin-right:6px;vertical-align:middle}
+.vx-appt-external{border-left:3px solid #0c2340}
+.vx-elx-badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.4px;color:#fff;background:#0c2340;border-radius:999px;padding:2px 7px;margin-right:6px;vertical-align:middle}
 .vx-elx-filter-wrap{margin-left:auto}
 .vx-elx-filter-wrap select{border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 10px;font-size:12px;background:transparent;color:inherit}
 .vx-elx-filter-voxassist .vx-appt-external{display:none}
