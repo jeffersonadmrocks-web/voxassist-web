@@ -391,7 +391,7 @@ begin
     values (
       'AGENDA', new.id, new.service_order_id,
       'Atendimento externo' || case when v_os_number is not null then ' - OS ' || v_os_number else '' end,
-      new.technician_id, coalesce(new.created_by, new.updated_by), v_status, v_due, coalesce(new.important_alert, false)
+      new.technician_id, coalesce(new.created_by, new.updated_by), v_status, v_due, (new.important_alert is not null and new.important_alert <> '')
     )
     returning id into v_task_id;
     v_actor := coalesce(new.created_by, new.updated_by);
@@ -400,7 +400,7 @@ begin
     set status = v_status,
         responsible_user_id = new.technician_id,
         due_at = v_due,
-        attention_flag = coalesce(new.important_alert, false) or (new.status = 'NAO_REALIZADO'),
+        attention_flag = (new.important_alert is not null and new.important_alert <> '') or (new.status = 'NAO_REALIZADO'),
         reschedule_count = case when new.appointment_date is distinct from old.appointment_date then reschedule_count + 1 else reschedule_count end,
         updated_at = now()
     where appointment_id = new.id and origin = 'AGENDA'
