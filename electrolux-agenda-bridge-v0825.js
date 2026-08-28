@@ -29,7 +29,7 @@
     const order=E(a.external_order_number||a.external_id);
     const addr=[a.address_neighborhood,a.address_city].filter(Boolean).join(' · ');
     return `<article class="vx-appt vx-appt-external" data-electrolux-appt="${E(a.id)}" data-status="${E(a.status)}">
-      <div class="vx-appt-top"><span class="vx-elx-badge">ELECTROLUX</span><span class="vx-appt-os">OS ${order}</span></div>
+      <div class="vx-appt-top"><span class="vx-elx-badge">Electrolux</span><span class="vx-appt-os">OS ${order}</span></div>
       <div class="vx-appt-name">${E(a.client_name||'Cliente não informado')}</div>
       <small>${addr?E(addr):'Endereço não sincronizado ainda'}</small>
       <div class="vx-card-foot"><span class="vx-state-text">${E(statusLabel(a.status))}</span></div>
@@ -39,7 +39,7 @@
   function openLaneCard(a){
     const order=E(a.external_order_number||a.external_id);
     return `<article class="vx-appt vx-appt-external" data-electrolux-appt="${E(a.id)}" data-status="${E(a.status)}">
-      <div class="vx-appt-top"><span class="vx-elx-badge">ELECTROLUX</span><span class="vx-appt-os">OS ${order}</span></div>
+      <div class="vx-appt-top"><span class="vx-elx-badge">Electrolux</span><span class="vx-appt-os">OS ${order}</span></div>
       <div class="vx-appt-name">${E(a.client_name||'Cliente não informado')}</div>
       <small>${a.appointment_date?`${E(a.appointment_date)} ${a.period?'· '+E(a.period):''}`:'Sem data definida'}</small>
       <div class="vx-card-actions"><button data-elx-assign="${E(a.id)}">Atribuir técnico</button></div>
@@ -86,7 +86,7 @@
   function injectIntoListView(root,appointments,techNameById){
     const tbody=root.querySelector('.vx-agenda-list tbody');
     if(!tbody)return;
-    const rows=appointments.filter(a=>a.appointment_date).map(a=>`<tr data-electrolux-appt="${E(a.id)}"><td>${E(a.period||'—')}</td><td>—</td><td>${E(a.technician_id?(techNameById[a.technician_id]||'Técnico não encontrado'):'Não atribuído')}</td><td><span class="vx-elx-badge">ELECTROLUX</span> ${E(a.external_order_number||a.external_id)}</td><td>${E(a.client_name||'—')}</td><td>${E([a.address_neighborhood,a.address_city].filter(Boolean).join(', ')||'—')}</td><td>${E(statusLabel(a.status))}</td></tr>`).join('');
+    const rows=appointments.filter(a=>a.appointment_date).map(a=>`<tr data-electrolux-appt="${E(a.id)}"><td>${E(a.period||'—')}</td><td>—</td><td>${E(a.technician_id?(techNameById[a.technician_id]||'Técnico não encontrado'):'Não atribuído')}</td><td><span class="vx-elx-badge">Electrolux</span> ${E(a.external_order_number||a.external_id)}</td><td>${E(a.client_name||'—')}</td><td>${E([a.address_neighborhood,a.address_city].filter(Boolean).join(', ')||'—')}</td><td>${E(statusLabel(a.status))}</td></tr>`).join('');
     if(rows)tbody.insertAdjacentHTML('beforeend',rows);
   }
 
