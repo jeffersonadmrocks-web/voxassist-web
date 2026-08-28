@@ -13,7 +13,6 @@
   const E=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const ELX_SURVEY_LINK='https://wa.me/554140421506';
   const ELX_SURVEY_PHONE_DISPLAY='+55 41 4042-1506';
-  let npsScreenActive=false;
 
   function role(){return state.profile?.role||'GESTOR'}
   function isTechnician(){return role()==='TECNICO'}
@@ -63,10 +62,14 @@
     btn.onclick=openNpsScreen;
     controls.appendChild(btn);
   }
-  const observer=new MutationObserver(()=>{
-    if(npsScreenActive)return;
-    ensureEntryCard();
-  });
+  // ensureEntryCard() já é auto-protegida (só age quando .vx-agenda-controls
+  // existe, ou seja, só na tela de Agenda) — nunca precisou de uma flag
+  // externa pra saber "estou na tela do NPS". Achado real: a flag
+  // npsScreenActive travava em true pra sempre sempre que o usuário saía
+  // da tela do NPS por qualquer caminho que não fosse o botão "Voltar"
+  // (trocar de aba, trocar de empresa) — o botão nunca mais reaparecia
+  // depois disso, mesmo voltando pra Agenda de verdade.
+  const observer=new MutationObserver(ensureEntryCard);
   // Ancora em document.body, não #app: shell() (app.js) faz
   // document.body.innerHTML=... em login/logout/troca de empresa, o que
   // recria #app como um nó novo — um observer travado na referência
@@ -126,7 +129,6 @@
 
   /* ---------- navegação ---------- */
   async function openNpsScreen(){
-    npsScreenActive=true;
     const app=document.querySelector('#app');
     if(!app)return;
     app.innerHTML='<div class="vx-nps"><div class="vx-loading">Carregando Gestão de NPS…</div></div>';
@@ -138,7 +140,7 @@
       document.getElementById('npsBackErr').onclick=goBack;
     }
   }
-  function goBack(){npsScreenActive=false;window.render('agenda')}
+  function goBack(){window.render('agenda')}
 
   /* ---------- indicadores ---------- */
   function indicators(){

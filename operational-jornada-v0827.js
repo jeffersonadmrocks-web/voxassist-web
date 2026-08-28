@@ -10,7 +10,6 @@
    sozinho. */
 (function(){
   const E=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  let jornadaScreenActive=false;
 
   function uid(){return state.session?.user?.id||state.profile?.id||null}
   function isGestor(){return (state.profile?.role||'GESTOR')==='GESTOR'}
@@ -46,10 +45,13 @@
     btn.onclick=openJornadaScreen;
     controls.insertBefore(btn,controls.firstChild);
   }
-  const observer=new MutationObserver(()=>{
-    if(jornadaScreenActive)return;
-    ensureEntryCard();
-  });
+  // ensureEntryCard() já é auto-protegida (só age quando .vx-agenda-controls
+  // existe) — mesmo achado real documentado em electrolux-nps-v0826.js: uma
+  // flag jornadaScreenActive travava em true pra sempre quando o usuário
+  // saía da tela por qualquer caminho que não fosse "Voltar" (trocar de
+  // aba, trocar de empresa), escondendo o botão permanentemente mesmo de
+  // volta na Agenda real.
+  const observer=new MutationObserver(ensureEntryCard);
   // Mesmo motivo documentado em electrolux-nps-v0826.js: ancorar em #app
   // (em vez de document.body) faz o observer ficar órfão depois de
   // qualquer shell() (app.js) — login/logout/troca de empresa recriam
@@ -92,7 +94,6 @@
 
   /* ---------- navegação ---------- */
   async function openJornadaScreen(){
-    jornadaScreenActive=true;
     const app=document.querySelector('#app');
     if(!app)return;
     app.innerHTML='<div class="vx-jornada"><div class="vx-loading">Carregando Minha Jornada…</div></div>';
@@ -104,7 +105,7 @@
       document.getElementById('jornadaBackErr').onclick=goBack;
     }
   }
-  function goBack(){jornadaScreenActive=false;window.render('agenda')}
+  function goBack(){window.render('agenda')}
 
   /* ---------- render ---------- */
   function myTasks(){return cache.tasks.filter(t=>!['CONCLUIDA','CANCELADA'].includes(t.status))}
