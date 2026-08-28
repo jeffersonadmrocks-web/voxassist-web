@@ -11,6 +11,7 @@
     if(t==='clientes') return renderOperational('clientes','Clientes');
     if(t==='oficina-operacional') return renderOperational('oficina','Fila Técnica');
     if(t==='agenda-operacional') return renderOperational('agenda','Atividades');
+    if(t==='nps-electrolux') return window.render('nps-electrolux');
     if(t==='estoque-operacional') return renderOperational('estoque','Estoque / Peças');
     if(t==='financeiro-operacional') return renderOperational('financeiro','Financeiro');
     if(t==='testes-operacional') return renderOperational('testes','Testes de Funções');
@@ -53,6 +54,7 @@
   function atividades(){home('Atividades','Tarefas • Agenda • Casos • Compromissos',
     card('☑','MINHAS TAREFAS','Pendências atribuídas ao usuário com prioridade e prazo.','agenda-operacional','blue')+
     card('◷','AGENDA / COMPROMISSOS','Atendimentos externos, retiradas e compromissos.','agenda-operacional','purple')+
+    card('★','NPS ELECTROLUX','Clientes elegíveis, prioridades e acompanhamento da pesquisa.','nps-electrolux','teal')+
     card('!','CASOS DE ATENÇÃO','Pendências direcionadas e situações que exigem acompanhamento.','agenda-operacional','red')+
     card('↗','ATENDIMENTO EXTERNO','Agenda de técnicos de campo e observações de visita.','agenda-operacional','orange')+
     card('⌁','RETIRADAS / ENTREGAS','Acompanhe clientes previstos para retirada ou entrega.','pesquisa-os','green')+

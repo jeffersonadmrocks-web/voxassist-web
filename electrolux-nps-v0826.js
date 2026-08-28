@@ -23,8 +23,9 @@
 
   const CLASS_LABEL={ALTA:'Alta prioridade',MEDIA:'Prioridade média',ATENCAO:'Caso de atenção',NAO_ELEGIVEL:'Não elegível'};
   const SIT_LABEL={
-    AGUARDANDO_ELEGIBILIDADE:'Aguardando 6h',
-    ELEGIVEL_PARA_NPS:'Elegível para NPS',
+    AGUARDANDO_ENCERRAMENTO:'Concluído — aguardando encerramento',
+    AGUARDANDO_PRAZO_NPS:'Encerrado — aguardando 6 horas',
+    AGUARDANDO_CONTATO:'Elegível para NPS',
     PRIMEIRO_CONTATO_ENVIADO:'Primeiro contato enviado',
     AGUARDANDO_RESPOSTA:'Aguardando resposta',
     LEMBRETE_ENVIADO:'Lembrete enviado',
@@ -136,8 +137,8 @@
   /* ---------- indicadores ---------- */
   function indicators(){
     const cs=cache.cases;
-    const aguardando6h=cs.filter(c=>c.situacao==='AGUARDANDO_ELEGIBILIDADE').length;
-    const elegiveisAgora=cs.filter(c=>c.situacao==='ELEGIVEL_PARA_NPS').length;
+    const aguardando6h=cs.filter(c=>['AGUARDANDO_ENCERRAMENTO','AGUARDANDO_PRAZO_NPS'].includes(c.situacao)).length;
+    const elegiveisAgora=cs.filter(c=>c.situacao==='AGUARDANDO_CONTATO').length;
     const altaOportunidade=cs.filter(c=>c.classification==='ALTA'&&!['FINALIZADO','CASO_DE_ATENCAO'].includes(c.situacao)).length;
     const contatadosHoje=new Set(cache.contactsToday.map(ct=>ct.nps_case_id)).size;
     const aguardandoResposta=cs.filter(c=>CONTACTED_SITUACOES.includes(c.situacao)).length;
@@ -153,9 +154,9 @@
      entram nessa fila — vão pra tabela separada (seção 5 do pedido). */
   const CLASS_RANK={ALTA:0,MEDIA:1};
   function queueTier(c){
-    if(c.situacao==='ELEGIVEL_PARA_NPS')return 0;
+    if(c.situacao==='AGUARDANDO_CONTATO')return 0;
     if(CONTACTED_SITUACOES.includes(c.situacao))return 1;
-    if(c.situacao==='AGUARDANDO_ELEGIBILIDADE')return 2;
+    if(['AGUARDANDO_ENCERRAMENTO','AGUARDANDO_PRAZO_NPS'].includes(c.situacao))return 2;
     return 3;
   }
   function sortQueue(list){
@@ -207,7 +208,7 @@
 
   function tableHead(){
     return `<thead><tr>
-      <th>Cliente</th><th>OS Electrolux</th><th>Filial</th><th>Classificação</th><th>Situação</th><th>Concluído em</th><th>Visitas</th><th></th>
+      <th>Cliente</th><th>OS Electrolux</th><th>Filial</th><th>Classificação</th><th>Situação</th><th>Elegível em</th><th>Visitas</th><th></th>
     </tr></thead>`;
   }
 
@@ -270,8 +271,8 @@
     const lembrete=lastContactOfType(contacts,'LEMBRETE');
     const lastContact=contacts[0]||null;
     const recente=lastContact&&hoursSince(lastContact.sent_at)<24;
-    const aguardandoElegibilidade=c.situacao==='AGUARDANDO_ELEGIBILIDADE';
-    const eligibleAt=c.concluded_at?new Date(new Date(c.concluded_at).getTime()+6*36e5):null;
+    const aguardandoElegibilidade=['AGUARDANDO_ENCERRAMENTO','AGUARDANDO_PRAZO_NPS'].includes(c.situacao);
+    const eligibleAt=c.eligible_at?new Date(c.eligible_at):null;
 
     const bg=modal(`
       <h3>Atendimento Electrolux · OS ${E(ea.external_order_number||'—')}</h3>

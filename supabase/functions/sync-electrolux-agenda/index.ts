@@ -21,6 +21,9 @@ type ExistingRow = {
   appointment_date: string | null;
   period: string | null;
   concluded_at: string | null;
+  nps_missing_count: number;
+  nps_missing_since: string | null;
+  nps_closed_inferred_at: string | null;
 };
 
 Deno.serve(async () => {
@@ -38,7 +41,7 @@ Deno.serve(async () => {
 
     const { data: existingRowsRaw } = await supabase
       .from("external_appointments")
-      .select("id, external_id, status, technician_id, appointment_date, period, concluded_at")
+      .select("id, external_id, status, technician_id, appointment_date, period, concluded_at, nps_missing_count, nps_missing_since, nps_closed_inferred_at")
       .eq("origin", "ELECTROLUX");
     const existingRows = (existingRowsRaw || []) as ExistingRow[];
     const existingById = new Map(existingRows.map((r) => [r.external_id, r]));
@@ -58,6 +61,11 @@ Deno.serve(async () => {
         ...row,
         technician_id: technicianId ?? existing?.technician_id ?? null,
         concluded_at: resolveConcludedAt(row.status, existing?.concluded_at),
+        // Se voltou a aparecer, qualquer inferência de encerramento por
+        // ausência é cancelada. O histórico do atendimento é preservado.
+        nps_missing_count: 0,
+        nps_missing_since: null,
+        nps_closed_inferred_at: null,
       };
 
       const { data: saved, error } = await supabase
@@ -108,7 +116,33 @@ Deno.serve(async () => {
     // adivinhar (e nunca apaga o registro — só atualiza o status).
     for (const existing of existingRows) {
       if (seenIds.has(existing.external_id)) continue;
-      if (existing.status === "CANCELADO" || existing.status === "CONCLUIDO") continue;
+      if (existing.status === "CANCELADO") continue;
+
+      // Regra provisória de homologação do NPS: um atendimento que já foi
+      // visto como CONCLUIDO é considerado encerrado somente depois de
+      // desaparecer em duas sincronizações completas e bem-sucedidas.
+      if (existing.status === "CONCLUIDO") {
+        const now = new Date().toISOString();
+        const missingCount = Number(existing.nps_missing_count || 0) + 1;
+        const closedInferredAt = missingCount >= 2
+          ? (existing.nps_closed_inferred_at || now)
+          : null;
+
+        await supabase.from("external_appointments").update({
+          nps_missing_count: missingCount,
+          nps_missing_since: existing.nps_missing_since || now,
+          nps_closed_inferred_at: closedInferredAt,
+          last_synced_at: now,
+        }).eq("id", existing.id);
+
+        await supabase.from("external_appointment_history").insert({
+          external_appointment_id: existing.id,
+          action: missingCount >= 2 ? "NPS_ENCERRAMENTO_CONFIRMADO_POR_AUSENCIA" : "NPS_PRIMEIRA_AUSENCIA",
+          previous_data: { nps_missing_count: existing.nps_missing_count || 0 },
+          new_data: { nps_missing_count: missingCount, nps_closed_inferred_at: closedInferredAt },
+        });
+        continue;
+      }
 
       let resolvedStatus: "CANCELADO" | "CONCLUIDO" = "CONCLUIDO";
       try {
@@ -132,6 +166,9 @@ Deno.serve(async () => {
         .update({
           status: resolvedStatus,
           concluded_at: resolveConcludedAt(resolvedStatus, existing.concluded_at),
+          nps_missing_count: 0,
+          nps_missing_since: null,
+          nps_closed_inferred_at: null,
           last_synced_at: new Date().toISOString(),
         })
         .eq("id", existing.id);
