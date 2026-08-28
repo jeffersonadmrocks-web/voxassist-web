@@ -47,13 +47,27 @@ export async function matchOrCreateTechnician(
     const normalizedCandidate = normalizeName(candidateName);
     const { data: techs } = await supabase
       .from("profiles")
-      .select("id, full_name")
+      .select("id, full_name, origin")
       .eq("active", true)
       .or("role.eq.TECNICO,external_schedule_enabled.eq.true");
 
-    const matches = (techs || []).filter(
+    const allMatches = (techs || []).filter(
       (t: { full_name: string | null }) => normalizeName(t.full_name || "") === normalizedCandidate
     );
+
+    // Um perfil com origin='ELECTROLUX' e o mesmo nome exato só pode ter
+    // sido criado por este próprio módulo (createProvisionalTechnician) —
+    // sem isso, toda segunda ocorrência do mesmo técnico (mesmo dentro do
+    // mesmo ciclo de sync) reabriria uma "pendência" contra o registro que
+    // acabamos de criar, em vez de reaproveitá-lo. Reaproveita direto,
+    // sem passar pela dança de confirmação manual.
+    const selfCreatedMatch = allMatches.find((t: { origin?: string }) => t.origin === "ELECTROLUX");
+    if (selfCreatedMatch) return selfCreatedMatch.id;
+
+    // Candidatos que não fomos nós que criamos (perfil VoxAssist real, ou
+    // sem origin) continuam exigindo confirmação manual — nome parecido
+    // não é garantia de ser a mesma pessoa.
+    const matches = allMatches;
 
     if (matches.length >= 1) {
       // Uma ou mais linhas com o mesmo nome normalizado: nunca funde
@@ -110,29 +124,32 @@ async function createProvisionalTechnician(
     registration_status: "PENDENTE_COMPLEMENTACAO",
   };
 
-  // Tenta inserir direto — funciona se profiles.id não tiver FK obrigatória
-  // pra auth.users.
-  const direct = await supabase.from("profiles").insert(baseRow).select("id").single();
-  if (!direct.error) return direct.data.id;
+  // profiles.id não tem default (confirmado no schema real: sem
+  // gen_random_uuid()) e tem FK obrigatória pra auth.users — sempre cria
+  // um usuário dormente primeiro (sem senha, sem e-mail confirmado, sem
+  // convite enviado — por construção ninguém consegue logar nele) só pra
+  // satisfazer a constraint.
+  //
+  // O projeto tem uma trigger em auth.users (on_auth_user_created_voxassist
+  // -> handle_new_auth_user(), não versionada neste repo) que já cria a
+  // linha em profiles sozinha assim que o usuário é criado — com
+  // role='ATENDENTE', origin='VOXASSIST' e full_name a partir do e-mail,
+  // nada disso serve pro técnico provisório. Por isso aqui é sempre
+  // UPDATE, nunca INSERT (INSERT bate na PK que a trigger já ocupou).
+  if (!("auth" in supabase)) return null;
+  const authClient = (supabase as unknown as { auth: { admin: { createUser: Function } } }).auth;
+  const { data: authUser, error: authError } = await authClient.admin.createUser({
+    email: `electrolux.provisorio.${crypto.randomUUID()}@voxassist.invalid`,
+    email_confirm: false,
+  });
+  if (authError || !authUser?.user) return null;
 
-  // Fallback: a FK exige um auth.users real. Cria um usuário dormente —
-  // sem senha, sem e-mail confirmado, sem convite enviado — só pra
-  // satisfazer a constraint. Por construção, ninguém consegue logar nele.
-  if (direct.error.code === "23503" && "auth" in supabase) {
-    const authClient = (supabase as unknown as { auth: { admin: { createUser: Function } } }).auth;
-    const { data: authUser, error: authError } = await authClient.admin.createUser({
-      email: `electrolux.provisorio.${crypto.randomUUID()}@voxassist.invalid`,
-      email_confirm: false,
-    });
-    if (authError || !authUser?.user) return null;
-
-    const withId = await supabase
-      .from("profiles")
-      .insert({ id: authUser.user.id, ...baseRow })
-      .select("id")
-      .single();
-    if (!withId.error) return withId.data.id;
-  }
-
-  return null;
+  const { data, error } = await supabase
+    .from("profiles")
+    .update(baseRow)
+    .eq("id", authUser.user.id)
+    .select("id")
+    .single();
+  if (error || !data) return null;
+  return data.id;
 }

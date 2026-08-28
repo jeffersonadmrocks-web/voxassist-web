@@ -70,8 +70,8 @@ Deno.test("nenhum candidato -> cria técnico provisório com registration_status
   assertEquals("invited_at" in created, false);
 });
 
-Deno.test("fallback: profiles.id exige auth.users (FK) -> cria usuário dormente sem senha antes do provisório", async () => {
-  const supabase = createMockSupabase({ profiles: [], forceProfilesInsertFkViolationOnce: true });
+Deno.test("todo técnico provisório passa por um usuário auth dormente (profiles.id não tem default e exige FK real)", async () => {
+  const supabase = createMockSupabase({ profiles: [] });
   const id = await matchOrCreateTechnician(supabase, {
     externalTechnicianId: "ELX-T6",
     candidateName: "Rita Fallback",
@@ -81,6 +81,19 @@ Deno.test("fallback: profiles.id exige auth.users (FK) -> cria usuário dormente
   assertEquals(profiles.length, 1);
   assertEquals(profiles[0].id, "dormant-auth-user-1");
   assertEquals(profiles[0].registration_status, "PENDENTE_COMPLEMENTACAO");
+});
+
+Deno.test("candidateName sem externalTechnicianId (caso real da Electrolux hoje) também cria técnico provisório", async () => {
+  // A Electrolux manda technicianName mas nunca um id externo — este é o
+  // caso que estava quebrado em produção: nenhum candidato correspondia
+  // (perfis novos) e a criação do provisório falhava calada.
+  const supabase = createMockSupabase({ profiles: [] });
+  const id = await matchOrCreateTechnician(supabase, { candidateName: "Farley Gaigher Rabelo" });
+  assertNotEquals(id, null);
+  const profiles = supabase.tables.get("profiles") || [];
+  const created = profiles.find((p) => p.id === id)!;
+  assertEquals(created.full_name, "Farley Gaigher Rabelo");
+  assertEquals(created.electrolux_external_id, null);
 });
 
 Deno.test("sugestão já SEPARADA -> não fica reabrindo pendência, resolve criando provisório", async () => {
@@ -102,6 +115,16 @@ Deno.test("sugestão já SEPARADA -> não fica reabrindo pendência, resolve cri
   // continua só a original SEPARADO, não recriou PENDENTE
   assertEquals(suggestions.length, 1);
   assertEquals(suggestions[0].status, "SEPARADO");
+});
+
+Deno.test("nome bate com um perfil que o próprio sync já criou (origin=ELECTROLUX) -> reaproveita direto, sem pendência", async () => {
+  const supabase = createMockSupabase({
+    profiles: [{ id: "tech-8", full_name: "Farley Gaigher Rabelo", active: true, role: "TECNICO", origin: "ELECTROLUX" }],
+  });
+  const id = await matchOrCreateTechnician(supabase, { candidateName: "Farley Gaigher Rabelo" });
+  assertEquals(id, "tech-8");
+  const suggestions = supabase.tables.get("external_technician_link_suggestions") || [];
+  assertEquals(suggestions.length, 0); // não cria pendência pro próprio registro que já criamos
 });
 
 Deno.test("sem id externo e sem nome -> não faz nada, volta null", async () => {

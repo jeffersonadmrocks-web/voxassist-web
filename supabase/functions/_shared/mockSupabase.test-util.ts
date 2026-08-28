@@ -1,7 +1,15 @@
 // Cliente Supabase falso, só pra testar a lógica de vínculo/criação de
 // técnico com dados fictícios em memória — sem banco real. Cobre só as
 // operações que technicianMatch.ts realmente usa (from/select/eq/or/
-// maybeSingle/single/insert/upsert + auth.admin.createUser).
+// maybeSingle/single/update/upsert + auth.admin.createUser).
+//
+// auth.admin.createUser() aqui também simula a trigger real do projeto
+// (on_auth_user_created_voxassist -> handle_new_auth_user(), não
+// versionada neste repo) que cria sozinha uma linha em profiles assim
+// que o usuário é criado, com role='ATENDENTE' e origin='VOXASSIST' —
+// foi exatamente essa linha pré-existente que fazia o INSERT original
+// falhar por PK duplicada em produção. Sem essa simulação, o mock não
+// teria pego esse bug (like não pegou o anterior).
 type Row = Record<string, unknown>;
 
 function matchesEq(row: Row, col: string, val: unknown): boolean {
@@ -21,11 +29,11 @@ class QueryBuilder {
   private filters: Array<{ col: string; val: unknown }> = [];
   private orExpr: string | null = null;
   private insertPayload: Row | null = null;
+  private updatePayload: Row | null = null;
 
   constructor(
     private tables: Map<string, Row[]>,
-    private table: string,
-    private fkViolationBudget?: { remaining: number }
+    private table: string
   ) {}
 
   select(_cols?: string) {
@@ -61,11 +69,25 @@ class QueryBuilder {
     return this;
   }
 
+  update(row: Row) {
+    this.updatePayload = { ...row };
+    return this;
+  }
+
   async single() {
-    if (this.fkViolationBudget && this.fkViolationBudget.remaining > 0) {
-      this.fkViolationBudget.remaining--;
-      return { data: null, error: { code: "23503", message: "fk violation (fixture)" } };
+    if (this.updatePayload) {
+      const arr = this.tables.get(this.table) || [];
+      const idx = arr.findIndex((r) => this.filters.every((f) => matchesEq(r, f.col, f.val)));
+      if (idx < 0) {
+        // PostgREST: update que não bate em nenhuma linha + .single() =
+        // erro (0 rows), não sucesso silencioso.
+        return { data: null, error: { code: "PGRST116", message: "no rows updated (fixture)" } };
+      }
+      arr[idx] = { ...arr[idx], ...this.updatePayload };
+      this.tables.set(this.table, arr);
+      return { data: { id: arr[idx].id }, error: null };
     }
+
     const arr = this.tables.get(this.table) || [];
     const row = { id: `generated-${arr.length + 1}`, ...(this.insertPayload || {}) };
     arr.push(row);
@@ -101,7 +123,6 @@ class QueryBuilder {
 export function createMockSupabase(seed?: {
   profiles?: Row[];
   external_technician_link_suggestions?: Row[];
-  forceProfilesInsertFkViolationOnce?: boolean;
 }) {
   const tables = new Map<string, Row[]>();
   tables.set("profiles", seed?.profiles ? [...seed.profiles] : []);
@@ -111,20 +132,31 @@ export function createMockSupabase(seed?: {
   );
 
   let dormantUserCounter = 0;
-  // Compartilhado entre TODAS as QueryBuilder de "profiles" (inclusive a
-  // tentativa de retry depois do fallback) — consumido de verdade só uma vez.
-  const fkViolationBudget = { remaining: seed?.forceProfilesInsertFkViolationOnce ? 1 : 0 };
 
   return {
     tables,
     from(table: string) {
-      return new QueryBuilder(tables, table, table === "profiles" ? fkViolationBudget : undefined);
+      return new QueryBuilder(tables, table);
     },
     auth: {
       admin: {
-        async createUser(_input: { email: string; email_confirm: boolean }) {
+        async createUser(input: { email: string; email_confirm: boolean }) {
           dormantUserCounter++;
-          return { data: { user: { id: `dormant-auth-user-${dormantUserCounter}` } }, error: null };
+          const id = `dormant-auth-user-${dormantUserCounter}`;
+          // Mesma trigger do banco real: cria a linha em profiles sozinha,
+          // com campos "genéricos" que o chamador precisa corrigir depois
+          // via UPDATE (nunca INSERT — a PK já está ocupada).
+          const arr = tables.get("profiles") || [];
+          arr.push({
+            id,
+            full_name: input.email.split("@")[0].toUpperCase(),
+            role: "ATENDENTE",
+            origin: "VOXASSIST",
+            registration_status: "ATIVO",
+            active: true,
+          });
+          tables.set("profiles", arr);
+          return { data: { user: { id } }, error: null };
         },
       },
     },

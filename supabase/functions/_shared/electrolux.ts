@@ -13,6 +13,13 @@ export type ElectroluxOrder = {
   internalStatus: string;
   createdDate: string;
   appointmentDate: string | null;
+  // Campo real de agendamento no retorno atual da API (confirmado
+  // inspecionando a resposta crua em 2026-08-28: appointmentDate está
+  // sempre null hoje; firstQueuedDateTime é quem carrega a data/hora do
+  // atendimento — 166/217 SVOs tinham esse campo preenchido contra 0 com
+  // appointmentDate). Mantemos os dois: se a Electrolux voltar a mandar
+  // appointmentDate no futuro, ele continua tendo prioridade.
+  firstQueuedDateTime: string | null;
   updatedAt: string;
   technicianName?: string | null;
   technicianExternalId?: string | null;
@@ -23,12 +30,19 @@ const CLOSED_STATUSES: Record<string, "CANCELADO" | "CONCLUIDO"> = {
   Encerrada: "CONCLUIDO",
 };
 
+// Data/hora efetiva de agendamento — ver comentário em firstQueuedDateTime.
+export function effectiveScheduledAt(
+  order: Pick<ElectroluxOrder, "appointmentDate" | "firstQueuedDateTime">
+): string | null {
+  return order.appointmentDate || order.firstQueuedDateTime || null;
+}
+
 export function deriveStatus(
-  order: Pick<ElectroluxOrder, "status" | "internalStatus" | "appointmentDate">
+  order: Pick<ElectroluxOrder, "status" | "internalStatus" | "appointmentDate" | "firstQueuedDateTime">
 ): "ABERTO" | "AGENDADO" | "CONCLUIDO" | "CANCELADO" {
   if (CLOSED_STATUSES[order.status]) return CLOSED_STATUSES[order.status];
   if (order.internalStatus === "FECHADA") return "CONCLUIDO";
-  if (order.appointmentDate) return "AGENDADO";
+  if (effectiveScheduledAt(order)) return "AGENDADO";
   return "ABERTO";
 }
 
@@ -41,12 +55,13 @@ export function derivePeriod(appointmentDate: string | null): "MANHA" | "TARDE" 
 }
 
 export function mapOrderToRow(order: ElectroluxOrder) {
+  const scheduledAt = effectiveScheduledAt(order);
   return {
     origin: "ELECTROLUX" as const,
     external_id: order.id,
     external_order_number: order.svoNumber,
-    appointment_date: order.appointmentDate ? order.appointmentDate.slice(0, 10) : null,
-    period: derivePeriod(order.appointmentDate),
+    appointment_date: scheduledAt ? scheduledAt.slice(0, 10) : null,
+    period: derivePeriod(scheduledAt),
     status: deriveStatus(order),
     external_status_raw: order.status,
     external_internal_status: order.internalStatus,
