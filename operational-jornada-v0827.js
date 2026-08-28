@@ -50,7 +50,11 @@
     if(jornadaScreenActive)return;
     ensureEntryCard();
   });
-  observer.observe(document.querySelector('#app')||document.body,{childList:true,subtree:true});
+  // Mesmo motivo documentado em electrolux-nps-v0826.js: ancorar em #app
+  // (em vez de document.body) faz o observer ficar órfão depois de
+  // qualquer shell() (app.js) — login/logout/troca de empresa recriam
+  // #app como nó novo. document.body nunca é substituído inteiro.
+  observer.observe(document.body,{childList:true,subtree:true});
 
   /* ---------- dados ---------- */
   let cache={tasks:[],alerts:[],lastEventAt:null,concludedToday:0,pendingCount:0,overdueCount:0,punctualityPct:null};

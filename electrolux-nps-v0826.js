@@ -67,7 +67,13 @@
     if(npsScreenActive)return;
     ensureEntryCard();
   });
-  observer.observe(document.querySelector('#app')||document.body,{childList:true,subtree:true});
+  // Ancora em document.body, não #app: shell() (app.js) faz
+  // document.body.innerHTML=... em login/logout/troca de empresa, o que
+  // recria #app como um nó novo — um observer travado na referência
+  // antiga do #app fica órfão (nunca mais dispara) depois disso. Achado
+  // real: era exatamente por isso que o botão "sumia" depois de um
+  // tempo — o body em si nunca é substituído, só observá-lo direto.
+  observer.observe(document.body,{childList:true,subtree:true});
 
   /* ---------- dados ---------- */
   let cache={cases:[],contactsToday:[],filter:{filial:'',situacao:'',classification:'',search:''}};

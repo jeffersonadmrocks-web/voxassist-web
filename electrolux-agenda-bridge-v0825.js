@@ -261,6 +261,11 @@
     if(!root.querySelector('.vx-agenda-board, .vx-agenda-list'))return;
     scheduleInject();
   });
-  const appEl=document.querySelector('#app')||document.body;
-  observer.observe(appEl,{childList:true,subtree:true});
+  // Ancora em document.body, não #app: shell() (app.js) faz
+  // document.body.innerHTML=... em login/logout/troca de empresa, o que
+  // recria #app como um nó novo — um observer travado na referência
+  // antiga do #app fica órfão (nunca mais dispara) depois disso. O body
+  // em si nunca é substituído, só seu conteúdo, então observá-lo direto
+  // sobrevive a qualquer re-render do shell.
+  observer.observe(document.body,{childList:true,subtree:true});
 })();
