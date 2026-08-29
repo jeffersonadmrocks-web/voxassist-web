@@ -1,38 +1,11 @@
-/* Dashboard Core V1 compatibility + scoped API timeout guard */
+/* VoxAssist V0.8.12 — Pirâmides Dinâmicas de Envelhecimento */
 (function(){
-  'use strict';
-  if(!window.__VX_DASHBOARD_CORE_V1__) return;
-  if(window.__VX_DASHBOARD_SCOPED_TIMEOUT__) return;
-  window.__VX_DASHBOARD_SCOPED_TIMEOUT__ = true;
-
-  const originalRender = window.renderDashboard;
-  if(typeof originalRender !== 'function') return;
-
-  window.renderDashboard = function(){
-    const originalApi = window.api;
-    if(typeof originalApi !== 'function') return originalRender.apply(this, arguments);
-
-    window.api = function(path){
-      const args = arguments;
-      const ctx = this;
-      const timeoutMs = 7000;
-      let timer;
-      const timeout = new Promise((_, reject)=>{
-        timer = setTimeout(()=>reject(new Error('DASHBOARD_API_TIMEOUT: '+String(path||''))), timeoutMs);
-      });
-      return Promise.race([
-        Promise.resolve().then(()=>originalApi.apply(ctx, args)),
-        timeout
-      ]).finally(()=>clearTimeout(timer));
-    };
-
-    try {
-      const result = originalRender.apply(this, arguments);
-      return result;
-    } finally {
-      /* Important: restore immediately. Dashboard queries are already started synchronously,
-         so authentication and all other VoxAssist modules keep using the untouched API. */
-      window.api = originalApi;
-    }
-  };
+ const norm=s=>String(s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replaceAll('_',' ').replace(/\s+/g,' ').trim();
+ const days=v=>Math.max(0,Math.floor((Date.now()-new Date(v||Date.now()).getTime())/86400000));
+ const bands=[{l:'ATÉ 3 DIAS',min:0,max:3},{l:'4 A 7 DIAS',min:4,max:7},{l:'8 A 15 DIAS',min:8,max:15},{l:'+15 DIAS',min:16,max:99999}];
+ function statuses(){const role=norm(state?.profile?.role||'GESTOR');if(role==='TECNICO')return [['AGUARDANDO ANÁLISE','AGUARDANDO ANALISE'],['AGUARDANDO CONSERTO','AGUARDANDO CONSERTO'],['PRONTOS','PRONTO PARA ENTREGA']];if(role==='ATENDENTE')return [['AGUARDANDO APROVAÇÃO','AGUARDANDO APROVACAO'],['PRONTOS PARA ENTREGA','PRONTO PARA ENTREGA'],['ANÁLISES PENDENTES','AGUARDANDO ANALISE']];return [['AGUARDANDO ANÁLISE','AGUARDANDO ANALISE'],['AGUARDANDO APROVAÇÃO','AGUARDANDO APROVACAO'],['AGUARDANDO CONSERTO','AGUARDANDO CONSERTO']];}
+ function scoped(){let o=state?.orders||[];if(norm(state?.profile?.role)==='TECNICO'&&state?.profile?.id)o=o.filter(x=>x.technician_id===state.profile.id);return o;}
+ function pyramid(title,status){const rows=scoped().filter(o=>norm(o.status)===norm(status));const total=rows.length;const counts=bands.map(b=>rows.filter(o=>{const d=days(o.opened_at);return d>=b.min&&d<=b.max}).length);const max=Math.max(1,...counts);return `<div class="vx-pyr-card"><div class="vx-pyr-title"><b>${title}</b><span>Total ${total}</span></div><div class="vx-pyramid">${bands.slice().reverse().map((b,ri)=>{const i=bands.length-1-ri,c=counts[i],pct=total?Math.round(c/total*100):0,w=c?Math.max(34,Math.round(c/max*100)):24;return `<button class="vx-pyr-band b${i}" style="width:${w}%" data-pyr-status="${status}" data-pyr-min="${b.min}" data-pyr-max="${b.max}" title="${b.l}: ${c} OS (${pct}%)"><span>${b.l}</span><strong>${c} OS</strong><small>${pct}%</small></button>`}).join('')}</div></div>`;}
+ function inject(){const app=document.querySelector('#app');if(!app||state?.view!=='dashboard'||document.querySelector('#vxPyramids'))return;const section=document.createElement('section');section.id='vxPyramids';section.className='vx-pyr-section';section.innerHTML=`<div class="vx-pyr-head"><div><small>GESTÃO VISUAL</small><h2>Pirâmide Dinâmica de Envelhecimento</h2></div><span>Quanto maior o volume, maior a faixa</span></div><div class="vx-pyr-grid">${statuses().map(x=>pyramid(x[0],x[1])).join('')}</div>`;const first=app.firstElementChild;if(first)first.insertAdjacentElement('afterend',section);else app.appendChild(section);section.onclick=e=>{const b=e.target.closest('[data-pyr-status]');if(!b)return;const st=norm(b.dataset.pyrStatus),min=+b.dataset.pyrMin,max=+b.dataset.pyrMax;const ids=scoped().filter(o=>norm(o.status)===st&&days(o.opened_at)>=min&&days(o.opened_at)<=max).map(o=>o.id);if(typeof window.vxDashOpenOrders==='function')window.vxDashOpenOrders(ids,`${b.dataset.pyrStatus} • ${b.querySelector('span').textContent}`);else render('os');};}
+ const base=window.renderDashboard;if(typeof base==='function')window.renderDashboard=async function(){const r=await base.apply(this,arguments);inject();return r;};
 })();
