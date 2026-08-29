@@ -1,0 +1,1 @@
+Draft PR summary: Dashboard Core V1 + Radar + filtros + drill-down + segurança Supabase + Descoberta do Dia local. Não publicar antes da homologação.
