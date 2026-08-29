@@ -1,1 +1,0 @@
-Branch pronta para abrir PR em modo draft. Merge bloqueado até homologação.
