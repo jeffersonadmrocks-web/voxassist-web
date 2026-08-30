@@ -14,6 +14,24 @@ Cada responsabilidade deve possuir exatamente uma implementação ativa:
 - Financeiro: 1 controlador canônico.
 - Electrolux, NPS, Minha Jornada, Chat e integrações: módulos isolados, sem sobrescrever funções centrais.
 
+## Dashboard Canônico V1 — ATIVO NA BRANCH DE HOMOLOGAÇÃO
+- JS canônico: `runtime/dashboard-canonical-v1.js`.
+- CSS canônico: `runtime/dashboard-canonical-v1.css`.
+- O `index.html` desta branch deixou de carregar os antigos renderizadores e patches visuais do Dashboard.
+- Os arquivos antigos permanecem no Git como histórico, mas não participam do runtime desta branch.
+- A rota existente `final-routing-v0812.js` direciona a Visão Geral para a única `window.renderDashboard` ativa.
+
+### Garantias do Dashboard V1
+- sem `MutationObserver` para reescrever o Dashboard;
+- sem percentuais de produtividade inventados;
+- sem metas ou bônus fictícios;
+- sem percentuais fictícios de meios de pagamento;
+- consultas com timeout individual de 7 segundos;
+- falha de uma fonte mostra aviso de dados parciais e não congela a tela inteira;
+- drill-down para OS ativas, etapas, atrasos, urgências e OS sem técnico;
+- resumo financeiro baseado em pagamentos registrados e valores das OS prontas;
+- Descoberta do Dia local, rotativa e sem envio de dados operacionais.
+
 ## Proibido no runtime
 - carregar duas versões do mesmo módulo;
 - patches que redefinem funções globais de outro módulo;
@@ -37,8 +55,8 @@ Dashboard, Radar, Descoberta do Dia, Pulse IA, Electrolux, NPS e demais módulos
 
 ## Sequência da consolidação
 P0: inventário de scripts carregados e funções globais duplicadas.
-P1: shell/navegação/abas.
-P2: Dashboard e inteligência operacional.
+P1: Dashboard Canônico V1 — implementado na branch, aguardando homologação do Preview.
+P2: shell/navegação/abas — próxima consolidação após o gate do Dashboard.
 P3: OS e atendimento.
 P4: Agenda/Oficina/Estoque/Peças.
 P5: Financeiro/Relatórios.
