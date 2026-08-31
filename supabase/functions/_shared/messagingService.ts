@@ -17,19 +17,54 @@ export function normalizePhone(raw: string | null | undefined): string | null {
   return `55${withoutCountryCode}`;
 }
 
-// Achado real (2026-08-31, primeiro teste com WhatsApp de verdade): o
-// webhook de recebimento usava normalizePhone (validação estrita de
-// celular BR) pra identificar quem mandou a mensagem, e rejeitava com
-// 400 remetentes que não batiam esse formato exato — mesmo o gateway já
-// tendo validado o JID como um contato individual válido. Validar
-// "dá pra ENVIAR pra esse número" (normalizePhone) é uma pergunta
-// diferente de "quem é esse remetente" (aqui) — a segunda precisa ser
-// mais permissiva, só o suficiente pra funcionar como identificador
-// estável da conversa. Mesmo critério de dígitos (8-15) já usado no
-// extractPhoneNumber do gateway (repo voxassist-whatsapp-gateway).
-export function sanitizeInboundContactId(raw: string | null | undefined): string | null {
-  const digits = String(raw ?? "").replace(/\D/g, "");
+// Achado real #1 (2026-08-31, primeiro teste com WhatsApp de verdade):
+// normalizePhone (validação estrita de celular BR) usada pra
+// identificar o remetente rejeitava com 400 remetentes que não batiam
+// esse formato exato — mesmo o gateway já tendo validado o JID como um
+// contato individual válido.
+//
+// Achado real #2 (mesmo dia, teste seguinte): mesmo relaxando pra só
+// dígitos, o remetente identificado era um LID (identidade de
+// privacidade do WhatsApp, domínio @lid) — não um telefone — e estava
+// sendo gravado como se fosse um. Um JID só é um telefone de verdade
+// quando o domínio é @s.whatsapp.net; @lid nunca vira customer_phone,
+// mesmo tendo o formato de dígitos parecido.
+const PN_DOMAIN = "s.whatsapp.net";
+const LID_DOMAIN = "lid";
+
+function jidDigitsForDomain(jid: string | null | undefined, domain: string): string | null {
+  if (!jid) return null;
+  const [localPart, jidDomain] = jid.split("@");
+  if (jidDomain !== domain) return null;
+  const digits = localPart.split(":")[0];
   return /^\d{8,15}$/.test(digits) ? digits : null;
+}
+
+export type InboundIdentityInput = {
+  remoteJid: string;
+  senderPn?: string | null;
+  senderLid?: string | null;
+};
+export type InboundIdentity = {
+  remoteJid: string;
+  customerPhone: string | null;
+  senderLid: string | null;
+};
+
+// remoteJid é sempre o identificador estável da conversa (telefone ou
+// LID). customerPhone só é preenchido quando existe um telefone real
+// de verdade: direto (remoteJid já é @s.whatsapp.net) ou resolvido pelo
+// próprio Baileys (senderPn, quando remoteJid é @lid mas o número já é
+// conhecido). Nunca promove dígitos de um @lid a customerPhone.
+export function resolveInboundIdentity(input: InboundIdentityInput): InboundIdentity | null {
+  const remotePhone = jidDigitsForDomain(input.remoteJid, PN_DOMAIN);
+  const remoteLid = jidDigitsForDomain(input.remoteJid, LID_DOMAIN);
+  if (!remotePhone && !remoteLid) return null;
+
+  const customerPhone = remotePhone ?? jidDigitsForDomain(input.senderPn, PN_DOMAIN);
+  const senderLid = remoteLid ?? jidDigitsForDomain(input.senderLid, LID_DOMAIN);
+
+  return { remoteJid: input.remoteJid, customerPhone, senderLid };
 }
 
 export type OutboundValidationInput = { body: string | null | undefined; connectionStatus: string };

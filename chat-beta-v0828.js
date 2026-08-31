@@ -333,7 +333,7 @@
       </div>
       <div class="vx-conn-summary-list">
         ${rows.length?rows.map(c=>`<div class="vx-conn-summary-row vx-conv-row" data-conv="${E(c.id)}" style="cursor:pointer">
-          <div><b>${E(c.customer_name||c.customer_phone)}</b><br><span class="vx-chatbeta-sub">${E(c.last_message_preview||'Sem mensagens ainda')}</span></div>
+          <div><b>${E(c.customer_name||c.customer_phone||'Contato WhatsApp')}</b><br><span class="vx-chatbeta-sub">${E(c.last_message_preview||'Sem mensagens ainda')}</span></div>
           <span class="vx-conn-badge vx-conn-badge-neutral">${E(c.status)}</span>
         </div>`).join(''):'<p class="vx-chatbeta-sub">Nenhuma conversa ainda — envie uma mensagem para o número da conexão de teste a partir de outro celular.</p>'}
       </div>
@@ -359,7 +359,7 @@
     if(!app)return;
     app.innerHTML=`<div class="vx-chatbeta vx-chatbeta-wide">
       <div class="vx-chatbeta-head">
-        <div><button id="conversaBack">← Voltar</button><h2>${E(conv?.customer_name||conv?.customer_phone||'Conversa')}</h2><small>${E(conv?.customer_phone||'')}</small></div>
+        <div><button id="conversaBack">← Voltar</button><h2>${E(conv?.customer_name||conv?.customer_phone||'Contato WhatsApp')}</h2><small>${E(conv?.customer_phone||'Telefone ainda não identificado')}</small></div>
       </div>
       <div id="vxMsgList" class="vx-msg-list"><div class="vx-chatbeta-loading">Carregando mensagens…</div></div>
       <form id="vxMsgForm" class="vx-conn-new-form">

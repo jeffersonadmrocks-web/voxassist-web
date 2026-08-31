@@ -25,8 +25,8 @@ const TIMEOUT_MS = 15000;
 type ConversationRow = {
   id: string;
   connection_id: string | null;
-  customer_phone: string;
-  whatsapp_jid: string | null;
+  customer_phone: string | null;
+  remote_jid: string | null;
   chat_connections: { status: string } | null;
 };
 
@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
 
     const { data: conversation } = await userClient
       .from("chat_conversations")
-      .select("id, connection_id, customer_phone, whatsapp_jid, chat_connections(status)")
+      .select("id, connection_id, customer_phone, remote_jid, chat_connections(status)")
       .eq("id", conversationId)
       .maybeSingle<ConversationRow>();
     if (!conversation) {
@@ -96,17 +96,22 @@ Deno.serve(async (req) => {
       return respond({ ok: false, error: "gateway_not_configured" }, 503);
     }
 
+    // Achado real (2026-08-31): customer_phone pode ser um LID (não um
+    // telefone) ou pode estar vazio (LID ainda não resolvido) --
+    // reconstruir "customer_phone@s.whatsapp.net" às cegas manda pro
+    // domínio errado ou pra um destino inexistente. remote_jid guarda o
+    // JID original exato (com o domínio real, telefone ou LID) e é
+    // sempre o destino usado; customer_phone só entra como fallback pra
+    // conversas de antes desta correção que ainda não têm remote_jid.
+    const to = conversation.remote_jid || (conversation.customer_phone ? `${conversation.customer_phone}@s.whatsapp.net` : null);
+    if (!to) {
+      return respond({ ok: false, error: "conversation_without_target" }, 400);
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     let gatewayResult: { externalMessageId?: string };
     try {
-      // Achado real (2026-08-31): customer_phone às vezes é um LID (não
-      // um telefone) -- reconstruir "customer_phone@s.whatsapp.net" pra
-      // esse caso manda pro domínio errado. whatsapp_jid guarda o JID
-      // original exato (com o domínio real) e é sempre preferido;
-      // customer_phone só entra como fallback pra conversas antigas que
-      // ainda não têm o JID salvo.
-      const to = conversation.whatsapp_jid || conversation.customer_phone;
       const gatewayRes = await fetch(`${GATEWAY_URL}/connections/${conversation.connection_id}/send`, {
         method: "POST",
         headers: { Authorization: `Bearer ${GATEWAY_SERVICE_TOKEN}`, "Content-Type": "application/json" },

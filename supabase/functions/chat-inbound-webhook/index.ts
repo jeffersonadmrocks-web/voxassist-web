@@ -12,15 +12,21 @@
 // único parcial (chat_messages_dedup_20260831.sql) — uma reentrega do
 // Baileys vira só um 23505 tratado como sucesso silencioso, nunca duas
 // linhas.
+//
+// Achado real (2026-08-31): remoteJid é o único identificador SEMPRE
+// presente e estável de uma conversa (telefone ou LID) -- reaproveitar/
+// criar conversa é decidido por ele, nunca mais por customer_phone
+// (que agora pode ser nulo, quando o remetente é um LID ainda não
+// resolvido). Ver chat_conversations_lid_model_20260831.sql.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { buildMessagePreview, decideConversationTarget, nextStatusOnInboundMessage, sanitizeInboundContactId } from "../_shared/messagingService.ts";
+import { buildMessagePreview, decideConversationTarget, nextStatusOnInboundMessage, resolveInboundIdentity } from "../_shared/messagingService.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GATEWAY_SERVICE_TOKEN = Deno.env.get("CHAT_GATEWAY_SERVICE_TOKEN");
 
 type ConnectionRow = { id: string; company_id: string };
-type ConversationRow = { id: string; status: string; whatsapp_jid: string | null };
+type ConversationRow = { id: string; status: string };
 
 function json(body: Record<string, unknown>, status: number) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -38,19 +44,15 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const connectionId = typeof body?.connectionId === "string" ? body.connectionId.trim() : "";
-    const rawFrom = typeof body?.from === "string" ? body.from : "";
-    // JID bruto do WhatsApp, com o domínio original (@s.whatsapp.net ou
-    // @lid) -- preservado à parte de `phone` (só dígitos) porque um LID
-    // não pode ser reconstruído a partir dos dígitos: precisa do JID
-    // exato pra o envio de resposta funcionar (ver chat_conversations_
-    // jid_20260831.sql).
-    const rawJid = typeof body?.jid === "string" && body.jid ? body.jid : null;
+    const remoteJid = typeof body?.remoteJid === "string" ? body.remoteJid : "";
+    const senderPn = typeof body?.senderPn === "string" && body.senderPn ? body.senderPn : null;
+    const senderLid = typeof body?.senderLid === "string" && body.senderLid ? body.senderLid : null;
     const text = typeof body?.body === "string" ? body.body : "";
     const externalMessageId = typeof body?.externalMessageId === "string" && body.externalMessageId ? body.externalMessageId : null;
     if (!connectionId) return json({ ok: false, error: "missing_connection_id" }, 400);
 
-    const phone = sanitizeInboundContactId(rawFrom);
-    if (!phone) return json({ ok: false, error: "invalid_phone" }, 400);
+    const identity = resolveInboundIdentity({ remoteJid, senderPn, senderLid });
+    if (!identity) return json({ ok: false, error: "invalid_sender" }, 400);
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -59,9 +61,9 @@ Deno.serve(async (req) => {
 
     const { data: existingRows } = await admin
       .from("chat_conversations")
-      .select("id, status, whatsapp_jid")
+      .select("id, status")
       .eq("connection_id", connectionId)
-      .eq("customer_phone", phone)
+      .eq("remote_jid", identity.remoteJid)
       .order("created_at", { ascending: false });
     const target = decideConversationTarget((existingRows ?? []) as ConversationRow[]);
 
@@ -76,10 +78,11 @@ Deno.serve(async (req) => {
           status: nextStatus,
           last_message_at: new Date().toISOString(),
           last_message_preview: buildMessagePreview(text),
-          // Backfill: conversas criadas antes da migration do JID (ou
-          // que por algum motivo ainda não têm) recebem o valor assim
-          // que uma mensagem nova chega -- nunca sobrescreve com null.
-          ...(rawJid ? { whatsapp_jid: rawJid } : {}),
+          // Sempre grava a resolução mais recente (não só quando nula
+          // antes) -- é assim que corrige um customer_phone gravado
+          // errado (LID) em mensagens anteriores a esta correção.
+          customer_phone: identity.customerPhone,
+          sender_lid: identity.senderLid,
         })
         .eq("id", conversationId);
     } else {
@@ -88,8 +91,9 @@ Deno.serve(async (req) => {
         .insert({
           company_id: connection.company_id,
           connection_id: connectionId,
-          customer_phone: phone,
-          whatsapp_jid: rawJid,
+          remote_jid: identity.remoteJid,
+          customer_phone: identity.customerPhone,
+          sender_lid: identity.senderLid,
           status: "ABERTA",
           last_message_at: new Date().toISOString(),
           last_message_preview: buildMessagePreview(text),
