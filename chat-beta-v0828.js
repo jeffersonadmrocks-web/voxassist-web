@@ -46,6 +46,22 @@
   function goBack(){window.render('dashboard')}
 
   /* ---------- gateway (via edge function, nunca direto) ---------- */
+  /* ---------- erros do chat-gateway-proxy ----------
+     Achado real (2026-08-31): "unauthorized" podia significar duas
+     coisas bem diferentes — sessão VoxAssist inválida OU o gateway
+     recusando o token de serviço (problema de configuração, não do
+     usuário). A function agora diferencia (gateway_unauthorized é um
+     código próprio) — o frontend traduz cada um pra uma mensagem que
+     não confunde as duas causas. */
+  const GATEWAY_ERROR_MESSAGES={
+    unauthorized:'Sua sessão expirou — faça login novamente.',
+    forbidden:'Este recurso é restrito a usuários GESTOR.',
+    no_active_company:'Nenhuma empresa ativa selecionada.',
+    gateway_not_configured:'A integração com o gateway ainda não foi configurada.',
+    gateway_unauthorized:'O gateway recusou a autenticação de serviço — não é um problema da sua sessão, é uma configuração pendente (contate o suporte técnico).',
+    gateway_unreachable:'Não foi possível contatar o gateway no momento.',
+    connection_not_found:'Conexão não encontrada.',
+  };
   async function gatewayAction(action,payload){
     const res=await fetch(CFG.url+'/functions/v1/chat-gateway-proxy',{
       method:'POST',headers:authHeaders(),
@@ -53,7 +69,7 @@
     });
     const data=await res.json().catch(()=>null);
     if(!data)throw new Error('Resposta inesperada da function.');
-    if(!res.ok||data.ok===false)throw new Error(data.error||'Falha na operação.');
+    if(!res.ok||data.ok===false)throw new Error(GATEWAY_ERROR_MESSAGES[data.error]||data.error||'Falha na operação.');
     return data;
   }
 

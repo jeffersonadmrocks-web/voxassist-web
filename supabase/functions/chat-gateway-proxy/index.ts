@@ -5,11 +5,11 @@
 // pro navegador) e decide, com JWT + role reais, se o usuário pode
 // mexer na conexão pedida.
 //
-// Restrito a GESTOR (mesmo critério de "administra conexões" das RLS
-// de chat_connections). company_id nunca vem do body — sempre da
-// active_company_id do perfil autenticado, então um usuário não
-// consegue criar/mexer numa conexão de outra empresa nem forjando o
-// payload.
+// Autorização via user_companies (papel na EMPRESA ATIVA), não mais
+// profiles.role global — hotfix aplicado direto em produção durante a
+// homologação (2026-08-31), preservado aqui integralmente: baixado do
+// Supabase com `supabase functions download` antes de qualquer edição,
+// pra este arquivo nunca regredir pra versão antiga do git.
 //
 // CORS: mesmo achado real do digisac-test — toda resposta (incluindo
 // OPTIONS e erros) precisa dos headers de CORS.
@@ -24,7 +24,8 @@ const GATEWAY_URL = Deno.env.get("CHAT_GATEWAY_URL");
 const GATEWAY_SERVICE_TOKEN = Deno.env.get("CHAT_GATEWAY_SERVICE_TOKEN");
 const TIMEOUT_MS = 15000;
 
-type Profile = { role: string | null; active_company_id: string | null };
+type Profile = { active_company_id: string | null };
+type UserCompany = { role: string; active: boolean };
 type ConnectionRow = { id: string; company_id: string };
 
 Deno.serve(async (req) => {
@@ -59,13 +60,22 @@ Deno.serve(async (req) => {
     }
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-    const { data: profile } = await admin.from("profiles").select("role, active_company_id").eq("id", user.id).maybeSingle<Profile>();
-
-    if (profile?.role !== "GESTOR") {
-      return respond({ ok: false, error: "forbidden" }, 403);
-    }
-    if (!profile.active_company_id) {
+    const { data: profile } = await admin.from("profiles").select("active_company_id").eq("id", user.id).maybeSingle<Profile>();
+    if (!profile?.active_company_id) {
       return respond({ ok: false, error: "no_active_company" }, 400);
+    }
+
+    // Papel na EMPRESA ATIVA (user_companies), não profiles.role global —
+    // um usuário pode ter papéis diferentes em empresas diferentes.
+    const { data: membership } = await admin
+      .from("user_companies")
+      .select("role,active")
+      .eq("user_id", user.id)
+      .eq("company_id", profile.active_company_id)
+      .eq("active", true)
+      .maybeSingle<UserCompany>();
+    if (membership?.role !== "GESTOR") {
+      return respond({ ok: false, error: "forbidden" }, 403);
     }
 
     if (!GATEWAY_URL || !GATEWAY_SERVICE_TOKEN) {
@@ -104,6 +114,24 @@ Deno.serve(async (req) => {
         signal: controller.signal,
       });
       const data = await gatewayRes.json().catch(() => null);
+
+      // Achado real (2026-08-31): até aqui, o usuário VoxAssist JÁ foi
+      // validado (JWT + GESTOR na empresa ativa) — um 401 a partir deste
+      // ponto só pode ser o GATEWAY recusando o CHAT_GATEWAY_SERVICE_TOKEN
+      // (não bate com o GATEWAY_SERVICE_TOKEN configurado no Railway).
+      // Sem esta checagem, esse 401 saía pro frontend com o mesmo
+      // {error:"unauthorized"} do 401 de sessão do VoxAssist (linhas
+      // acima) — indistinguível pra quem estivesse diagnosticando. Nunca
+      // confundir "usuário não autorizado" com "proxy não autorizado
+      // pelo gateway" de novo.
+      if (gatewayRes.status === 401) {
+        console.error("[chat-gateway-proxy] gateway recusou o token de serviço — CHAT_GATEWAY_SERVICE_TOKEN (Supabase) não bate com GATEWAY_SERVICE_TOKEN (Railway).");
+        return respond(
+          { ok: false, error: "gateway_unauthorized", message: "O gateway recusou a autenticação de serviço — não é um problema da sua sessão VoxAssist." },
+          502
+        );
+      }
+
       return respond({ ok: gatewayRes.ok, ...(data ?? {}) }, gatewayRes.status);
     } catch {
       return respond({ ok: false, error: "gateway_unreachable" }, 502);
