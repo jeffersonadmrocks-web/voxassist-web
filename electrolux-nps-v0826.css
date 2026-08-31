@@ -13,8 +13,10 @@
 .vx-nps-ind-warn b{color:#e87a00}
 .vx-nps-section-title{margin:4px 0 -6px;font-size:14px}
 .vx-nps-section-warn{color:#e87a00}
-.vx-nps-filters{display:flex;gap:8px;flex-wrap:wrap}
+.vx-nps-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .vx-nps-filters input,.vx-nps-filters select{border:1px solid rgba(0,0,0,.15);border-radius:8px;padding:7px 10px;font-size:13px}
+.vx-nps-period{display:flex;align-items:center;gap:6px;font-size:12px;color:#667}
+.vx-nps-period input{border:1px solid rgba(0,0,0,.15);border-radius:8px;padding:6px 8px;font-size:13px}
 .vx-nps-table-wrap{overflow-x:auto}
 .vx-nps-table{width:100%;border-collapse:collapse;font-size:13px}
 .vx-nps-table th,.vx-nps-table td{padding:8px 10px;border-bottom:1px solid rgba(0,0,0,.06);text-align:left;white-space:nowrap}

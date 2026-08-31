@@ -1,34 +1,247 @@
+// Cria casos de Gestão de NPS a partir de external_appointments já
+// concluídas (sincronizadas pela sync-electrolux-agenda). Não bate na API
+// da Electrolux de novo — reaproveita a mesma fonte já testada, evitando
+// carga extra e um segundo poller. Roda a cada 15-30min (menos urgente que
+// a agenda). Nunca escreve em appointments/service_orders/external_appointments.
+//
+// Achado real (2026-08-31, verificação direta no banco): a function usava
+// AGUARDANDO_ELEGIBILIDADE/ELEGIVEL_PARA_NPS, valores que NUNCA existiram
+// na constraint de nps_cases.situacao -- todo insert cuja classificação não
+// fosse NAO_ELEGIVEL violava a constraint e falhava. O bug ficava invisível
+// porque a falha do insert só dava `continue`, sem contar nem logar nada, e
+// o sync run seguinte era gravado como success=true do mesmo jeito. Restultado
+// em produção: 17 atendimentos Electrolux concluídos, 1 caso criado (o único
+// cuja classificação era NAO_ELEGIVEL -> situacao=FINALIZADO, que é um valor
+// válido), 16 perdidos silenciosamente a cada execução (238 execuções "com
+// sucesso", todas com orders_processed=0 nos ciclos mais recentes).
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { classifyCase, isValidBrazilianPhone, estimateVisitCount, daysBetween, FOLLOW_UP_WINDOW_DAYS } from "../_shared/npsClassification.ts";
-const db=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-const SIX_HOURS=21600000;
-type A={id:string;external_created_at:string|null;concluded_at:string|null;client_phone:string|null;nps_closed_inferred_at:string|null};
-type C={id:string;external_appointment_id:string;situacao:string;eligible_at:string|null};
-type H={previous_data:{appointment_date?:string|null};new_data:{appointment_date?:string|null}};
-Deno.serve(async()=>{
- const started_at=new Date().toISOString(),now=new Date();let processed=0;
- try{
-  const {data:rc,error:ce}=await db.from("nps_cases").select("id,external_appointment_id,situacao,eligible_at");if(ce)throw ce;
-  const cases=new Map(((rc||[]) as C[]).map(c=>[c.external_appointment_id,c]));
-  const {data:contacts,error:contactsError}=await db.from("nps_contacts").select("nps_case_id");if(contactsError)throw contactsError;
-  const contacted=new Set((contacts||[]).map((c:{nps_case_id:string})=>c.nps_case_id));
-  const {data:ra,error:ae}=await db.from("external_appointments").select("id,external_created_at,concluded_at,client_phone,nps_closed_inferred_at").eq("origin","ELECTROLUX").eq("status","CONCLUIDO");if(ae)throw ae;
-  for(const a of (ra||[]) as A[]){if(!a.concluded_at)continue;
-   const current=cases.get(a.id),inferred=a.nps_closed_inferred_at,eligible=inferred?new Date(new Date(inferred).getTime()+SIX_HOURS).toISOString():null;
-   const waiting=inferred?(eligible&&new Date(eligible)<=now?"AGUARDANDO_CONTATO":"AGUARDANDO_PRAZO_NPS"):"AGUARDANDO_ENCERRAMENTO";
-   if(!current){
-    const {data:h}=await db.from("external_appointment_history").select("previous_data,new_data").eq("external_appointment_id",a.id);
-    const visits=estimateVisitCount((h||[]) as H[]),valid=isValidBrazilianPhone(a.client_phone);
-    const classification=classifyCase({daysToConclude:a.external_created_at?daysBetween(a.external_created_at,a.concluded_at):null,visitCount:visits,hasComplaint:false,hasReturnVisit:false,hasReopening:false,whatsappValid:valid,daysSinceConclusion:daysBetween(a.concluded_at,now.toISOString())});
-    const situacao=classification==="NAO_ELEGIVEL"?"FINALIZADO":waiting;
-    const {data:s,error}=await db.from("nps_cases").insert({external_appointment_id:a.id,classification,situacao,opened_at:a.external_created_at,concluded_at:a.concluded_at,visit_count:visits,whatsapp_valid:valid,survey_deadline_at:new Date(new Date(a.concluded_at).getTime()+2592000000).toISOString(),closure_inferred_at:inferred,eligible_at:eligible,closure_detection_method:inferred?"ENCERRAMENTO_POR_AUSENCIA":null,closed_reason:classification==="NAO_ELEGIVEL"?"Não elegível na inclusão automática":null}).select("id").single();
-    if(error||!s)continue;processed++;
-    await db.from("nps_case_history").insert({nps_case_id:s.id,action:"CRIADO_AUTOMATICAMENTE",previous_data:{},new_data:{classification,situacao,visit_count:visits,whatsapp_valid:valid,eligible_at:eligible},changed_by:null});
-   }else if(!contacted.has(current.id)&&(current.situacao!==waiting||current.eligible_at!==eligible)){
-    const {error}=await db.from("nps_cases").update({situacao:waiting,closure_inferred_at:inferred,eligible_at:eligible,closure_detection_method:inferred?"ENCERRAMENTO_POR_AUSENCIA":null}).eq("id",current.id);if(!error)processed++;
-   }
+import {
+  classifyCase,
+  isValidBrazilianPhone,
+  estimateVisitCount,
+  daysBetween,
+  isEligibleForContact,
+  ELIGIBILITY_GATE_HOURS,
+  FOLLOW_UP_WINDOW_DAYS,
+} from "../_shared/npsClassification.ts";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+type ConcludedAppointment = {
+  id: string;
+  external_created_at: string | null;
+  concluded_at: string | null;
+  client_phone: string | null;
+  technician_id: string | null;
+  nps_closed_inferred_at: string | null;
+};
+
+type HistoryRow = {
+  previous_data: { appointment_date?: string | null };
+  new_data: { appointment_date?: string | null };
+};
+
+type FailedDetail = { external_appointment_id: string; error: string };
+
+// Normaliza o nome da loja (com ou sem acento/caixa) pro enum aceito por
+// nps_cases.filial ('VITORIA' | 'SERRA'). Nunca inventa um valor -- se não
+// bater com nenhum dos dois, devolve null.
+function normalizeFilial(name: string | null | undefined): "VITORIA" | "SERRA" | null {
+  if (!name) return null;
+  const diacritics = new RegExp("[̀-ͯ]", "g");
+  const upper = name.normalize("NFD").replace(diacritics, "").toUpperCase().trim();
+  if (upper === "VITORIA") return "VITORIA";
+  if (upper === "SERRA") return "SERRA";
+  return null;
+}
+
+// Achado real: technician_id -> profiles.store_id existe no schema, mas
+// nenhum técnico Electrolux tem store_id preenchido hoje (confirmado
+// direto no banco) -- filial fica null pra todo mundo até esse cadastro
+// existir. Não é um bug desta function: assim que o dado passar a existir,
+// resolve sozinho, sem precisar mexer aqui de novo.
+// deno-lint-ignore no-explicit-any
+async function resolveFilial(
+  supabase: any,
+  technicianId: string | null
+): Promise<"VITORIA" | "SERRA" | null> {
+  if (!technicianId) return null;
+  const { data: profile } = await supabase.from("profiles").select("store_id").eq("id", technicianId).maybeSingle();
+  const storeId = (profile as { store_id: string | null } | null)?.store_id;
+  if (!storeId) return null;
+  const { data: store } = await supabase.from("stores").select("name").eq("id", storeId).maybeSingle();
+  return normalizeFilial((store as { name: string | null } | null)?.name);
+}
+
+Deno.serve(async () => {
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+  const startedAt = new Date().toISOString();
+  let processed = 0;
+  let skipped = 0;
+  let failed = 0;
+  let promoted = 0;
+  let promoteFailed = 0;
+  const failedDetails: FailedDetail[] = [];
+
+  try {
+    const { data: existingCaseLinks } = await supabase.from("nps_cases").select("external_appointment_id");
+    const alreadyTracked = new Set((existingCaseLinks || []).map((c: { external_appointment_id: string }) => c.external_appointment_id));
+
+    const { data: concludedRaw, error: fetchError } = await supabase
+      .from("external_appointments")
+      .select("id, external_created_at, concluded_at, client_phone, technician_id, nps_closed_inferred_at")
+      .eq("origin", "ELECTROLUX")
+      .eq("status", "CONCLUIDO");
+    if (fetchError) throw new Error(fetchError.message);
+
+    const concluded = (concludedRaw || []) as ConcludedAppointment[];
+    const pending = concluded.filter((c) => !alreadyTracked.has(c.id) && c.concluded_at);
+    skipped = concluded.length - pending.length;
+
+    for (const appt of pending) {
+      const { data: historyRaw } = await supabase
+        .from("external_appointment_history")
+        .select("previous_data, new_data")
+        .eq("external_appointment_id", appt.id);
+      const visitCount = estimateVisitCount((historyRaw || []) as HistoryRow[]);
+
+      const whatsappValid = isValidBrazilianPhone(appt.client_phone);
+      const daysToConclude = appt.external_created_at ? daysBetween(appt.external_created_at, appt.concluded_at!) : null;
+      const daysSinceConclusion = daysBetween(appt.concluded_at!, new Date().toISOString());
+
+      const classification = classifyCase({
+        daysToConclude,
+        visitCount,
+        hasComplaint: false,
+        hasReturnVisit: false,
+        hasReopening: false,
+        whatsappValid,
+        daysSinceConclusion,
+      });
+
+      // Mapeamento corrigido -- os únicos 3 valores de situacao usados na
+      // criação automática, todos aceitos pela constraint real:
+      //   NAO_ELEGIVEL                          -> FINALIZADO
+      //   elegível, ainda dentro da carência 6h -> AGUARDANDO_PRAZO_NPS
+      //   elegível, carência já cumprida         -> AGUARDANDO_CONTATO
+      const now = new Date();
+      const situacao =
+        classification === "NAO_ELEGIVEL"
+          ? "FINALIZADO"
+          : isEligibleForContact(appt.concluded_at!, now)
+          ? "AGUARDANDO_CONTATO"
+          : "AGUARDANDO_PRAZO_NPS";
+
+      const eligibleAt = new Date(new Date(appt.concluded_at!).getTime() + ELIGIBILITY_GATE_HOURS * 60 * 60 * 1000).toISOString();
+      const surveyDeadline = new Date(new Date(appt.concluded_at!).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const filial = await resolveFilial(supabase, appt.technician_id);
+
+      const { data: saved, error } = await supabase
+        .from("nps_cases")
+        .insert({
+          external_appointment_id: appt.id,
+          filial,
+          classification,
+          situacao,
+          opened_at: appt.external_created_at,
+          concluded_at: appt.concluded_at,
+          eligible_at: eligibleAt,
+          visit_count: visitCount,
+          whatsapp_valid: whatsappValid,
+          survey_deadline_at: surveyDeadline,
+          closed_reason: classification === "NAO_ELEGIVEL" ? "Não elegível na inclusão automática" : null,
+          // closure_inferred_at só é preenchido quando o próprio
+          // encerramento em external_appointments foi inferido por
+          // ausência na origem (nps_closed_inferred_at, já mantido pela
+          // sync-electrolux-agenda) -- nunca setado por suposição aqui.
+          closure_inferred_at: appt.nps_closed_inferred_at,
+          closure_detection_method: appt.nps_closed_inferred_at ? "ENCERRAMENTO_POR_AUSENCIA" : null,
+        })
+        .select("id")
+        .single();
+
+      if (error || !saved) {
+        failed++;
+        failedDetails.push({
+          external_appointment_id: appt.id,
+          error: error?.code ? `${error.code}: ${error.message}` : "insert_failed_sem_detalhe",
+        });
+        continue;
+      }
+      processed++;
+
+      await supabase.from("nps_case_history").insert({
+        nps_case_id: saved.id,
+        action: "CRIADO_AUTOMATICAMENTE",
+        previous_data: {},
+        new_data: { classification, situacao, visit_count: visitCount, whatsapp_valid: whatsappValid, filial },
+        changed_by: null,
+      });
+    }
+
+    // Promove de AGUARDANDO_PRAZO_NPS pra AGUARDANDO_CONTATO quem já
+    // cumpriu a carência das 6h desde concluded_at. Roda a cada ciclo
+    // (15-30min), granularidade de sobra pra uma carência medida em horas.
+    const { data: waitingRaw } = await supabase
+      .from("nps_cases")
+      .select("id, concluded_at, situacao")
+      .eq("situacao", "AGUARDANDO_PRAZO_NPS");
+    const waiting = (waitingRaw || []) as Array<{ id: string; concluded_at: string | null; situacao: string }>;
+    const promoteNow = new Date();
+
+    for (const c of waiting) {
+      if (!c.concluded_at || !isEligibleForContact(c.concluded_at, promoteNow)) continue;
+      const { error: promoteError } = await supabase
+        .from("nps_cases")
+        .update({ situacao: "AGUARDANDO_CONTATO", updated_at: promoteNow.toISOString() })
+        .eq("id", c.id);
+      if (promoteError) { promoteFailed++; continue; }
+      promoted++;
+      await supabase.from("nps_case_history").insert({
+        nps_case_id: c.id,
+        action: "AGUARDANDO_CONTATO",
+        previous_data: { situacao: c.situacao },
+        new_data: { situacao: "AGUARDANDO_CONTATO" },
+        changed_by: null,
+      });
+    }
+
+    const hadUnexpectedFailure = failed > 0 || promoteFailed > 0;
+    await supabase.from("integration_sync_runs").insert({
+      origin: "ELECTROLUX_NPS",
+      started_at: startedAt,
+      finished_at: new Date().toISOString(),
+      success: !hadUnexpectedFailure,
+      orders_processed: processed,
+      promoted_count: promoted,
+      skipped_count: skipped,
+      failed_count: failed + promoteFailed,
+      // Nunca inclui telefone/nome/endereço -- só o id do agendamento
+      // (uuid) e o código/mensagem técnica do erro de persistência.
+      failed_details: failedDetails.length ? failedDetails : null,
+    });
+
+    return new Response(
+      JSON.stringify({ ok: true, processed, promoted, skipped, failed, promoteFailed, followUpWindowDays: FOLLOW_UP_WINDOW_DAYS }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  } catch (e) {
+    await supabase.from("integration_sync_runs").insert({
+      origin: "ELECTROLUX_NPS",
+      started_at: startedAt,
+      finished_at: new Date().toISOString(),
+      success: false,
+      orders_processed: processed,
+      promoted_count: promoted,
+      skipped_count: skipped,
+      failed_count: failed + promoteFailed,
+      failed_details: failedDetails.length ? failedDetails : null,
+      error_message: e instanceof Error ? e.message : String(e),
+    });
+    return new Response(JSON.stringify({ ok: false, error: "nps_sync_failed" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-  await db.from("integration_sync_runs").insert({origin:"ELECTROLUX_NPS",started_at,finished_at:new Date().toISOString(),success:true,orders_processed:processed});
-  return Response.json({ok:true,processed,eligibilityDelayHours:6,followUpWindowDays:FOLLOW_UP_WINDOW_DAYS});
- }catch(e){await db.from("integration_sync_runs").insert({origin:"ELECTROLUX_NPS",started_at,finished_at:new Date().toISOString(),success:false,orders_processed:processed,error_message:e instanceof Error?e.message:String(e)});return Response.json({ok:false,error:"nps_sync_failed"},{status:500});}
 });

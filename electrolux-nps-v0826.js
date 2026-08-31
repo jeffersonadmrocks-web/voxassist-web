@@ -79,10 +79,20 @@
   observer.observe(document.body,{childList:true,subtree:true});
 
   /* ---------- dados ---------- */
-  let cache={cases:[],contactsToday:[],filter:{filial:'',situacao:'',classification:'',search:''}};
+  let cache={cases:[],contactsToday:[],profileNames:{},filter:{filial:'',situacao:'',classification:'',search:'',technicianId:'',responsibleId:'',dateFrom:'',dateTo:''}};
 
   async function loadCases(){
     cache.cases=await api('nps_cases?select=*,external_appointments(external_order_number,client_name,client_phone,technician_id,appointment_date)&order=created_at.desc');
+  }
+  // Resolve nomes de técnico e responsável de uma vez só (não um fetch por
+  // linha) -- alimenta tanto os selects de filtro quanto a exibição.
+  async function loadNames(){
+    const techIds=cache.cases.map(c=>c.external_appointments?.technician_id).filter(Boolean);
+    const respIds=cache.cases.map(c=>c.responsible_user_id).filter(Boolean);
+    const allIds=[...new Set([...techIds,...respIds])];
+    cache.profileNames=allIds.length
+      ? Object.fromEntries((await api(`profiles?select=id,full_name&id=in.(${allIds.join(',')})`).catch(()=>[])).map(r=>[r.id,r.full_name]))
+      : {};
   }
   async function loadContactsToday(){
     const startOfDay=new Date();startOfDay.setHours(0,0,0,0);
@@ -134,6 +144,7 @@
     app.innerHTML='<div class="vx-nps"><div class="vx-loading">Carregando Gestão de NPS…</div></div>';
     try{
       await Promise.all([loadCases(),loadContactsToday()]);
+      await loadNames();
       renderNpsScreen();
     }catch(e){
       app.innerHTML=`<div class="vx-nps"><div class="card error-card"><h3>Falha ao carregar Gestão de NPS</h3><p>${E(e.message||'Erro desconhecido.')}</p><button id="npsBackErr">← Voltar</button></div></div>`;
@@ -186,6 +197,10 @@
       if(f.filial&&c.filial!==f.filial)return false;
       if(f.situacao&&c.situacao!==f.situacao)return false;
       if(f.classification&&c.classification!==f.classification)return false;
+      if(f.technicianId&&c.external_appointments?.technician_id!==f.technicianId)return false;
+      if(f.responsibleId&&c.responsible_user_id!==f.responsibleId)return false;
+      if(f.dateFrom&&(!c.concluded_at||c.concluded_at<f.dateFrom))return false;
+      if(f.dateTo&&(!c.concluded_at||c.concluded_at>f.dateTo+'T23:59:59'))return false;
       if(f.search){
         const q=f.search.toLowerCase();
         const ea=c.external_appointments||{};
@@ -202,10 +217,14 @@
 
   function row(c){
     const ea=c.external_appointments||{};
+    const techName=cache.profileNames[ea.technician_id]||'—';
+    const respName=cache.profileNames[c.responsible_user_id]||'Sem responsável';
     return `<tr data-case="${E(c.id)}">
       <td>${E(ea.client_name||'—')}</td>
       <td>${E(ea.external_order_number||'—')}</td>
       <td>${E(c.filial?FILIAL_LABEL[c.filial]:'A definir')}</td>
+      <td>${E(techName)}</td>
+      <td>${E(respName)}</td>
       <td>${E(CLASS_LABEL[c.classification]||c.classification)}</td>
       <td>${E(SIT_LABEL[c.situacao]||c.situacao)}</td>
       <td>${c.concluded_at?new Date(c.concluded_at).toLocaleDateString('pt-BR'):'—'}</td>
@@ -214,9 +233,18 @@
     </tr>`;
   }
 
+  function technicianOptions(){
+    const ids=[...new Set(cache.cases.map(c=>c.external_appointments?.technician_id).filter(Boolean))];
+    return ids.map(id=>`<option value="${E(id)}" ${cache.filter.technicianId===id?'selected':''}>${E(cache.profileNames[id]||'—')}</option>`).join('');
+  }
+  function responsibleOptions(){
+    const ids=[...new Set(cache.cases.map(c=>c.responsible_user_id).filter(Boolean))];
+    return ids.map(id=>`<option value="${E(id)}" ${cache.filter.responsibleId===id?'selected':''}>${E(cache.profileNames[id]||'—')}</option>`).join('');
+  }
+
   function tableHead(){
     return `<thead><tr>
-      <th>Cliente</th><th>OS Electrolux</th><th>Filial</th><th>Classificação</th><th>Situação</th><th>Elegível em</th><th>Visitas</th><th></th>
+      <th>Cliente</th><th>OS Electrolux</th><th>Filial</th><th>Técnico</th><th>Responsável</th><th>Classificação</th><th>Situação</th><th>Elegível em</th><th>Visitas</th><th></th>
     </tr></thead>`;
   }
 
@@ -240,20 +268,27 @@
       <div class="vx-nps-filters">
         <input id="npsSearch" placeholder="Buscar cliente ou OS Electrolux…" value="${E(cache.filter.search)}">
         <select id="npsFilial"><option value="">Filial: todas</option><option value="VITORIA" ${cache.filter.filial==='VITORIA'?'selected':''}>Vitória</option><option value="SERRA" ${cache.filter.filial==='SERRA'?'selected':''}>Serra</option></select>
+        <select id="npsTecnico"><option value="">Técnico: todos</option>${technicianOptions()}</select>
+        <select id="npsResponsavel"><option value="">Responsável: todos</option>${responsibleOptions()}</select>
         <select id="npsClassificacao"><option value="">Classificação: todas</option>${Object.entries(CLASS_LABEL).map(([k,l])=>`<option value="${k}" ${cache.filter.classification===k?'selected':''}>${l}</option>`).join('')}</select>
         <select id="npsSituacao"><option value="">Situação: todas</option>${Object.entries(SIT_LABEL).map(([k,l])=>`<option value="${k}" ${cache.filter.situacao===k?'selected':''}>${l}</option>`).join('')}</select>
+        <label class="vx-nps-period">Período<input type="date" id="npsDateFrom" value="${E(cache.filter.dateFrom)}"> a <input type="date" id="npsDateTo" value="${E(cache.filter.dateTo)}"></label>
       </div>
       <h3 class="vx-nps-section-title">Fila de NPS</h3>
-      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${queue.map(row).join('')||'<tr><td colspan="8">Nenhum caso na fila com esse filtro.</td></tr>'}</tbody></table></div>
+      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${queue.map(row).join('')||'<tr><td colspan="10">Nenhum caso na fila com esse filtro.</td></tr>'}</tbody></table></div>
       <h3 class="vx-nps-section-title vx-nps-section-warn">Casos de atenção</h3>
-      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${attention.map(row).join('')||'<tr><td colspan="8">Nenhum caso de atenção com esse filtro.</td></tr>'}</tbody></table></div>
+      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${attention.map(row).join('')||'<tr><td colspan="10">Nenhum caso de atenção com esse filtro.</td></tr>'}</tbody></table></div>
     </div>`;
 
     document.getElementById('npsBack').onclick=goBack;
     document.getElementById('npsSearch').oninput=e=>{cache.filter.search=e.target.value;renderNpsScreen()};
     document.getElementById('npsFilial').onchange=e=>{cache.filter.filial=e.target.value;renderNpsScreen()};
+    document.getElementById('npsTecnico').onchange=e=>{cache.filter.technicianId=e.target.value;renderNpsScreen()};
+    document.getElementById('npsResponsavel').onchange=e=>{cache.filter.responsibleId=e.target.value;renderNpsScreen()};
     document.getElementById('npsClassificacao').onchange=e=>{cache.filter.classification=e.target.value;renderNpsScreen()};
     document.getElementById('npsSituacao').onchange=e=>{cache.filter.situacao=e.target.value;renderNpsScreen()};
+    document.getElementById('npsDateFrom').onchange=e=>{cache.filter.dateFrom=e.target.value;renderNpsScreen()};
+    document.getElementById('npsDateTo').onchange=e=>{cache.filter.dateTo=e.target.value;renderNpsScreen()};
     document.querySelectorAll('[data-open-case]').forEach(b=>b.onclick=()=>openCaseModal(b.dataset.openCase));
   }
 
