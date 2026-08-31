@@ -77,15 +77,20 @@ Em ordem de prioridade:
    `dashboard-tab-navigation-v0812.js`, `tabs-stable-switch-v0812.js`,
    `final-routing-v0812.js`, `electrolux-reports-v0813.js`).
 
-6. **12 arquivos existem no repo mas não são carregados por ninguém**
+6. **9 arquivos existem no repo mas não são carregados por ninguém**
    (não estão em nenhuma tag `<script>`/`<link>` do `index.html`):
    `os-layout-urgent-v2.js/css`, `os-fidelity-patch.js`,
-   `company-context-guard-v0813.js`, `company-selector-stable-v0813.js`,
    `dashboard-os-open-fix-v0812.js`, `import-save-hotfix-v0813.js`,
-   `search-refinement-v0812.css/js`, `store-context-final-v0813.js`,
+   `search-refinement-v0812.css/js`,
    `whirlpool-client-equipment-block-fix-v0813.js`.
    Decidir, arquivo por arquivo: incluir no `index.html` (se a
    intenção era usar) ou apagar (se foi abandonado).
+   (Os 3 órfãos de contexto de empresa/loja que estavam nesta lista —
+   `company-context-guard-v0813.js`, `company-selector-stable-v0813.js`,
+   `store-context-final-v0813.js` — foram apagados em 2026-08-28 após
+   auditoria confirmar que eram versões superadas por
+   `company-selector-singleton-v0813.js`/`company-management-final-
+   v0813.js`, sem nenhuma referência real no repo.)
 
 7. `STABILIZATION_LOCK_V0.8.12.md` do próprio repo proíbe criar novos
    `*-patch.js`/`*-urgent.js` para a tela de OS e exige fonte única

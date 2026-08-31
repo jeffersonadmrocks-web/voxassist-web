@@ -23,7 +23,12 @@
         sel.addEventListener('change',async()=>{
           const id=sel.value||null;
           try{
-            await api(`profiles?id=eq.${state.session.user.id}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({store_id:id})});
+            // Mesma rpc/switch_store usada em company-management-final-
+            // v0813.js — achado real de auditoria: este arquivo gravava
+            // store_id direto via PATCH em profiles, pulando qualquer
+            // validação/efeito colateral que a RPC do backend faça
+            // (ex.: checar user_store_access, auditoria).
+            await api('rpc/switch_store',{method:'POST',body:JSON.stringify({target_store:id})});
             await loadProfile();await loadCore();
             toast('Loja ativa alterada.');
           }catch(err){toast('Não foi possível alterar a loja: '+err.message,'err');}

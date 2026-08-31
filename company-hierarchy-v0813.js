@@ -4,6 +4,12 @@
   async function enhanceAdmin(){
     if(state?.view!=='usuarios')return;
     const page=document.querySelector('.vx-admin-page');if(!page||page.dataset.vxHierarchy==='1')return;
+    // Sem .vx-admin-grid (ex.: tela do company-only-mode-v0813.js) o
+    // recurso de "Lojas/Unidades" abaixo não tem onde se anexar — mas
+    // antes disso a linha do hero já era sobrescrita mesmo assim,
+    // contradizendo a mensagem real daquela tela. Achado real de
+    // auditoria: dois arquivos brigando pelo mesmo parágrafo.
+    if(!page.querySelector('.vx-admin-grid'))return;
     page.dataset.vxHierarchy='1';
     const newCompany=document.querySelector('#vxNewCompany');if(newCompany)newCompany.textContent='+ CADASTRAR EMPRESA / CNPJ';
     const newStore=document.querySelector('#vxNewStore');if(newStore)newStore.remove();

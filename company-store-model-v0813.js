@@ -5,10 +5,18 @@
  async function refreshCompanyStoreModel(){
   if(state?.view!=='usuarios'||!isGestor()) return;
   const page=document.querySelector('.vx-admin-page'); if(!page)return;
+  // Mesmo motivo documentado em company-hierarchy-v0813.js: sem
+  // .vx-admin-grid este arquivo não tem card pra atualizar, mas ainda
+  // assim sobrescrevia o parágrafo do hero por baixo da tela real.
+  if(!page.querySelector('.vx-admin-grid'))return;
   try{
    const companies=await api('companies?select=id,trade_name,legal_name,active&order=trade_name');
    const stores=await api('stores?select=id,name,code,company_id,active&order=name');
-   const activeCompanyId=state?.profile?.company_id||null;
+   // Achado real de auditoria: todo o resto do repo usa
+   // profile.active_company_id — este era o único arquivo lendo
+   // profile.company_id (campo que não existe em lugar nenhum), sempre
+   // caindo no fallback companies[0] em vez da empresa realmente ativa.
+   const activeCompanyId=state?.profile?.active_company_id||null;
    const activeStoreId=state?.profile?.store_id||null;
    const company=companies.find(c=>String(c.id)===String(activeCompanyId))||companies[0]||null;
    const companyStores=company?(stores||[]).filter(s=>String(s.company_id)===String(company.id)):[];

@@ -33,7 +33,14 @@
   }
 
   document.addEventListener('change',function(e){
-    const select=e.target.closest?.('#vxCompanySelect');
+    // #vxCanonicalCompanySelect (company-selector-singleton-v0813.js) é o
+    // seletor de empresa realmente visível em produção — ele esconde
+    // agressivamente o antigo #vxCompanySelect. Sem incluir os dois aqui,
+    // esse listener (capture-phase, roda antes do próprio onchange do
+    // select) nunca interceptava a troca real, e a confirmação abaixo
+    // ficava morta na prática: a troca de empresa acontecia direto pela
+    // rpc/switch_company do seletor novo, sem nenhuma confirmação.
+    const select=e.target.closest?.('#vxCompanySelect,#vxCanonicalCompanySelect');
     if(!select)return;
     const next=select.value,current=state?.profile?.active_company_id;
     if(!next||next===current)return;
