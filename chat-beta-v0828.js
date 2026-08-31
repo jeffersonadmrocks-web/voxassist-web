@@ -76,15 +76,29 @@
   /* ---------- navegação ---------- */
   let cache={connections:[],stores:[]};
 
-  function openChatBetaScreen(){
+  async function openChatBetaScreen(){
     const app=document.querySelector('#app');
     if(!app)return;
     document.querySelectorAll('.nav').forEach(b=>b.classList.remove('active'));
     document.querySelector('[data-chat-beta-entry]')?.classList.add('active');
-    renderHome();
+    await renderHome();
   }
 
-  function renderHome(){
+  // Busca as conexões toda vez que a tela inicial abre — mesmo achado
+  // real documentado abaixo (renderConexoesScreen): sem isso, quem olha
+  // só a tela inicial nunca sabe se uma conexão existente ficou
+  // desconectada (ou "sumiu" por falta de refresh, como já aconteceu).
+  async function connectionsSummary(){
+    const rows=await api('chat_connections?select=id,name,status&order=created_at.desc').catch(()=>null);
+    if(!rows)return'<p class="vx-chatbeta-sub">Não foi possível carregar o resumo de conexões.</p>';
+    if(!rows.length)return'<p class="vx-chatbeta-sub">Nenhuma conexão criada ainda.</p>';
+    return `<div class="vx-conn-summary-list">${rows.map(c=>{
+      const label=STATUS_LABEL[c.status]||{text:c.status,cls:'neutral'};
+      return `<div class="vx-conn-summary-row"><b>${E(c.name)}</b><span class="vx-conn-badge vx-conn-badge-${E(label.cls)}">${E(label.text)}</span></div>`;
+    }).join('')}</div>`;
+  }
+
+  async function renderHome(){
     const app=document.querySelector('#app');
     if(!app)return;
     app.innerHTML=`<div class="vx-chatbeta">
@@ -95,11 +109,13 @@
       <div class="vx-chatbeta-card">
         <h3>Configurações</h3>
         <p class="vx-chatbeta-sub">Conexões WhatsApp da empresa ativa — cada conexão representa um número, autenticado por QR Code.</p>
+        <div id="chatBetaConnSummary" class="vx-chatbeta-sub">Carregando…</div>
         <button id="chatBetaGoConexoes" class="primary">Configurações → Conexões</button>
       </div>
     </div>`;
     document.getElementById('chatBetaBack').onclick=goBack;
     document.getElementById('chatBetaGoConexoes').onclick=openConexoesScreen;
+    document.getElementById('chatBetaConnSummary').innerHTML=await connectionsSummary();
   }
 
   /* ---------- Conexões ---------- */

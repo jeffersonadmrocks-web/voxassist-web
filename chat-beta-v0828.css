@@ -15,6 +15,11 @@
 .vx-chatbeta-sub{margin:0;font-size:12px;color:#5b6b7a}
 .vx-chatbeta-loading{padding:24px;text-align:center;color:#5b6b7a;font-size:13px}
 
+/* ---------- resumo de conexões (tela inicial) ---------- */
+.vx-conn-summary-list{display:flex;flex-direction:column;gap:6px}
+.vx-conn-summary-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:#f5f8fb;border-radius:8px}
+.vx-conn-summary-row b{font-size:12px;color:#1a2733;font-weight:600}
+
 /* ---------- Conexões ---------- */
 .vx-conn-new-form{display:flex;gap:8px;flex-wrap:wrap}
 .vx-conn-new-form input{flex:1;min-width:220px;height:38px;border:1px solid rgba(8,40,68,.18);border-radius:8px;padding:0 12px;font-size:13px}
