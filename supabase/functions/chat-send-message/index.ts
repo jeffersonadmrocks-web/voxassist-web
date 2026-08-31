@@ -1,27 +1,31 @@
 // chat-send-message — gateway isolado de envio do Chat VoxAssist (ETAPA
 // B, item 9). Único ponto autorizado pelo qual o frontend pode disparar
 // uma mensagem — nunca Frontend → provider diretamente (arquitetura
-// definida em 2026-08-28). Hoje NÃO envia nada de verdade: nenhum
-// MessagingProvider está configurado (a biblioteca do WhatsAppQrProvider
-// e a hospedagem do processo persistente são decisões separadas, ainda
-// não tomadas). Esta function existe pra já fixar o formato do contrato
-// (auth, validação, RLS da conversa) sem fingir que o envio funciona —
-// responde 501 "provider_not_configured" de propósito.
+// definida em 2026-08-28). ETAPA D (2026-08-31): passa a chamar o
+// gateway real (voxassist-whatsapp-gateway, Railway) via
+// POST /connections/:id/send, autenticado com CHAT_GATEWAY_SERVICE_TOKEN
+// (mesmo segredo já usado em chat-gateway-proxy). "to" nunca vem do
+// corpo do frontend — sempre customer_phone da própria conversa, já
+// filtrada por RLS acima.
 //
 // CORS: mesmo achado real do digisac-test — toda resposta (incluindo
 // OPTIONS e erros) precisa dos headers de CORS, senão o navegador
 // bloqueia o fetch antes dele sair.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { validateOutboundMessage } from "../_shared/messagingService.ts";
-import { NotImplementedMessagingProvider } from "../_shared/messagingProvider.ts";
+import { buildMessagePreview, validateOutboundMessage } from "../_shared/messagingService.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const GATEWAY_URL = Deno.env.get("CHAT_GATEWAY_URL");
+const GATEWAY_SERVICE_TOKEN = Deno.env.get("CHAT_GATEWAY_SERVICE_TOKEN");
+const TIMEOUT_MS = 15000;
 
 type ConversationRow = {
   id: string;
   connection_id: string | null;
+  customer_phone: string;
   chat_connections: { status: string } | null;
 };
 
@@ -70,7 +74,7 @@ Deno.serve(async (req) => {
 
     const { data: conversation } = await userClient
       .from("chat_conversations")
-      .select("id, connection_id, chat_connections(status)")
+      .select("id, connection_id, customer_phone, chat_connections(status)")
       .eq("id", conversationId)
       .maybeSingle<ConversationRow>();
     if (!conversation) {
@@ -84,27 +88,53 @@ Deno.serve(async (req) => {
     if (!validation.ok) {
       return respond({ ok: false, error: "invalid_message", message: validation.error }, 400);
     }
-
-    const provider = new NotImplementedMessagingProvider();
-    try {
-      await provider.sendMessage({
-        conversationId: conversation.id,
-        connectionId: conversation.connection_id ?? "",
-        to: "",
-        body: text,
-      });
-      // Inalcançável hoje — nenhum provider real está plugado.
-      return respond({ ok: true }, 200);
-    } catch {
-      return respond(
-        {
-          ok: false,
-          error: "provider_not_configured",
-          message: "Nenhum MessagingProvider está configurado ainda — o envio real de WhatsApp é uma etapa futura, ainda não implementada.",
-        },
-        501
-      );
+    if (!conversation.connection_id) {
+      return respond({ ok: false, error: "conversation_without_connection" }, 400);
     }
+    if (!GATEWAY_URL || !GATEWAY_SERVICE_TOKEN) {
+      return respond({ ok: false, error: "gateway_not_configured" }, 503);
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    let gatewayResult: { externalMessageId?: string };
+    try {
+      const gatewayRes = await fetch(`${GATEWAY_URL}/connections/${conversation.connection_id}/send`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${GATEWAY_SERVICE_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ to: conversation.customer_phone, body: text }),
+        signal: controller.signal,
+      });
+      const data = await gatewayRes.json().catch(() => null);
+      if (!gatewayRes.ok || !data?.ok) {
+        return respond({ ok: false, error: "send_failed", message: data?.error ?? "Falha ao enviar pelo gateway." }, 502);
+      }
+      gatewayResult = data;
+    } catch {
+      return respond({ ok: false, error: "gateway_unreachable" }, 502);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    // Grava a mensagem OUTBOUND só depois de confirmado o envio real —
+    // nunca finge que mandou algo que o gateway rejeitou.
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const { data: companyRow } = await admin.from("chat_conversations").select("company_id").eq("id", conversation.id).maybeSingle<{ company_id: string }>();
+    await admin.from("chat_messages").insert({
+      company_id: companyRow?.company_id,
+      conversation_id: conversation.id,
+      direction: "OUTBOUND",
+      sender_user_id: user.id,
+      body: text,
+      external_message_id: gatewayResult.externalMessageId ?? null,
+      status: "ENVIADA",
+    });
+    await admin
+      .from("chat_conversations")
+      .update({ last_message_at: new Date().toISOString(), last_message_preview: buildMessagePreview(text) })
+      .eq("id", conversation.id);
+
+    return respond({ ok: true }, 200);
   } catch {
     return respond({ ok: false, error: "internal_error" }, 500);
   }
