@@ -15,6 +15,11 @@
 // 405/500) — precisa carregar os headers de CORS, senão o navegador
 // bloqueia o fetch antes mesmo dele sair. Achado real: era exatamente essa
 // a causa do "Falha ao chamar a função de teste" em produção.
+//
+// Log sanitizado (digisac_test_runs, ver supabase/digisac_test_audit_
+// 20260828.sql): grava só estágio alcançado, status HTTP upstream e
+// duração — nunca URL completa, headers, JWT ou token. Best-effort: uma
+// falha ao gravar o log nunca pode impedir a resposta do teste ao usuário.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   buildCorsHeaders,
@@ -24,7 +29,9 @@ import {
   findMissingConfigVar,
   isAuthorizedRole,
   messageForMissingVar,
+  stagesForMissingConfig,
   type DigisacConfig,
+  type DigisacTestStages,
 } from "../_shared/digisacTest.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -78,6 +85,24 @@ Deno.serve(async (req) => {
       return respond({ ok: false, error: "forbidden" }, 403);
     }
 
+    async function logRun(resultStatus: string, stages: DigisacTestStages, upstreamHttpStatus: number | null, durationMs: number) {
+      try {
+        await admin.from("digisac_test_runs").insert({
+          tested_by: user!.id,
+          result_status: resultStatus,
+          digisac_reached: stages.digisacReached,
+          token_validated: stages.tokenValidated,
+          endpoint_functional: stages.endpointFunctional,
+          upstream_http_status: upstreamHttpStatus,
+          duration_ms: durationMs,
+        });
+      } catch {
+        // Best-effort — log sanitizado nunca pode derrubar a resposta do teste.
+      }
+    }
+
+    const startedAt = Date.now();
+
     const cfg: DigisacConfig = {
       apiUrl: Deno.env.get("DIGISAC_API_URL") || null,
       apiToken: Deno.env.get("DIGISAC_API_TOKEN") || null,
@@ -86,8 +111,10 @@ Deno.serve(async (req) => {
 
     const missing = findMissingConfigVar(cfg);
     if (missing) {
+      const stages = stagesForMissingConfig();
+      await logRun("CONFIGURACAO_AUSENTE", stages, null, Date.now() - startedAt);
       return respond(
-        { ok: false, status: "CONFIGURACAO_AUSENTE", httpStatus: null, message: messageForMissingVar(missing), accountName: null, authenticatedUser: null },
+        { ok: false, status: "CONFIGURACAO_AUSENTE", httpStatus: null, message: messageForMissingVar(missing), accountName: null, authenticatedUser: null, stages },
         200
       );
     }
@@ -100,7 +127,7 @@ Deno.serve(async (req) => {
       // Bearer token só existe aqui, no servidor — nunca chega ao cliente,
       // nunca é escrito em log (nem em caso de erro: só a mensagem
       // sanitizada de classifyNetworkError/classifyResponse sai da
-      // function).
+      // function, e o log em banco só grava estágio/status HTTP/duração).
       const res = await fetch(url, {
         method: "GET",
         headers: { Authorization: `Bearer ${cfg.apiToken}`, Accept: "application/json" },
@@ -134,14 +161,24 @@ Deno.serve(async (req) => {
         if (typeof candUser === "string") authenticatedUser = candUser;
       }
 
+      await logRun(outcome.status, outcome.stages, outcome.httpStatus, Date.now() - startedAt);
       return respond(
-        { ok: outcome.status === "CONEXAO_VALIDA", status: outcome.status, httpStatus: outcome.httpStatus, message: outcome.message, accountName, authenticatedUser },
+        {
+          ok: outcome.status === "CONEXAO_VALIDA",
+          status: outcome.status,
+          httpStatus: outcome.httpStatus,
+          message: outcome.message,
+          accountName,
+          authenticatedUser,
+          stages: outcome.stages,
+        },
         200
       );
     } catch (e) {
       const outcome = classifyNetworkError(e);
+      await logRun(outcome.status, outcome.stages, outcome.httpStatus, Date.now() - startedAt);
       return respond(
-        { ok: false, status: outcome.status, httpStatus: outcome.httpStatus, message: outcome.message, accountName: null, authenticatedUser: null },
+        { ok: false, status: outcome.status, httpStatus: outcome.httpStatus, message: outcome.message, accountName: null, authenticatedUser: null, stages: outcome.stages },
         200
       );
     } finally {

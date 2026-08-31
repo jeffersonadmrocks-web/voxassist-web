@@ -6,6 +6,7 @@ import {
   classifyResponse,
   findMissingConfigVar,
   isAuthorizedRole,
+  stagesForMissingConfig,
 } from "./digisacTest.ts";
 
 Deno.test("findMissingConfigVar - detecta DIGISAC_API_URL ausente primeiro", () => {
@@ -34,53 +35,72 @@ Deno.test("buildTestUrl - junta base e path sem duplicar barra", () => {
   assertEquals(buildTestUrl("https://x-api.digisac.com.br", "/api/v1/schedule/0"), "https://x-api.digisac.com.br/api/v1/schedule/0");
 });
 
-Deno.test("classifyResponse - 401 é token recusado", () => {
+Deno.test("classifyResponse - 401 é token recusado, digisac alcançada mas token NÃO validado", () => {
   const r = classifyResponse({ httpStatus: 401, looksLikeJson: true });
   assertEquals(r.status, "TOKEN_RECUSADO");
+  assertEquals(r.stages, { edgeFunctionReached: true, digisacReached: true, tokenValidated: false, endpointFunctional: false });
 });
 
-Deno.test("classifyResponse - 403 é token recusado", () => {
+Deno.test("classifyResponse - 403 é token recusado, mesmos estágios do 401", () => {
   const r = classifyResponse({ httpStatus: 403, looksLikeJson: true });
   assertEquals(r.status, "TOKEN_RECUSADO");
+  assertEquals(r.stages.digisacReached, true);
+  assertEquals(r.stages.tokenValidated, false);
 });
 
-Deno.test("classifyResponse - 429 é indisponível (limite de requisições)", () => {
+Deno.test("classifyResponse - 429 é indisponível, mas token JÁ foi validado (passou da checagem 401/403)", () => {
   const r = classifyResponse({ httpStatus: 429, looksLikeJson: true });
   assertEquals(r.status, "ENDPOINT_INDISPONIVEL");
+  assertEquals(r.stages, { edgeFunctionReached: true, digisacReached: true, tokenValidated: true, endpointFunctional: false });
 });
 
-Deno.test("classifyResponse - 500+ é indisponível", () => {
-  const r = classifyResponse({ httpStatus: 503, looksLikeJson: true });
+Deno.test("classifyResponse - 500+ é indisponível, mas digisac alcançada e token validado (achado real: SVO 500)", () => {
+  const r = classifyResponse({ httpStatus: 500, looksLikeJson: true });
   assertEquals(r.status, "ENDPOINT_INDISPONIVEL");
+  assertEquals(r.stages, { edgeFunctionReached: true, digisacReached: true, tokenValidated: true, endpointFunctional: false });
 });
 
-Deno.test("classifyResponse - 200 com corpo JSON é conexão válida", () => {
+Deno.test("classifyResponse - 200 com corpo JSON é conexão válida, todos os 4 estágios true", () => {
   const r = classifyResponse({ httpStatus: 200, looksLikeJson: true });
   assertEquals(r.status, "CONEXAO_VALIDA");
+  assertEquals(r.stages, { edgeFunctionReached: true, digisacReached: true, tokenValidated: true, endpointFunctional: true });
 });
 
 Deno.test("classifyResponse - 404 com corpo JSON ainda é conexão válida (token passou, recurso é que não existe)", () => {
   const r = classifyResponse({ httpStatus: 404, looksLikeJson: true });
   assertEquals(r.status, "CONEXAO_VALIDA");
+  assertEquals(r.stages.endpointFunctional, true);
 });
 
-Deno.test("classifyResponse - 200 sem corpo JSON (ex.: página HTML por URL base errada) não é conexão válida", () => {
+Deno.test("classifyResponse - 200 sem corpo JSON (ex.: página HTML por URL base errada) não é conexão válida nem endpoint funcional", () => {
   const r = classifyResponse({ httpStatus: 200, looksLikeJson: false });
   assertEquals(r.status, "ENDPOINT_INDISPONIVEL");
+  assertEquals(r.stages.endpointFunctional, false);
+  // Ainda assim chegou uma resposta HTTP 200 de algum lugar -- token/rede
+  // não são o problema, só não é a API da Digisac de verdade.
+  assertEquals(r.stages.digisacReached, true);
+  assertEquals(r.stages.tokenValidated, true);
 });
 
-Deno.test("classifyNetworkError - timeout (AbortError) é indisponível com mensagem própria", () => {
+Deno.test("classifyNetworkError - timeout (AbortError) é indisponível com mensagem própria, nunca saiu da Edge Function", () => {
   const err = new Error("aborted");
   err.name = "AbortError";
   const r = classifyNetworkError(err);
   assertEquals(r.status, "ENDPOINT_INDISPONIVEL");
   assertEquals(r.httpStatus, null);
   assertEquals(r.message.includes("Tempo limite"), true);
+  assertEquals(r.stages, { edgeFunctionReached: true, digisacReached: false, tokenValidated: false, endpointFunctional: false });
 });
 
-Deno.test("classifyNetworkError - erro de rede genérico é indisponível", () => {
+Deno.test("classifyNetworkError - erro de rede genérico é indisponível, digisac não foi alcançada", () => {
   const r = classifyNetworkError(new TypeError("fetch failed"));
   assertEquals(r.status, "ENDPOINT_INDISPONIVEL");
+  assertEquals(r.stages.digisacReached, false);
+});
+
+Deno.test("stagesForMissingConfig - config ausente nunca sai da Edge Function", () => {
+  const s = stagesForMissingConfig();
+  assertEquals(s, { edgeFunctionReached: true, digisacReached: false, tokenValidated: false, endpointFunctional: false });
 });
 
 Deno.test("isAuthorizedRole - somente GESTOR passa", () => {

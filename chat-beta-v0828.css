@@ -22,4 +22,10 @@
 .vx-chatbeta-fields div{background:rgba(255,255,255,.6);border-radius:8px;padding:6px 10px}
 .vx-chatbeta-fields span{display:block;font-size:10px;opacity:.75}
 .vx-chatbeta-fields b{font-size:13px}
+.vx-chatbeta-stages{display:flex;flex-direction:column;gap:4px;margin-top:8px;background:rgba(255,255,255,.6);border-radius:8px;padding:8px 10px}
+.vx-chatbeta-stage{display:flex;align-items:center;gap:8px;font-size:12px}
+.vx-chatbeta-stage-dot{width:16px;height:16px;flex:0 0 16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;line-height:1}
+.vx-chatbeta-stage-yes .vx-chatbeta-stage-dot{background:#0f5a30;color:#fff}
+.vx-chatbeta-stage-no .vx-chatbeta-stage-dot{background:rgba(0,0,0,.15);color:#555}
+.vx-chatbeta-stage-no{opacity:.65}
 @media(max-width:640px){.vx-chatbeta-fields{grid-template-columns:1fr}}

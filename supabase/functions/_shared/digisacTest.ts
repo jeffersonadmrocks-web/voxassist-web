@@ -36,6 +36,27 @@ export type ConnectionStatus =
   | "ENDPOINT_INDISPONIVEL"
   | "CONFIGURACAO_AUSENTE";
 
+// 4 estágios pedidos pelo usuário depois do diagnóstico do HTTP 500 real:
+// um único rótulo final ("Endpoint indisponível") escondia que Edge
+// Function, chegada na Digisac e validação de token já tinham passado —
+// só o endpoint específico testado não respondeu de forma "funcional".
+// edgeFunctionReached é sempre true aqui (só é construído depois da nossa
+// function já ter processado a requisição); os outros 3 formam uma escada
+// — um estágio só pode ser true se o anterior também for.
+export type DigisacTestStages = {
+  edgeFunctionReached: true;
+  digisacReached: boolean;
+  tokenValidated: boolean;
+  endpointFunctional: boolean;
+};
+
+const STAGES_NEVER_LEFT_EDGE_FUNCTION: DigisacTestStages = {
+  edgeFunctionReached: true,
+  digisacReached: false,
+  tokenValidated: false,
+  endpointFunctional: false,
+};
+
 export type ClassifyInput = { httpStatus: number; looksLikeJson: boolean };
 
 // 401/403 = token rejeitado. 429 = limite de requisições (agrupado como
@@ -48,38 +69,69 @@ export function classifyResponse(input: ClassifyInput): {
   status: ConnectionStatus;
   httpStatus: number;
   message: string;
+  stages: DigisacTestStages;
 } {
   const { httpStatus, looksLikeJson } = input;
+  // Só chega aqui depois de um fetch() que respondeu (não lançou) — logo a
+  // Digisac foi alcançada, independente do status code que ela devolveu.
   if (httpStatus === 401 || httpStatus === 403) {
-    return { status: "TOKEN_RECUSADO", httpStatus, message: "Digisac recusou o token informado." };
+    return {
+      status: "TOKEN_RECUSADO",
+      httpStatus,
+      message: "Digisac recusou o token informado.",
+      stages: { edgeFunctionReached: true, digisacReached: true, tokenValidated: false, endpointFunctional: false },
+    };
   }
+  // A partir daqui, Digisac não recusou o token (não é 401/403) — token validado.
   if (httpStatus === 429) {
     return {
       status: "ENDPOINT_INDISPONIVEL",
       httpStatus,
       message: "Limite de requisições da API Digisac atingido — tente novamente mais tarde.",
+      stages: { edgeFunctionReached: true, digisacReached: true, tokenValidated: true, endpointFunctional: false },
     };
   }
   if (httpStatus >= 500) {
-    return { status: "ENDPOINT_INDISPONIVEL", httpStatus, message: "A API da Digisac respondeu com erro de servidor." };
+    return {
+      status: "ENDPOINT_INDISPONIVEL",
+      httpStatus,
+      message: "A API da Digisac respondeu com erro de servidor.",
+      stages: { edgeFunctionReached: true, digisacReached: true, tokenValidated: true, endpointFunctional: false },
+    };
   }
   if (!looksLikeJson) {
     return {
       status: "ENDPOINT_INDISPONIVEL",
       httpStatus,
       message: "Resposta inesperada (não parece vir da API da Digisac) — verifique DIGISAC_API_URL e DIGISAC_TEST_PATH.",
+      stages: { edgeFunctionReached: true, digisacReached: true, tokenValidated: true, endpointFunctional: false },
     };
   }
-  return { status: "CONEXAO_VALIDA", httpStatus, message: "Conexão com a API Digisac validada com sucesso." };
+  return {
+    status: "CONEXAO_VALIDA",
+    httpStatus,
+    message: "Conexão com a API Digisac validada com sucesso.",
+    stages: { edgeFunctionReached: true, digisacReached: true, tokenValidated: true, endpointFunctional: true },
+  };
 }
 
-export function classifyNetworkError(e: unknown): { status: ConnectionStatus; httpStatus: null; message: string } {
+export function classifyNetworkError(e: unknown): {
+  status: ConnectionStatus;
+  httpStatus: null;
+  message: string;
+  stages: DigisacTestStages;
+} {
   const isTimeout = e instanceof Error && e.name === "AbortError";
   return {
     status: "ENDPOINT_INDISPONIVEL",
     httpStatus: null,
     message: isTimeout ? "Tempo limite excedido ao contatar a API da Digisac." : "Não foi possível contatar a API da Digisac.",
+    stages: STAGES_NEVER_LEFT_EDGE_FUNCTION,
   };
+}
+
+export function stagesForMissingConfig(): DigisacTestStages {
+  return STAGES_NEVER_LEFT_EDGE_FUNCTION;
 }
 
 export function messageForMissingVar(v: MissingConfigVar): string {

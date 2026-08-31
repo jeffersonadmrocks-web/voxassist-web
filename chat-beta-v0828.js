@@ -79,6 +79,25 @@
     document.getElementById('chatBetaRun').onclick=runTest;
   }
 
+  /* ---------- 4 estágios ----------
+     Achado real (HTTP 500 num teste com /schedule/0): um rótulo único
+     "Endpoint indisponível" escondia que Edge Function, chegada na
+     Digisac e validação de token já tinham passado — só o endpoint
+     específico não respondeu de forma funcional. Mostra os 4 como uma
+     escada: um estágio só marca ✓ se o anterior também marcou. */
+  const STAGE_ROWS=[
+    ['edgeFunctionReached','Edge Function alcançada'],
+    ['digisacReached','API Digisac alcançada'],
+    ['tokenValidated','Token validado'],
+    ['endpointFunctional','Endpoint funcional validado'],
+  ];
+  function renderStages(stages){
+    if(!stages)return'';
+    return `<div class="vx-chatbeta-stages">${STAGE_ROWS.map(([k,label])=>
+      `<div class="vx-chatbeta-stage vx-chatbeta-stage-${stages[k]?'yes':'no'}"><span class="vx-chatbeta-stage-dot" aria-hidden="true">${stages[k]?'✓':'✕'}</span>${E(label)}</div>`
+    ).join('')}</div>`;
+  }
+
   function renderResult(uiState){
     if(uiState.phase==='idle')return '';
     if(uiState.phase==='loading')return '<div class="vx-chatbeta-result vx-chatbeta-loading">Consultando a API da Digisac…</div>';
@@ -88,6 +107,7 @@
     return `<div class="vx-chatbeta-result vx-chatbeta-${E(label.cls)}">
       <div class="vx-chatbeta-status"><b>${E(label.text)}</b>${r.httpStatus!=null?`<span>HTTP ${E(r.httpStatus)}</span>`:''}</div>
       <p>${E(r.message||'')}</p>
+      ${renderStages(r.stages)}
       <div class="vx-chatbeta-fields">
         <div><span>Conta/empresa</span><b>${E(r.accountName||'—')}</b></div>
         <div><span>Usuário autenticado</span><b>${E(r.authenticatedUser||'—')}</b></div>
