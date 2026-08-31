@@ -4,6 +4,7 @@ import {
   decideConversationTarget,
   nextStatusOnInboundMessage,
   normalizePhone,
+  sanitizeInboundContactId,
   validateOutboundMessage,
 } from "./messagingService.ts";
 
@@ -23,6 +24,28 @@ Deno.test("normalizePhone - vazio/nulo retorna null", () => {
   assertEquals(normalizePhone(""), null);
   assertEquals(normalizePhone(null), null);
   assertEquals(normalizePhone(undefined), null);
+});
+
+Deno.test("sanitizeInboundContactId - aceita o mesmo formato que normalizePhone aceita", () => {
+  assertEquals(sanitizeInboundContactId("5527999998888"), "5527999998888");
+});
+
+Deno.test("sanitizeInboundContactId - aceita numero que normalizePhone rejeitaria (achado real: numero de outro pais, formato que a validacao estrita BR nao reconhece)", () => {
+  // normalizePhone rejeita porque a validacao dela e so pra celular BR
+  // (DDD + 9 digitos) -- mas isso ainda e um identificador valido de
+  // remetente pra abrir/reaproveitar uma conversa (foi exatamente isso
+  // que rejeitou com 400 o primeiro teste real de recebimento).
+  assertEquals(normalizePhone("14155552671"), null);
+  assertEquals(sanitizeInboundContactId("14155552671"), "14155552671");
+});
+
+Deno.test("sanitizeInboundContactId - poucos digitos continua invalido", () => {
+  assertEquals(sanitizeInboundContactId("12345"), null);
+});
+
+Deno.test("sanitizeInboundContactId - vazio/nulo retorna null", () => {
+  assertEquals(sanitizeInboundContactId(""), null);
+  assertEquals(sanitizeInboundContactId(null), null);
 });
 
 Deno.test("validateOutboundMessage - corpo vazio é inválido", () => {

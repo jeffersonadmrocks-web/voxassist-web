@@ -17,6 +17,21 @@ export function normalizePhone(raw: string | null | undefined): string | null {
   return `55${withoutCountryCode}`;
 }
 
+// Achado real (2026-08-31, primeiro teste com WhatsApp de verdade): o
+// webhook de recebimento usava normalizePhone (validação estrita de
+// celular BR) pra identificar quem mandou a mensagem, e rejeitava com
+// 400 remetentes que não batiam esse formato exato — mesmo o gateway já
+// tendo validado o JID como um contato individual válido. Validar
+// "dá pra ENVIAR pra esse número" (normalizePhone) é uma pergunta
+// diferente de "quem é esse remetente" (aqui) — a segunda precisa ser
+// mais permissiva, só o suficiente pra funcionar como identificador
+// estável da conversa. Mesmo critério de dígitos (8-15) já usado no
+// extractPhoneNumber do gateway (repo voxassist-whatsapp-gateway).
+export function sanitizeInboundContactId(raw: string | null | undefined): string | null {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  return /^\d{8,15}$/.test(digits) ? digits : null;
+}
+
 export type OutboundValidationInput = { body: string | null | undefined; connectionStatus: string };
 export type OutboundValidationResult = { ok: true } | { ok: false; error: string };
 

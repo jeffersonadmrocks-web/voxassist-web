@@ -13,7 +13,7 @@
 // Baileys vira só um 23505 tratado como sucesso silencioso, nunca duas
 // linhas.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { buildMessagePreview, decideConversationTarget, nextStatusOnInboundMessage, normalizePhone } from "../_shared/messagingService.ts";
+import { buildMessagePreview, decideConversationTarget, nextStatusOnInboundMessage, sanitizeInboundContactId } from "../_shared/messagingService.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
     const externalMessageId = typeof body?.externalMessageId === "string" && body.externalMessageId ? body.externalMessageId : null;
     if (!connectionId) return json({ ok: false, error: "missing_connection_id" }, 400);
 
-    const phone = normalizePhone(rawFrom);
+    const phone = sanitizeInboundContactId(rawFrom);
     if (!phone) return json({ ok: false, error: "invalid_phone" }, 400);
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
