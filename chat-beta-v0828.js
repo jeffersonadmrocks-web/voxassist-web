@@ -112,9 +112,15 @@
         <div id="chatBetaConnSummary" class="vx-chatbeta-sub">Carregando…</div>
         <button id="chatBetaGoConexoes" class="primary">Configurações → Conexões</button>
       </div>
+      <div class="vx-chatbeta-card">
+        <h3>Conversas (teste)</h3>
+        <p class="vx-chatbeta-sub">Fluxo mínimo pra validar recebimento/envio real com uma conexão de teste — ainda não é a Central de Conversas completa.</p>
+        <button id="chatBetaGoConversas">Conversas → teste</button>
+      </div>
     </div>`;
     document.getElementById('chatBetaBack').onclick=goBack;
     document.getElementById('chatBetaGoConexoes').onclick=openConexoesScreen;
+    document.getElementById('chatBetaGoConversas').onclick=openConversasScreen;
     document.getElementById('chatBetaConnSummary').innerHTML=await connectionsSummary();
   }
 
@@ -290,5 +296,114 @@
       }
       if(attempts>=MAX_ATTEMPTS)stopQrPoll();
     },2000);
+  }
+
+  /* ---------- Conversas (teste) — ETAPA D ----------
+     Fluxo mínimo pra homologar recebimento/envio real com uma conexão
+     de teste. NÃO é a Central de Conversas completa (3 colunas, contexto
+     de OS/cliente, filtros, transferência) — isso é etapa futura, com
+     validação da estrutura visual antes de implementar. Aqui só existe
+     o essencial pra provar que a mensagem chega e sai de verdade. */
+  let conversasCache={list:[]};
+  let conversaAtualId=null;
+  let conversaPollTimer=null;
+  function stopConversaPoll(){if(conversaPollTimer){clearInterval(conversaPollTimer);conversaPollTimer=null}}
+
+  async function openConversasScreen(){
+    const app=document.querySelector('#app');
+    if(!app)return;
+    stopConversaPoll();
+    app.innerHTML='<div class="vx-chatbeta"><div class="vx-chatbeta-loading">Carregando conversas…</div></div>';
+    try{
+      conversasCache.list=await api('chat_conversations?select=id,customer_phone,customer_name,status,last_message_preview,last_message_at&order=last_message_at.desc.nullslast').catch(()=>[]);
+      renderConversasScreen();
+    }catch(e){
+      app.innerHTML=`<div class="vx-chatbeta"><div class="vx-chatbeta-card"><h3>Falha ao carregar Conversas</h3><p class="vx-chatbeta-sub">${E(e.message||'Erro desconhecido.')}</p><button id="conversasBackErr">← Voltar</button></div></div>`;
+      document.getElementById('conversasBackErr').onclick=renderHome;
+    }
+  }
+
+  function renderConversasScreen(){
+    const app=document.querySelector('#app');
+    if(!app)return;
+    const rows=conversasCache.list;
+    app.innerHTML=`<div class="vx-chatbeta vx-chatbeta-wide">
+      <div class="vx-chatbeta-head">
+        <div><button id="conversasBack">← Voltar</button><h2>Conversas (teste)</h2><small>Mensagens reais recebidas/enviadas pela conexão de teste</small></div>
+      </div>
+      <div class="vx-conn-summary-list">
+        ${rows.length?rows.map(c=>`<div class="vx-conn-summary-row vx-conv-row" data-conv="${E(c.id)}" style="cursor:pointer">
+          <div><b>${E(c.customer_name||c.customer_phone)}</b><br><span class="vx-chatbeta-sub">${E(c.last_message_preview||'Sem mensagens ainda')}</span></div>
+          <span class="vx-conn-badge vx-conn-badge-neutral">${E(c.status)}</span>
+        </div>`).join(''):'<p class="vx-chatbeta-sub">Nenhuma conversa ainda — envie uma mensagem para o número da conexão de teste a partir de outro celular.</p>'}
+      </div>
+    </div>`;
+    document.getElementById('conversasBack').onclick=()=>{stopConversaPoll();renderHome()};
+    document.querySelectorAll('[data-conv]').forEach(el=>el.onclick=()=>openConversaDetail(el.dataset.conv));
+  }
+
+  async function loadMensagens(conversationId){
+    return api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at&order=created_at.asc`).catch(()=>[]);
+  }
+
+  function mensagemRow(m){
+    const hora=new Date(m.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const lado=m.direction==='OUTBOUND'?'vx-msg-out':'vx-msg-in';
+    return `<div class="vx-msg-row ${lado}"><div class="vx-msg-bubble"><span>${E(m.body||'[sem texto]')}</span><small>${E(hora)}</small></div></div>`;
+  }
+
+  async function openConversaDetail(conversationId){
+    conversaAtualId=conversationId;
+    const conv=conversasCache.list.find(c=>String(c.id)===String(conversationId));
+    const app=document.querySelector('#app');
+    if(!app)return;
+    app.innerHTML=`<div class="vx-chatbeta vx-chatbeta-wide">
+      <div class="vx-chatbeta-head">
+        <div><button id="conversaBack">← Voltar</button><h2>${E(conv?.customer_name||conv?.customer_phone||'Conversa')}</h2><small>${E(conv?.customer_phone||'')}</small></div>
+      </div>
+      <div id="vxMsgList" class="vx-msg-list"><div class="vx-chatbeta-loading">Carregando mensagens…</div></div>
+      <form id="vxMsgForm" class="vx-conn-new-form">
+        <input name="body" placeholder="Escrever mensagem…" required maxlength="4000">
+        <button type="submit" class="primary">Enviar</button>
+      </form>
+    </div>`;
+    document.getElementById('conversaBack').onclick=()=>{stopConversaPoll();openConversasScreen()};
+    document.getElementById('vxMsgForm').onsubmit=handleSendMensagem;
+    await refreshMensagens();
+    stopConversaPoll();
+    conversaPollTimer=setInterval(refreshMensagens,3000);
+  }
+
+  async function refreshMensagens(){
+    if(!conversaAtualId)return;
+    const list=document.getElementById('vxMsgList');
+    if(!list)return stopConversaPoll();
+    const msgs=await loadMensagens(conversaAtualId);
+    list.innerHTML=msgs.length?msgs.map(mensagemRow).join(''):'<p class="vx-chatbeta-sub">Nenhuma mensagem ainda.</p>';
+    list.scrollTop=list.scrollHeight;
+  }
+
+  async function handleSendMensagem(e){
+    e.preventDefault();
+    const f=new FormData(e.target);
+    const body=String(f.get('body')||'').trim();
+    if(!body||!conversaAtualId)return;
+    const btn=e.target.querySelector('button[type=submit]');
+    const input=e.target.querySelector('input[name=body]');
+    btn.disabled=true;
+    try{
+      const res=await fetch(CFG.url+'/functions/v1/chat-send-message',{
+        method:'POST',headers:authHeaders(),
+        body:JSON.stringify({conversationId:conversaAtualId,body}),
+      });
+      const data=await res.json().catch(()=>null);
+      if(!res.ok||!data?.ok)throw new Error(data?.message||data?.error||'Falha ao enviar.');
+      input.value='';
+      await refreshMensagens();
+    }catch(err){
+      toast?.('Não foi possível enviar: '+err.message,'err');
+    }finally{
+      btn.disabled=false;
+    }
   }
 })();
