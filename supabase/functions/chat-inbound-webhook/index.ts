@@ -20,7 +20,7 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GATEWAY_SERVICE_TOKEN = Deno.env.get("CHAT_GATEWAY_SERVICE_TOKEN");
 
 type ConnectionRow = { id: string; company_id: string };
-type ConversationRow = { id: string; status: string };
+type ConversationRow = { id: string; status: string; whatsapp_jid: string | null };
 
 function json(body: Record<string, unknown>, status: number) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -39,6 +39,12 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const connectionId = typeof body?.connectionId === "string" ? body.connectionId.trim() : "";
     const rawFrom = typeof body?.from === "string" ? body.from : "";
+    // JID bruto do WhatsApp, com o domínio original (@s.whatsapp.net ou
+    // @lid) -- preservado à parte de `phone` (só dígitos) porque um LID
+    // não pode ser reconstruído a partir dos dígitos: precisa do JID
+    // exato pra o envio de resposta funcionar (ver chat_conversations_
+    // jid_20260831.sql).
+    const rawJid = typeof body?.jid === "string" && body.jid ? body.jid : null;
     const text = typeof body?.body === "string" ? body.body : "";
     const externalMessageId = typeof body?.externalMessageId === "string" && body.externalMessageId ? body.externalMessageId : null;
     if (!connectionId) return json({ ok: false, error: "missing_connection_id" }, 400);
@@ -53,7 +59,7 @@ Deno.serve(async (req) => {
 
     const { data: existingRows } = await admin
       .from("chat_conversations")
-      .select("id, status")
+      .select("id, status, whatsapp_jid")
       .eq("connection_id", connectionId)
       .eq("customer_phone", phone)
       .order("created_at", { ascending: false });
@@ -66,7 +72,15 @@ Deno.serve(async (req) => {
       const nextStatus = current ? nextStatusOnInboundMessage(current.status) : "ABERTA";
       await admin
         .from("chat_conversations")
-        .update({ status: nextStatus, last_message_at: new Date().toISOString(), last_message_preview: buildMessagePreview(text) })
+        .update({
+          status: nextStatus,
+          last_message_at: new Date().toISOString(),
+          last_message_preview: buildMessagePreview(text),
+          // Backfill: conversas criadas antes da migration do JID (ou
+          // que por algum motivo ainda não têm) recebem o valor assim
+          // que uma mensagem nova chega -- nunca sobrescreve com null.
+          ...(rawJid ? { whatsapp_jid: rawJid } : {}),
+        })
         .eq("id", conversationId);
     } else {
       const { data: created, error } = await admin
@@ -75,6 +89,7 @@ Deno.serve(async (req) => {
           company_id: connection.company_id,
           connection_id: connectionId,
           customer_phone: phone,
+          whatsapp_jid: rawJid,
           status: "ABERTA",
           last_message_at: new Date().toISOString(),
           last_message_preview: buildMessagePreview(text),
