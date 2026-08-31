@@ -1,13 +1,41 @@
-/* VoxAssist V0.8.13 — só estilos novos do Chat — Beta / Chat VoxAssist. O
-   item de menu (.nav[data-chat-beta-entry]) já herda o visual nativo do
-   menu lateral, sem precisar de classe própria. Estilos específicos do
-   teste de conexão Digisac (removido em 2026-08-28) foram retirados;
-   os contêineres genéricos abaixo ficam pra reaproveitar nas próximas
-   telas do Chat VoxAssist. */
+/* VoxAssist V0.8.13 — estilos do Chat — Beta / Chat VoxAssist. O item de
+   menu (.nav[data-chat-beta-entry]) já herda o visual nativo do menu
+   lateral, sem precisar de classe própria. Identidade visual (2026-08-31):
+   azul-marinho institucional (#082844, mesmo tom já usado no menu lateral
+   e nas tags Electrolux), superfícies brancas/cinza-claro, cards limpos,
+   verde só para CONECTADO, amarelo só para atenção, vermelho só para
+   erro/urgência — acabamento profissional, não "módulo experimental". */
 .vx-chatbeta{padding:16px;display:flex;flex-direction:column;gap:16px;max-width:640px}
-.vx-chatbeta-head button#chatBetaBack{background:none;border:none;color:inherit;cursor:pointer;font-size:13px;opacity:.8}
-.vx-chatbeta-head h2{margin:4px 0 0}
-.vx-chatbeta-notice{background:#eaf6fb;color:#0c4a5e;border-radius:10px;padding:10px 14px;font-size:12px;line-height:1.5}
-.vx-chatbeta-card{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:16px;background:#fff;display:flex;flex-direction:column;gap:10px}
-.vx-chatbeta-card h3{margin:0}
-.vx-chatbeta-sub{margin:0;font-size:12px;color:#667}
+.vx-chatbeta-wide{max-width:960px}
+.vx-chatbeta-head button#chatBetaBack,.vx-chatbeta-head button#conexoesBack{background:none;border:none;color:#082844;cursor:pointer;font-size:13px;font-weight:600;opacity:.85}
+.vx-chatbeta-head h2{margin:4px 0 0;color:#082844}
+.vx-chatbeta-notice{background:#eaf1f8;color:#0c2e4e;border-radius:10px;padding:10px 14px;font-size:12px;line-height:1.5}
+.vx-chatbeta-card{border:1px solid rgba(8,40,68,.1);border-radius:12px;padding:16px;background:#fff;display:flex;flex-direction:column;gap:10px}
+.vx-chatbeta-card h3{margin:0;color:#082844}
+.vx-chatbeta-sub{margin:0;font-size:12px;color:#5b6b7a}
+.vx-chatbeta-loading{padding:24px;text-align:center;color:#5b6b7a;font-size:13px}
+
+/* ---------- Conexões ---------- */
+.vx-conn-new-form{display:flex;gap:8px;flex-wrap:wrap}
+.vx-conn-new-form input{flex:1;min-width:220px;height:38px;border:1px solid rgba(8,40,68,.18);border-radius:8px;padding:0 12px;font-size:13px}
+.vx-conn-new-form select{height:38px;border:1px solid rgba(8,40,68,.18);border-radius:8px;padding:0 10px;font-size:13px;background:#fff}
+.vx-conn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.vx-conn-card{border:1px solid rgba(8,40,68,.1);border-radius:12px;background:#fff;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 2px rgba(8,40,68,.04)}
+.vx-conn-card-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.vx-conn-card-head b{color:#082844;font-size:13px}
+.vx-conn-badge{font-size:10px;font-weight:700;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.vx-conn-badge-neutral{background:#eef1f4;color:#55606a}
+.vx-conn-badge-ok{background:#e6f4ea;color:#1e7a3d}
+.vx-conn-badge-warn{background:#fff6e0;color:#8a6100}
+.vx-conn-badge-err{background:#fdeaea;color:#a3231f}
+.vx-conn-card-body{display:flex;flex-direction:column;gap:4px}
+.vx-conn-card-body div{display:flex;justify-content:space-between;gap:8px;font-size:11.5px}
+.vx-conn-card-body span{color:#5b6b7a}
+.vx-conn-card-body b{color:#1a2733;font-weight:600;text-align:right}
+.vx-conn-card-actions{display:flex;gap:8px;margin-top:2px}
+.vx-conn-card-actions button{flex:1}
+
+/* ---------- QR ---------- */
+.vx-conn-qr-modal{max-width:340px;text-align:center}
+.vx-conn-qr-box{min-height:240px;display:flex;align-items:center;justify-content:center;background:#f5f7f9;border-radius:10px;color:#5b6b7a;font-size:13px}
+.vx-conn-qr-box img{border-radius:8px}
