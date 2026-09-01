@@ -525,7 +525,7 @@
         <button id="chatHubBack" class="vx-cc-back">← Voltar</button>
         <div class="vx-cc-title-block"><h1>Central de Conversas</h1><p>Chat VoxAssist · desktop, 3 colunas</p></div>
         ${businessHoursBadge()}
-        <button id="chatHubSettings" class="vx-cc-settings-btn" type="button" title="Configurações → Conexões">⚙ Conexões</button>
+        <button id="chatHubSettings" class="vx-cc-settings-btn" type="button" title="Configurações → Conexões (adicionar, remover, reconectar números)">⚙ Configurações</button>
       </div>
       <div class="vx-cc-board">
         <section class="vx-cc-pane vx-cc-pane-list">

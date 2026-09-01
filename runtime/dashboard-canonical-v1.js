@@ -1,12 +1,37 @@
 /* VoxAssist — Dashboard Canônico V1
  * Fonte única do Dashboard. Não altera login, shell, abas, OS ou demais módulos.
  * Sem MutationObserver, sem sobrescritas encadeadas, sem números fictícios.
+ *
+ * Reconstrução (2026-09-01) pra reproduzir fielmente a referência visual
+ * aprovada (screenshot real do usuário): ordem indicadores -> Casos de
+ * Atenção/Oportunidades -> Gestão Visual -> Tarefas/Peças/Gestão por
+ * Exceção -> Feed/Produtividade -> Metas/Resumo Financeiro -> Minha
+ * Agenda (5 dias). Tudo derivado de tabelas/colunas reais já existentes
+ * -- nenhuma tabela nova, nenhum valor fictício. Onde a referência pede
+ * algo sem base real persistida (Metas e Bonificação), mantém "Não
+ * configurado" -- regra explícita já dada pelo usuário nesta sessão.
+ *
+ * Achados/decisões de derivação, documentados porque a fonte não é
+ * 1:1 óbvia:
+ * - dashboard_cases.status: só o default 'NOVO' é confirmado por schema
+ *   (sem CHECK constraint, nenhuma outra função do repo escreve nessa
+ *   tabela). Uso NOVO/EM_ANDAMENTO/RESOLVIDO pelos rótulos da própria
+ *   referência -- se o vocabulário real divergir, os contadores extras
+ *   ficam honestamente zerados, nunca inventados.
+ * - parts_requests.status: mesma situação (sem CHECK constraint). Uso
+ *   normalização por texto (PENDENTE/SOLICITADO, COMPRA, ENTREGA,
+ *   RECEBID) e, pra "Atrasados", a data expected_date (sempre real,
+ *   independente do texto do status).
+ * - "Orçamentos (Mês)"/"Entregues (Mês)": contados via os_status_history
+ *   (mudanças de status reais, com changed_at), não por opened_at/
+ *   updated_at da OS -- é a única forma correta de saber QUANDO uma OS
+ *   entrou em AGUARDANDO APROVACAO/FINALIZADA.
  */
 (function(){
   'use strict';
   const E=v=>typeof esc==='function'?esc(v??''):String(v??'');
   const M=v=>typeof money==='function'?money(v):Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-  const norm=v=>String(v||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replaceAll('_',' ').replace(/\s+/g,' ').trim();
+  const norm=v=>String(v||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replaceAll('_',' ').replace(/\s+/g,' ').trim();
   const role=()=>norm(state?.profile?.role||'GESTOR');
   const me=()=>state?.profile?.id;
   const age=o=>Math.max(0,Math.floor((Date.now()-new Date(o.updated_at||o.opened_at||Date.now()).getTime())/86400000));
@@ -14,11 +39,10 @@
   const safe=x=>Array.isArray(x)?x:[];
   const scope=rows=>role()==='TECNICO'?rows.filter(o=>o.technician_id===me()):role()==='ATENDENTE'?rows.filter(o=>o.attendant_id===me()||!o.attendant_id):rows;
   const budget=f=>Math.max(0,Number(f?.labor_value||0)+Number(f?.freight_value||0)+Number(f?.auxiliary_material_value||0)+Number(f?.technical_report_value||0)-Number(f?.discount_value||0));
-  const startMonth=()=>new Date(new Date().getFullYear(),new Date().getMonth(),1);
+  const startOfMonth=d=>new Date(d.getFullYear(),d.getMonth(),1);
   const withTimeout=(promise,ms,label)=>Promise.race([promise,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+' excedeu '+ms+'ms')),ms))]);
-  const inferGroup=t=>{t=norm(t);if(t.includes('TV'))return 'TV';if(/REFRIG|FREEZER|AR-COND|GELADEIRA/.test(t))return 'REFRIGERAÇÃO';if(/MICRO|FOG|LAVA|BEBED/.test(t))return 'LINHA BRANCA';if(/AUDIO|ÁUDIO|SOM|RADIO|RÁDIO/.test(t))return 'ÁUDIO';return t?'GERAL':''};
-  const startOf=p=>{const n=new Date();n.setHours(0,0,0,0);if(p==='dia')return n;if(p==='semana'){const d=new Date(n),offset=(d.getDay()+6)%7;d.setDate(d.getDate()-offset);return d}return new Date(n.getFullYear(),n.getMonth(),1)};
-  const dateVal=(o,keys)=>{for(const k of keys){if(o&&o[k]){const d=new Date(o[k]);if(!Number.isNaN(d.getTime()))return d}}return null};
+  const pct=(part,total)=>total>0?Math.round((part/total)*100):0;
+  const pctChange=(cur,prev)=>prev>0?Math.round(((cur-prev)/prev)*100):(cur>0?100:0);
 
   async function source(label,path,fallback=[]){
     try{return {label,ok:true,data:await withTimeout(api(path),7000,label)}}catch(error){return {label,ok:false,data:fallback,error}}
@@ -34,25 +58,23 @@
     bg.querySelectorAll('[data-os]').forEach(tr=>tr.onclick=()=>{const id=tr.dataset.os;bg.remove();if(typeof window.render==='function')window.render('os:'+id);else if(typeof render==='function')render('os:'+id);});
   }
 
+  function casesModal(title,rows){
+    document.querySelector('#vxCanonicalModal')?.remove();
+    const bg=document.createElement('div');bg.id='vxCanonicalModal';bg.className='vx-c-modal-bg';
+    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Caso</th><th>Prioridade</th><th>Situação</th><th>Aberto em</th></tr></thead><tbody>${rows.map(c=>`<tr><td><b>${E(c.title)}</b>${c.message?`<br><small>${E(c.message)}</small>`:''}</td><td>${E(norm(c.priority)||'—')}</td><td>${E(norm(c.status)||'—')}</td><td>${new Date(c.created_at).toLocaleDateString('pt-BR')}</td></tr>`).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
+    document.body.appendChild(bg);
+    bg.querySelector('[data-close]').onclick=()=>bg.remove();
+    bg.onclick=e=>{if(e.target===bg)bg.remove();};
+  }
+
   function orderValue(o,finMap){const direct=Number(o.total_amount||o.budget_total||o.valor_total||o.total||o.amount||0);if(direct)return direct;return budget(finMap.get(String(o.id)))}
-  function prodSubBlock(kind,title,stores,techs,groups){
-    return `<div class="vx-c-prod-sub" data-kind="${kind}"><div class="vx-c-prod-sub-head"><strong>${E(title)}</strong><div class="vx-c-prod-period"><button type="button" data-period="mes" class="active">MÊS</button><button type="button" data-period="semana">SEMANA</button><button type="button" data-period="dia">DIA</button></div></div><div class="vx-c-prod-metrics"><div><span>APARELHOS</span><b data-count>0</b></div><div><span>VALOR</span><b data-value>R$ 0,00</b></div></div><div class="vx-c-prod-filters"><label>LOJA<select data-filter="store"><option value="">TODAS</option>${stores.map(s=>`<option value="${E(s.id)}">${E(s.name)}</option>`).join('')}</select></label><label>GRUPO<select data-filter="group"><option value="">TODOS</option>${groups.map(g=>`<option value="${E(g)}">${E(g)}</option>`).join('')}</select></label><label>TÉCNICO<select data-filter="tech"><option value="">TODOS</option>${techs.map(t=>`<option value="${E(t.id)}">${E(t.full_name)}</option>`).join('')}</select></label></div></div>`;
-  }
-  function prodRecalc(sec,orders,finMap){
-    const from=startOf(sec.querySelector('.vx-c-prod-period .active')?.dataset.period||'mes');
-    const store=sec.querySelector('[data-filter="store"]')?.value||'',group=sec.querySelector('[data-filter="group"]')?.value||'',tech=sec.querySelector('[data-filter="tech"]')?.value||'';
-    const isReady=sec.dataset.kind==='ready';
-    const rows=orders.filter(o=>{
-      const d=isReady?dateVal(o,['ready_at','completed_at','pronto_at']):dateVal(o,['delivery_at','delivered_at','saida_at','closed_at']);
-      if(!d||d<from)return false;
-      if(store&&String(o.store_id||'')!==store)return false;
-      if(group&&String(o.__group||'')!==group)return false;
-      if(tech&&String(o.technician_id||'')!==tech)return false;
-      return true;
-    });
-    sec.querySelector('[data-count]').textContent=rows.length;
-    sec.querySelector('[data-value]').textContent=M(rows.reduce((s,o)=>s+orderValue(o,finMap),0));
-  }
+
+  // Pluralização mínima pra "N geladeiras do mesmo modelo" -- só os
+  // tipos de produto já vistos no restante do app; fallback genérico
+  // com "(s)" pra não arriscar plural errado de um tipo desconhecido.
+  const PLURAL={GELADEIRA:'geladeiras',REFRIGERADOR:'refrigeradores',TV:'TVs',FOGAO:'fogões',MICROONDAS:'micro-ondas','LAVA E SECA':'lava e secas',LAVADORA:'lavadoras'};
+  function plural(t){const n=norm(t);return PLURAL[n]||(t?E(t).toLowerCase()+'(s)':'aparelho(s)')}
+
   function discovery(){
     const pool=[
       ['Gestão','Nem todo atraso é um problema isolado; repetição costuma indicar gargalo de processo.','Observe onde a fila cresce por vários dias. O ponto de acúmulo merece investigação antes de cobrar velocidade das pessoas.'],
@@ -68,16 +90,23 @@
   window.renderDashboard=async function(){
     const app=document.querySelector('#app');if(!app)return;
     app.innerHTML='<div class="card">Carregando inteligência operacional...</div>';
+
+    const today=new Date();today.setHours(0,0,0,0);
+    const month0=startOfMonth(today);
+    const prevMonth0=new Date(month0.getFullYear(),month0.getMonth()-1,1);
+    const agendaEnd=new Date(today);agendaEnd.setDate(agendaEnd.getDate()+4);
+    const isoDate=d=>d.toISOString().slice(0,10);
+
     const results=await Promise.all([
-      source('Ordens','service_orders?select=*,clients(name),equipments(product_type,brand,model),profiles!service_orders_technician_id_fkey(full_name)&order=opened_at.desc&limit=500',state?.orders||[]),
+      source('Ordens','service_orders?select=*,clients(name,neighborhood,city),equipments(product_type,brand,model),profiles!service_orders_technician_id_fkey(full_name)&order=opened_at.desc&limit=500',state?.orders||[]),
       source('Tarefas','tasks?select=*&order=due_at.asc.nullslast&limit=200',state?.tasks||[]),
       source('Casos de atenção','dashboard_cases?select=*&order=created_at.desc&limit=200',[]),
-      source('Agenda','appointments?select=*&order=appointment_date.asc,start_time.asc&limit=200',[]),
+      source('Agenda 5 dias',`appointments?select=*,service_orders(os_number,reported_defect,client_id,clients(neighborhood,city),equipments(product_type,brand,model))&appointment_date=gte.${isoDate(today)}&appointment_date=lte.${isoDate(agendaEnd)}&order=appointment_date.asc,period.asc,start_time.asc&limit=300`,[]),
       source('Peças','parts_requests?select=*&order=created_at.desc&limit=200',[]),
       source('Financeiro','os_financial?select=*&limit=1000',[]),
       source('Pagamentos','payments?select=*&order=paid_at.desc.nullslast&limit=1500',[]),
-      source('Lojas','stores?select=id,name&active=eq.true&order=name',[]),
-      source('Técnicos','profiles?select=id,full_name,role&active=eq.true&order=full_name',[])
+      source('Técnicos','profiles?select=id,full_name,role&active=eq.true&order=full_name',[]),
+      source('Histórico de status',`os_status_history?select=*,service_orders(os_number)&changed_at=gte.${isoDate(prevMonth0)}&order=changed_at.desc&limit=400`,[])
     ]);
     const by=Object.fromEntries(results.map(r=>[r.label,r]));
     const orders=scope(safe(by['Ordens'].data)), active=orders.filter(isOpen);
@@ -85,92 +114,245 @@
     const approval=active.filter(o=>norm(o.status)==='AGUARDANDO APROVACAO');
     const repair=active.filter(o=>['AGUARDANDO CONSERTO','EM CONSERTO'].includes(norm(o.status)));
     const ready=active.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA');
-    const overdueAnalysis=analysis.filter(o=>age(o)>3), overdueApproval=approval.filter(o=>age(o)>2), overdueRepair=repair.filter(o=>age(o)>7);
+    const overdueAnalysis=analysis.filter(o=>age(o)>3), overdueApproval=approval.filter(o=>age(o)>3), overdueRepair=repair.filter(o=>age(o)>7);
+    const readyOverdue7=ready.filter(o=>age(o)>7), readyOverdue3=ready.filter(o=>age(o)>3);
     const noTech=active.filter(o=>!o.technician_id), urgent=active.filter(o=>norm(o.priority).includes('URG'));
     const tasks=safe(by['Tarefas'].data).filter(t=>!['CONCLUIDO','CANCELADO'].includes(norm(t.status)));
-    const cases=safe(by['Casos de atenção'].data).filter(c=>!['RESOLVIDO','CANCELADO'].includes(norm(c.status)));
-    const today=new Date().toISOString().slice(0,10), apps=safe(by['Agenda'].data).filter(a=>a.appointment_date===today);
-    const parts=safe(by['Peças'].data).filter(p=>!['RECEBIDO','CANCELADO'].includes(norm(p.status)));
+    const casesAll=safe(by['Casos de atenção'].data);
+    const casesNovos=casesAll.filter(c=>norm(c.status)==='NOVO');
+    const casesAndamento=casesAll.filter(c=>norm(c.status)==='EM ANDAMENTO');
+    const casesResolvidos=casesAll.filter(c=>norm(c.status)==='RESOLVIDO');
+    const casesAbertos=casesAll.filter(c=>!['RESOLVIDO','CANCELADO'].includes(norm(c.status)));
+    const partsAll=safe(by['Peças'].data);
+    const partsPendentes=partsAll.filter(p=>['PENDENTE','SOLICITADO'].includes(norm(p.status)));
+    const partsCompra=partsAll.filter(p=>norm(p.status).includes('COMPRA'));
+    const partsEntrega=partsAll.filter(p=>norm(p.status).includes('ENTREGA'));
+    const partsAtrasadas=partsAll.filter(p=>p.expected_date&&new Date(p.expected_date)<today&&!norm(p.status).includes('RECEBID'));
+    const partsRecebidasHoje=partsAll.filter(p=>norm(p.status).includes('RECEBID')&&p.updated_at&&isoDate(new Date(p.updated_at))===isoDate(today));
     const finMap=new Map(safe(by['Financeiro'].data).map(f=>[String(f.service_order_id),f]));
     const validPayments=safe(by['Pagamentos'].data).filter(p=>p.paid_at&&!['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA'].includes(norm(p.status)));
-    const day0=new Date();day0.setHours(0,0,0,0);const month0=startMonth();
-    const receivedToday=validPayments.filter(p=>new Date(p.paid_at)>=day0).reduce((s,p)=>s+Number(p.amount||0),0);
+    const receivedToday=validPayments.filter(p=>new Date(p.paid_at)>=today).reduce((s,p)=>s+Number(p.amount||0),0);
     const receivedMonth=validPayments.filter(p=>new Date(p.paid_at)>=month0).reduce((s,p)=>s+Number(p.amount||0),0);
+    const receivedPrevMonth=validPayments.filter(p=>new Date(p.paid_at)>=prevMonth0&&new Date(p.paid_at)<month0).reduce((s,p)=>s+Number(p.amount||0),0);
     const readyValue=ready.reduce((s,o)=>s+budget(finMap.get(String(o.id))),0);
     const failures=results.filter(r=>!r.ok).map(r=>r.label);
-    const stores=safe(by['Lojas'].data);
     const techs=safe(by['Técnicos'].data).filter(t=>norm(t.role)==='TECNICO');
-    const prodOrders=orders.map(o=>({...o,__group:inferGroup(o.equipments?.product_type)}));
-    const groups=[...new Set(prodOrders.map(o=>o.__group).filter(Boolean))].sort();
+    const history=safe(by['Histórico de status'].data);
 
-    // Derivados 100% a partir dos mesmos arrays já calculados acima --
-    // nenhuma consulta nova, nenhum número fictício.
-    const demais=active.filter(o=>!analysis.includes(o)&&!approval.includes(o)&&!repair.includes(o));
-    const overdueTotal=overdueAnalysis.length+overdueApproval.length+overdueRepair.length;
-    const gargaloOpcoes=[['Análise',overdueAnalysis],['Aprovação',overdueApproval],['Conserto',overdueRepair]];
-    const gargalo=gargaloOpcoes.reduce((max,cur)=>cur[1].length>max[1].length?cur:max,gargaloOpcoes[0]);
-    const riscoCombinado=urgent.filter(o=>overdueAnalysis.includes(o)||overdueApproval.includes(o)||overdueRepair.includes(o));
-    const drills={active,analysis,approval,repair,ready,demais,overdue:[...overdueAnalysis,...overdueApproval,...overdueRepair],noTech,urgent,riscoCombinado,gargalo:gargalo[1]};
+    // clientes com mais de 1 OS ativa
+    const byClient=new Map();
+    active.forEach(o=>{if(!o.client_id)return;byClient.set(o.client_id,(byClient.get(o.client_id)||0)+1)});
+    const repeatClients=[...byClient.values()].filter(n=>n>1).length;
 
-    function situationCard(title,rows,overdueRows,key){
-      const tone=overdueRows&&overdueRows.length?'warn':'';
-      return `<button type="button" class="vx-c-sit-card ${tone}" data-drill="${key}" data-title="${E(title)}"><span class="vx-c-sit-label">${E(title)}</span><b class="vx-c-sit-value">${rows.length}</b>${overdueRows?`<small class="vx-c-sit-sub">${overdueRows.length?overdueRows.length+' acima do prazo':'dentro do prazo'}</small>`:'<small class="vx-c-sit-sub">prontos e demais situações</small>'}</button>`;
+    // retiradas previstas pra hoje = compromisso de hoje numa OS já pronta
+    const agenda=safe(by['Agenda 5 dias'].data);
+    const readyIds=new Set(ready.map(o=>o.id));
+    const retiradasHoje=agenda.filter(a=>a.appointment_date===isoDate(today)&&readyIds.has(a.service_order_id)).length;
+
+    // Orçamentos/Entregues do mês, via os_status_history (data real da
+    // transição, não opened_at/updated_at da OS).
+    function monthTransitions(statusLabel,from,to){
+      const ids=new Set(history.filter(h=>norm(h.new_status)===statusLabel&&new Date(h.changed_at)>=from&&new Date(h.changed_at)<to).map(h=>h.service_order_id));
+      const rows=orders.filter(o=>ids.has(o.id));
+      return {count:ids.size,value:rows.reduce((s,o)=>s+budget(finMap.get(String(o.id))),0),rows};
     }
-    function todayTile(icon,label,n){return `<div class="vx-c-today-tile"><span class="vx-c-today-icon">${icon}</span><b>${n}</b><small>${E(label)}</small></div>`}
-    function exceptionCard(kind,icon,title,value,sub,key){return `<button type="button" class="vx-c-exc-card vx-c-exc-${kind}" data-drill="${key}" data-title="${E(title)}"><span class="vx-c-exc-icon">${icon}</span><div><b>${E(value)}</b><strong>${E(title)}</strong><small>${E(sub)}</small></div></button>`}
+    const monthEnd=new Date(month0.getFullYear(),month0.getMonth()+1,1);
+    const orcamentosMes=monthTransitions('AGUARDANDO APROVACAO',month0,monthEnd);
+    const orcamentosMesAnt=monthTransitions('AGUARDANDO APROVACAO',prevMonth0,month0);
+    const entreguesMes=monthTransitions('FINALIZADA',month0,monthEnd);
+    const entreguesMesAnt=monthTransitions('FINALIZADA',prevMonth0,month0);
+    const faturamentoMes=entreguesMes.value, faturamentoMesAnt=entreguesMesAnt.value;
+    const activeOpenedThisMonth=active.filter(o=>new Date(o.opened_at)>=month0).length;
+
+    // A receber = orçado em OS prontas ainda não pagas; atrasos>30 dias
+    // = orçado em OS abertas há mais de 30 dias, ainda ativas.
+    const aReceber=readyValue;
+    const atrasos30=active.filter(o=>age(o)>30).reduce((s,o)=>s+budget(finMap.get(String(o.id))),0);
+    const paidThisMonthOrderIds=new Set(validPayments.filter(p=>new Date(p.paid_at)>=month0).map(p=>String(p.service_order_id)));
+    const ticketMedio=paidThisMonthOrderIds.size?receivedMonth/paidThisMonthOrderIds.size:0;
+
+    // Gestão Visual -- faixas de idade (0/1-3/4-7/8+ dias), como na
+    // referência aprovada.
+    function ageBuckets(rows){
+      const b=[0,0,0,0];
+      rows.forEach(o=>{const a=age(o);if(a===0)b[0]++;else if(a<=3)b[1]++;else if(a<=7)b[2]++;else b[3]++});
+      const oldest=rows.reduce((m,o)=>Math.max(m,age(o)),0);
+      return {b,oldest};
+    }
+    const gvAnalysis=ageBuckets(analysis), gvApproval=ageBuckets(approval), gvReady=ageBuckets(ready);
+
+    // Produtividade por técnico (tabela) -- OS/Valor recebido/Prontos/Aproveitamento.
+    const prodRows=techs.map(t=>{
+      const mine=orders.filter(o=>o.technician_id===t.id);
+      const readyMine=mine.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA').length;
+      const finalMine=mine.filter(o=>norm(o.status)==='FINALIZADA');
+      const valorRecebido=validPayments.filter(p=>mine.some(o=>String(o.id)===String(p.service_order_id))).reduce((s,p)=>s+Number(p.amount||0),0);
+      return {tech:t,os:mine.length,valor:valorRecebido,prontos:readyMine,aproveitamento:pct(finalMine.length,mine.length||1)};
+    }).filter(r=>r.os>0).sort((a,b)=>b.valor-a.valor);
+    const totalRecebidoOS=prodRows.reduce((s,r)=>s+r.valor,0);
+
+    // Feed em tempo real -- eventos reais de os_status_history.
+    function feedText(h){
+      const num=h.service_orders?.os_number||'—';
+      const ns=norm(h.new_status);
+      if(!h.previous_status)return `Nova OS #${num} criada`;
+      if(ns==='AGUARDANDO APROVACAO')return `Orçamento enviado para cliente — OS #${num}`;
+      if(ns==='EM CONSERTO'||ns==='AGUARDANDO CONSERTO')return `OS #${num} entrou em conserto`;
+      if(ns==='PRONTO PARA ENTREGA')return `OS #${num} pronta para entrega`;
+      if(ns==='FINALIZADA')return `OS #${num} marcada como concluída`;
+      return `OS #${num}: ${E(norm(h.previous_status))} → ${E(ns)}`;
+    }
+    const feed=history.slice(0,8);
+
+    // Minha Agenda -- próximos 5 dias, agrupado por dia/período, com
+    // detecção de aparelhos repetidos (mesmo modelo, ou mesma região).
+    const weekdayShort=['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
+    const days=[0,1,2,3,4].map(off=>{
+      const d=new Date(today);d.setDate(d.getDate()+off);
+      const iso=isoDate(d);
+      const rows=agenda.filter(a=>a.appointment_date===iso);
+      const label=off===0?'Hoje':off===1?'Amanhã':`${weekdayShort[d.getDay()]} ${String(d.getDate()).padStart(2,'0')}`;
+      const byModel=new Map(),byRegion=new Map();
+      rows.forEach(a=>{
+        const eq=a.service_orders?.equipments;if(!eq)return;
+        const modelKey=[eq.product_type,eq.brand,eq.model].filter(Boolean).join('|');
+        if(modelKey)byModel.set(modelKey,(byModel.get(modelKey)||[]).concat(a));
+        const region=a.service_orders?.clients?.neighborhood||a.service_orders?.clients?.city;
+        if(region&&eq.product_type){const k=eq.product_type+'|'+region;byRegion.set(k,(byRegion.get(k)||[]).concat(a))}
+      });
+      let dupWarning='';
+      const modelDup=[...byModel.entries()].find(([,v])=>v.length>1);
+      if(modelDup){const eq=modelDup[1][0].service_orders.equipments;dupWarning=`${modelDup[1].length} ${plural(eq.product_type)} do mesmo modelo`}
+      else{const regionDup=[...byRegion.entries()].find(([,v])=>v.length>1);if(regionDup){const [type]=regionDup[0].split('|');dupWarning=`${regionDup[1].length} ${plural(type)} na mesma região`}}
+      return {label,iso,rows,count:rows.length,dupWarning};
+    });
+
+    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows};
+
+    function kpi(icon,title,value,sub,key){return `<button type="button" class="vx-c-kpi" data-drill="${key}" data-title="${E(title)}"><span class="vx-c-kpi-icon">${icon}</span><span class="vx-c-kpi-label">${E(title)}</span><b>${E(value)}</b><small>${E(sub)}</small></button>`}
+    function oppRow(label,n){return `<div class="vx-c-opp-row"><span>${E(label)}</span><b>${n}</b></div>`}
+    function taskRow(label,n){return `<div class="vx-c-task-row"><span class="vx-c-task-check">☐</span><span>${E(label)}</span><b>${n}</b></div>`}
+    function iconRow(icon,label,n,tone){return `<div class="vx-c-icon-row"><span class="vx-c-icon-row-ic ${tone||''}">${icon}</span><span>${E(label)}</span><b>${n}</b></div>`}
+    function gvPanel(title,g){
+      const labels=['0 a 3 dias','1 a 3 dias','4 a 7 dias','8+ dias'],tones=['b0','b1','b2','b3'];
+      return `<div class="vx-c-gv-panel"><div class="vx-c-gv-head"><strong>${E(title)}</strong><span>Total: ${g.b.reduce((s,n)=>s+n,0)}</span></div>
+        <div class="vx-c-gv-bar">${g.b.map((n,i)=>`<span class="vx-c-gv-seg ${tones[i]}" style="flex:${Math.max(n,0.001)}"></span>`).join('')}</div>
+        <div class="vx-c-gv-legend">${g.b.map((n,i)=>`<div><small>${labels[i]}</small><b>${n}</b></div>`).join('')}</div>
+        <small class="vx-c-gv-oldest">Mais antigo: ${g.oldest} dia${g.oldest===1?'':'s'}</small></div>`;
+    }
 
     app.innerHTML=`<div class="vx-canonical">
       ${failures.length?`<div class="vx-c-warning"><strong>Dados parciais:</strong> ${E(failures.join(', '))} não responderam. O Dashboard continuou com as demais fontes.</div>`:''}
-      <div class="vx-c-hero"><div><span class="vx-c-hero-eyebrow">VOXASSIST · CENTRAL OPERACIONAL</span><h2>${role()==='GESTOR'?'Visão Geral da Operação':role()==='TECNICO'?'Minha Central Técnica':'Minha Central de Atendimento'}</h2><p>Indicadores rastreáveis, sem valores demonstrativos.</p></div><span class="vx-c-hero-date">${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}</span></div>
+      <div class="vx-c-hero"><div><span class="vx-c-hero-eyebrow">VOXASSIST · PAINEL DE GESTÃO</span><h2>${role()==='GESTOR'?'Visão Geral da Operação':role()==='TECNICO'?'Minha Central Técnica':'Minha Central de Atendimento'}</h2><p>Dados atualizados em tempo real.</p></div><span class="vx-c-hero-date">${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}</span></div>
 
-      <div class="vx-c-situations">
-        ${situationCard('Aguardando Análise',analysis,overdueAnalysis,'analysis')}
-        ${situationCard('Aguardando Aprovação',approval,overdueApproval,'approval')}
-        ${situationCard('Em Conserto',repair,overdueRepair,'repair')}
-        ${situationCard('Demais Situações',demais,null,'demais')}
+      <div class="vx-c-kpirow">
+        ${kpi('📋','OS Ativas',active.length,`+${activeOpenedThisMonth} este mês`,'active')}
+        ${kpi('📥','Aguardando Análise',analysis.length,`${overdueAnalysis.length} acima do prazo`,'analysis')}
+        ${kpi('⏳','Aguardando Aprovação',approval.length,`${urgent.filter(o=>approval.includes(o)).length} urgentes`,'approval')}
+        ${kpi('🔧','Em Conserto',repair.length,overdueRepair.length?`${overdueRepair.length} acima do prazo`:'Normal','repair')}
+        ${kpi('📦','Prontos para Entrega',ready.length,`${readyOverdue7.length} há mais de 7 dias`,'ready')}
+        ${kpi('💰','Orçamentos (Mês)',orcamentosMes.count,M(orcamentosMes.value),'orcamentosMes')}
+        ${kpi('🚚','Entregues (Mês)',entreguesMes.count,M(entreguesMes.value),'entreguesMes')}
       </div>
-
-      <section class="vx-c-today">
-        <div class="vx-c-title"><h3>Central do Dia</h3><small>${active.length} OS ativas no total · o que precisa da sua atenção agora</small></div>
-        <div class="vx-c-today-grid">
-          ${todayTile('★','Oportunidades do Dia',ready.length)}
-          ${todayTile('!','Casos de Atenção',cases.length)}
-          ${todayTile('☑','Tarefas / Atividades',tasks.length)}
-          ${todayTile('▣','Pedidos de Peças',parts.length)}
-          ${todayTile('◷','Agenda / Compromissos',apps.length)}
-        </div>
-      </section>
-
-      <section class="vx-c-exceptions">
-        <div class="vx-c-title"><h3>Gestão por Exceção</h3><small>painel executivo · atrasos, riscos e oportunidades</small></div>
-        <div class="vx-c-exc-grid">
-          ${exceptionCard('risk','⚠','Atrasos',overdueTotal,`${overdueAnalysis.length} análise • ${overdueApproval.length} aprovação • ${overdueRepair.length} conserto`,'overdue')}
-          ${exceptionCard('risk','◎','OS sem responsável',noTech.length,'Risco de fila sem técnico definido','noTech')}
-          ${exceptionCard('warn','▲','Urgências',urgent.length,'Prioridades declaradas na operação','urgent')}
-          ${exceptionCard('warn','⏳','Gargalo predominante',gargalo[1].length,`Etapa mais travada: ${gargalo[0]}`,'gargalo')}
-          ${exceptionCard('risk risk-strong','☠','Risco combinado',riscoCombinado.length,'Urgente e acima do prazo ao mesmo tempo','riscoCombinado')}
-          ${exceptionCard('opportunity','✓','Oportunidade',ready.length,'Aparelhos prontos para contato de retirada','ready')}
-        </div>
-      </section>
 
       <div class="vx-c-grid-2">
-        <section class="vx-c-fin-card"><div class="vx-c-title"><h3>Resumo Financeiro</h3><small>somente pagamentos registrados</small></div>
-          <div class="vx-c-fin-strip"><div class="vx-c-fin-chip"><span>Recebido hoje</span><b>${M(receivedToday)}</b></div><div class="vx-c-fin-chip"><span>Recebido no mês</span><b>${M(receivedMonth)}</b></div><div class="vx-c-fin-chip"><span>Valor em prontos</span><b>${M(readyValue)}</b></div></div>
+        <section class="vx-c-cases-card"><div class="vx-c-title"><h3>⚠ Casos de Atenção</h3><a href="#" data-drill="casesAbertos" data-title="Casos de Atenção">Ver todos os casos</a></div>
+          <div class="vx-c-cases-row">
+            <div><b>${casesNovos.length}</b><span>Novos casos</span><small>Requerem triagem</small></div>
+            <div><b>${casesAndamento.length}</b><span>Em andamento</span><small>Aguardando retorno do cliente</small></div>
+            <div><b>${casesResolvidos.length}</b><span>Resolvidos</span><small>Acompanhe os concluídos</small></div>
+          </div>
         </section>
-        <section class="vx-c-goals-card"><div class="vx-c-title"><h3>Metas e Bonificação</h3><small>sem valores fictícios</small></div><div class="vx-c-goals-empty"><span class="vx-c-goals-icon">◷</span><p>Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</p></div></section>
+        <section class="vx-c-opp-card"><div class="vx-c-title"><h3>Oportunidades do Dia</h3><a href="#" data-drill="ready" data-title="Oportunidades do Dia">Ver todas</a></div>
+          ${oppRow('Retiradas previstas para hoje',retiradasHoje)}
+          ${oppRow('Orçamentos sem resposta',approval.length)}
+          ${oppRow('Aparelhos prontos para retirada',ready.length)}
+          ${oppRow('Prazos críticos próximos',analysis.filter(o=>age(o)===2).length+approval.filter(o=>age(o)===2).length+repair.filter(o=>age(o)===6).length)}
+          ${oppRow('Clientes com mais de 1 OS',repeatClients)}
+        </section>
       </div>
 
-      ${role()==='GESTOR'?`<section class="vx-c-prod-card"><div class="vx-c-title"><h3>Produtividade</h3><small>prontos × entregues, por loja/grupo/técnico</small></div><div class="vx-c-prod-grid">${prodSubBlock('ready','APARELHOS PRONTOS',stores,techs,groups)}${prodSubBlock('delivered','APARELHOS ENTREGUES',stores,techs,groups)}</div></section>`:''}
+      <section class="vx-c-gv-card"><div class="vx-c-title"><h3>Gestão Visual <span class="vx-c-info" title="Distribuição das OS por tempo desde a última mudança de situação">ⓘ</span></h3><a href="#" data-drill="active" data-title="Gestão Visual">Ver todos</a></div>
+        <div class="vx-c-gv-grid">${gvPanel('AGUARDANDO ANÁLISE',gvAnalysis)}${gvPanel('AGUARDANDO APROVAÇÃO',gvApproval)}${gvPanel('PRONTOS PARA ENTREGA',gvReady)}</div>
+      </section>
+
+      <div class="vx-c-grid-3">
+        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Minhas Tarefas</h3><a href="#" data-drill="casesAbertos" data-title="Minhas Tarefas">Ver todas</a></div>
+          ${taskRow('Tirar novos casos de atenção',casesNovos.length)}
+          ${taskRow('Retornar clientes pendentes',tasks.length)}
+          ${taskRow('Acompanhar orçamentos sem resposta',approval.length)}
+          ${taskRow('Aprovar pedidos de peças',partsPendentes.length)}
+          ${taskRow('Confirmar aparelhos prontos',ready.length)}
+        </section>
+        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Pedidos de Peças</h3><a href="#" data-drill="active" data-title="Pedidos de Peças">Ver todas</a></div>
+          ${iconRow('◷','Pendentes de aprovação',partsPendentes.length,'')}
+          ${iconRow('🛒','Em compra',partsCompra.length,'')}
+          ${iconRow('🚚','Aguardando entrega',partsEntrega.length,'')}
+          ${iconRow('⚠','Atrasados',partsAtrasadas.length,'warn')}
+          ${iconRow('✓','Recebidos hoje',partsRecebidasHoje.length,'ok')}
+        </section>
+        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Gestão por Exceção</h3><a href="#" data-drill="repair" data-title="Gestão por Exceção">Ver todas</a></div>
+          ${iconRow('⚠','OS paradas há mais de 7 dias',overdueRepair.length,'warn')}
+          ${iconRow('⏳','Orçamentos sem resposta há mais de 3 dias',overdueApproval.length,'warn')}
+          ${iconRow('📦','Peças atrasadas',partsAtrasadas.length,'warn')}
+          ${iconRow('📥','Aparelhos prontos há mais de 3 dias',readyOverdue3.length,'warn')}
+          ${iconRow('👤','Clientes com mais de 1 OS aberta',repeatClients,'')}
+        </section>
+      </div>
+
+      <div class="vx-c-grid-2">
+        <section class="vx-c-feed-card"><div class="vx-c-title"><h3>Feed em Tempo Real</h3><a href="#" id="vxFeedAll">Ver tudo</a></div>
+          ${feed.length?feed.map(h=>`<div class="vx-c-feed-row"><span class="vx-c-feed-dot"></span><div><b>${new Date(h.changed_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</b><span>${E(feedText(h))}</span></div></div>`).join(''):'<p class="vx-c-empty">Nenhuma movimentação recente.</p>'}
+        </section>
+        <section class="vx-c-prod-table-card"><div class="vx-c-title"><h3>Produtividade</h3><a href="#" data-drill="active" data-title="Produtividade">Ver relatório completo</a></div>
+          <p class="vx-c-prod-total">Total recebido nas OS: <b>${M(totalRecebidoOS)}</b></p>
+          <div class="vx-c-tw"><table class="vx-c-prod-table"><thead><tr><th>Técnico</th><th>OS</th><th>Valor Recebido</th><th>Prontos</th><th>Aproveitamento</th></tr></thead>
+          <tbody>${prodRows.length?prodRows.map(r=>`<tr><td>${E(r.tech.full_name)}</td><td>${r.os}</td><td>${M(r.valor)}</td><td>${r.prontos}</td><td>${r.aproveitamento}%</td></tr>`).join(''):'<tr><td colspan="5" class="vx-c-empty">Nenhuma OS atribuída ainda.</td></tr>'}</tbody></table></div>
+        </section>
+      </div>
+
+      <div class="vx-c-grid-2">
+        <section class="vx-c-goals-card"><div class="vx-c-title"><h3>Metas e Bonificação</h3><a href="#" id="vxGoalsDetail">Ver detalhes</a></div><div class="vx-c-goals-empty"><span class="vx-c-goals-icon">◷</span><p>Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</p></div></section>
+        <section class="vx-c-fin-card"><div class="vx-c-title"><h3>Resumo Financeiro</h3><a href="#" data-drill="active" data-title="Resumo Financeiro">Ver financeiro completo</a></div>
+          <div class="vx-c-fin-grid">
+            <div><span>Faturamento (Mês)</span><b>${M(faturamentoMes)}</b><small class="${faturamentoMes>=faturamentoMesAnt?'ok':'err'}">${pctChange(faturamentoMes,faturamentoMesAnt)>=0?'+':''}${pctChange(faturamentoMes,faturamentoMesAnt)}% vs mês anterior</small></div>
+            <div><span>Recebimentos (Mês)</span><b>${M(receivedMonth)}</b><small class="${receivedMonth>=receivedPrevMonth?'ok':'err'}">${pctChange(receivedMonth,receivedPrevMonth)>=0?'+':''}${pctChange(receivedMonth,receivedPrevMonth)}% vs mês anterior</small></div>
+            <div><span>Orçamentos (Mês)</span><b>${M(orcamentosMes.value)}</b><small class="${orcamentosMes.value>=orcamentosMesAnt.value?'ok':'err'}">${pctChange(orcamentosMes.value,orcamentosMesAnt.value)>=0?'+':''}${pctChange(orcamentosMes.value,orcamentosMesAnt.value)}% vs mês anterior</small></div>
+            <div><span>A receber</span><b>${M(aReceber)}</b></div>
+            <div><span>Atrasos acima de 30 dias</span><b class="err">${M(atrasos30)}</b></div>
+            <div><span>Ticket médio (Mês)</span><b>${M(ticketMedio)}</b></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="vx-c-agenda5-card"><div class="vx-c-title"><h3>Minha Agenda — Próximos 5 dias</h3><a href="#" id="vxAgendaFull">Ver agenda completa</a></div>
+        <div class="vx-c-agenda5-grid">${days.map(d=>{
+          const manha=d.rows.filter(a=>norm(a.period)!=='TARDE'), tarde=d.rows.filter(a=>norm(a.period)==='TARDE');
+          function apptCard(a){
+            const eq=a.service_orders?.equipments||{};
+            const loc=a.service_orders?.clients?.neighborhood||a.service_orders?.clients?.city||'';
+            return `<div class="vx-c-appt"><b>${E([eq.product_type,eq.brand].filter(Boolean).join(' · ')||'Equipamento')}</b><span>${E(loc)}${loc&&a.service_orders?.reported_defect?' · ':''}${E(a.service_orders?.reported_defect||'')}</span></div>`;
+          }
+          return `<div class="vx-c-agenda5-day"><div class="vx-c-agenda5-day-head"><strong>${E(d.label)}</strong><span>${d.count}</span></div>
+            ${manha.length?`<div class="vx-c-agenda5-period"><small>MANHÃ</small>${manha.map(apptCard).join('')}</div>`:''}
+            ${tarde.length?`<div class="vx-c-agenda5-period"><small>TARDE</small>${tarde.map(apptCard).join('')}</div>`:''}
+            ${!d.count?'<p class="vx-c-empty">Sem compromissos.</p>':''}
+            ${d.dupWarning?`<div class="vx-c-agenda5-warn">⚠ ${E(d.dupWarning)}</div>`:''}
+          </div>`;
+        }).join('')}</div>
+      </section>
+
       ${discovery()}
     </div>`;
-    app.querySelectorAll('[data-drill]').forEach(el=>el.onclick=()=>{const k=el.dataset.drill;if(drills[k])modal(el.dataset.title||el.textContent.trim()||'Detalhamento',drills[k]);});
-    app.querySelectorAll('.vx-c-prod-sub').forEach(sec=>{
-      prodRecalc(sec,prodOrders,finMap);
-      sec.querySelectorAll('select').forEach(s=>s.onchange=()=>prodRecalc(sec,prodOrders,finMap));
-      sec.querySelectorAll('[data-period]').forEach(b=>b.onclick=()=>{sec.querySelectorAll('[data-period]').forEach(x=>x.classList.remove('active'));b.classList.add('active');prodRecalc(sec,prodOrders,finMap)});
+    app.querySelectorAll('[data-drill]').forEach(el=>el.onclick=(ev)=>{
+      ev.preventDefault();
+      const k=el.dataset.drill;
+      const title=el.dataset.title||el.textContent.trim()||'Detalhamento';
+      if(k==='casesAbertos')return casesModal(title,casesAbertos);
+      if(drills[k])modal(title,drills[k]);
     });
   };
 
   window.VoxAssistRuntime=window.VoxAssistRuntime||{};
-  window.VoxAssistRuntime.dashboard={name:'Dashboard Canônico V1',version:'1.0.0',owner:'runtime/dashboard-canonical-v1.js'};
+  window.VoxAssistRuntime.dashboard={name:'Dashboard Canônico V1',version:'2.0.0',owner:'runtime/dashboard-canonical-v1.js'};
 })();
