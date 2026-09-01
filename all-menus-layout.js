@@ -4,7 +4,30 @@
   const colorMap={blue:'#1671d8',orange:'#f07d00',purple:'#7650d6',green:'#13904b',cyan:'#2389b9',red:'#cf3542',gray:'#60758d',brown:'#b7681d',teal:'#148c7a'};
   const card=(icon,title,sub,target,color='blue')=>`<button class="module-action-card ${color}" data-target="${target}"><span class="icon">${icon}</span><span><strong>${title}</strong><small>${sub}</small></span></button>`;
   const summary=(label,n,color='blue')=>`<div class="module-summary-card" style="--accent:${colorMap[color]||color}"><span>${label}</span><b>${n}</b></div>`;
+  // Achado real (Consolidação Geral, 2026-09-01): 9 cards apontavam pra
+  // um alvo sem tela nenhuma e caíam só no toast genérico -- botão que
+  // "funciona" (não trava, não é morto) mas nunca abre nada. A regra
+  // "é proibido... criar botão morto" exige abrir uma tela de verdade,
+  // mesmo que sem integração ainda -- então cada um ganha aqui uma
+  // tela real "Estrutura disponível", nunca só um toast.
+  const STRUCTURE_ONLY_TARGETS={
+    'pareceres':['Pareceres Técnicos','A geração de pareceres/laudos por fabricante e seguradora ainda não tem tela própria. Hoje o laudo técnico é registrado dentro da própria O.S., na aba Orçamento/Análise Técnica.'],
+    'anexos':['Fotos / Anexos (consulta consolidada)','A consulta de fotos e anexos por O.S. já existe dentro de cada Ordem de Serviço (aba Fotos/Anexos). Uma visão consolidada entre várias O.S. ainda não foi construída.'],
+    'docs-tecnicos':['Documentação Técnica','A tabela de manuais/boletins por marca e modelo já existe e é usada dentro da O.S. (aba Equipamento). Uma tela de gestão/upload consolidada ainda não existe.'],
+    'relatorios-fin':['Exportação de relatórios financeiros','Filtros e exportação (PDF/Excel) de relatórios financeiros ainda não foram implementados. O financeiro por O.S. já existe e pode ser consultado normalmente.'],
+    'relatorios-export':['Exportação PDF / Excel','Exportação de relatórios gerenciais ainda não foi implementada nesta rodada.'],
+    'backup':['Backup / Restauração','Rotina de backup/restauração administrada pelo Supabase (banco gerenciado) -- uma tela própria de acionamento manual ainda não existe.'],
+    'integracoes':['Integrações','Painel de integrações (WhatsApp, GestãoClick, site) ainda não existe como tela única. A integração de WhatsApp já funciona de verdade em Chat VoxAssist.'],
+    'loja-vendas':['Venda de Aparelho','Registro comercial de venda de equipamento (fora do fluxo de conserto) ainda não tem tela própria.'],
+    'whatsapp':['Lembretes / WhatsApp','Fila de lembretes automáticos ainda não existe. O envio real de WhatsApp já funciona em Chat VoxAssist, por conversa.'],
+  };
   function bindTargets(){document.querySelectorAll('[data-target]').forEach(b=>b.onclick=()=>openTarget(b.dataset.target));}
+  function renderStructureOnly(target,title,detail){
+    const app=document.querySelector('#app');if(!app)return;
+    const badge=typeof window.vxStructurePanel==='function'?window.vxStructurePanel(title,detail):`<div><strong>${title}</strong><p>${detail}</p></div>`;
+    app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>${title}</h2><p>Estrutura disponível para avaliação visual — integração funcional em homologação.</p></div><div class="module-head-actions"><button class="secondary" id="vxStructureBack">← Voltar</button></div></div>${badge}</div>`;
+    document.getElementById('vxStructureBack').onclick=()=>window.render(state.view||'dashboard');
+  }
   async function openTarget(t){
     if(t==='nova-os') return baseRender('nova-os');
     if(t==='pesquisa-os') return renderOperational('os','Pesquisa O.S.');
@@ -17,6 +40,7 @@
     if(t==='testes-operacional') return renderOperational('testes','Testes de Funções');
     if(t==='usuarios-operacional') return renderOperational('usuarios','Usuários / Segurança');
     if(t==='dashboard') return baseRender('dashboard');
+    if(STRUCTURE_ONLY_TARGETS[t])return renderStructureOnly(t,...STRUCTURE_ONLY_TARGETS[t]);
     toast('Função registrada para evolução/homologação da V0.8.12.');
   }
   async function renderOperational(view,label){await baseRender(view);state.view='op:'+view;renderTabs(label);const title=document.querySelector('#title');if(title)title.textContent=label;}
