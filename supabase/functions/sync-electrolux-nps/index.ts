@@ -34,6 +34,12 @@ import {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// Deploy com --no-verify-jwt (o chamador é o pg_cron, não um usuário
+// VoxAssist com sessão) -- a autenticação real é este token, guardado
+// só no Supabase Vault e nunca em texto aberto em cron.job (ver
+// electrolux_connections_20260901_security_hardening). Sem isso a
+// function ficava disparável publicamente por qualquer um com a URL.
+const SYNC_SERVICE_TOKEN = Deno.env.get("ELECTROLUX_SYNC_SERVICE_TOKEN");
 
 type ConcludedAppointment = {
   id: string;
@@ -53,7 +59,16 @@ type HistoryRow = {
 
 type FailedDetail = { external_appointment_id: string; error: string };
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const authHeader = req.headers.get("Authorization");
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!SYNC_SERVICE_TOKEN || token !== SYNC_SERVICE_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   const startedAt = new Date().toISOString();
   let processed = 0;

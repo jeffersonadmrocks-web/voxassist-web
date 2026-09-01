@@ -16,6 +16,12 @@ const ELECTROLUX_API_PASSWORD = Deno.env.get("ELECTROLUX_API_PASSWORD")!;
 // provisório criado pelo sync existe no banco mas fica invisível em
 // qualquer tela carregada pela sessão de um usuário normal.
 const ELECTROLUX_DEFAULT_COMPANY_ID = Deno.env.get("ELECTROLUX_DEFAULT_COMPANY_ID") || null;
+// Deploy com --no-verify-jwt (o chamador é o pg_cron, não um usuário
+// VoxAssist com sessão) -- a autenticação real é este token, guardado
+// só no Supabase Vault e nunca em texto aberto em cron.job (ver
+// electrolux_connections_20260901_security_hardening). Sem isso a
+// function ficava disparável publicamente por qualquer um com a URL.
+const SYNC_SERVICE_TOKEN = Deno.env.get("ELECTROLUX_SYNC_SERVICE_TOKEN");
 
 type ExistingRow = {
   id: string;
@@ -34,10 +40,20 @@ type ExistingRow = {
 
 type ElectroluxConnection = { id: string; filial: "VITORIA" | "SERRA" };
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const authHeader = req.headers.get("Authorization");
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!SYNC_SERVICE_TOKEN || token !== SYNC_SERVICE_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   const startedAt = new Date().toISOString();
   let processed = 0;
+  let defaultConnectionId: string | null = null;
   const basicAuth = "Basic " + btoa(`${ELECTROLUX_API_USER}:${ELECTROLUX_API_PASSWORD}`);
 
   try {
@@ -49,6 +65,7 @@ Deno.serve(async () => {
     const { data: connectionsRaw } = await supabase.from("electrolux_connections").select("id, filial").eq("active", true);
     const connections = (connectionsRaw || []) as ElectroluxConnection[];
     const defaultConnection = connections.length === 1 ? connections[0] : null;
+    defaultConnectionId = defaultConnection?.id ?? null;
 
     const res = await fetch(`${ELECTROLUX_API_URL}/api/dashboard/service-orders`, {
       headers: { Authorization: basicAuth },
@@ -214,18 +231,39 @@ Deno.serve(async () => {
       orders_processed: processed,
     });
 
+    // Status da conexão -- nunca grava credencial/token aqui, só o
+    // resultado da sincronização (hora e se a autenticação funcionou).
+    if (defaultConnectionId) {
+      await supabase.from("electrolux_connections").update({
+        last_sync_at: new Date().toISOString(),
+        auth_status: "OK",
+        last_sync_error: null,
+        updated_at: new Date().toISOString(),
+      }).eq("id", defaultConnectionId);
+    }
+
     return new Response(JSON.stringify({ ok: true, processed }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (e) {
+    const safeMessage = e instanceof Error ? e.message : String(e);
     await supabase.from("integration_sync_runs").insert({
       origin: "ELECTROLUX",
       started_at: startedAt,
       finished_at: new Date().toISOString(),
       success: false,
       orders_processed: processed,
-      error_message: e instanceof Error ? e.message : String(e),
+      error_message: safeMessage,
     });
+
+    if (defaultConnectionId) {
+      await supabase.from("electrolux_connections").update({
+        auth_status: "FALHA",
+        last_sync_error: safeMessage,
+        updated_at: new Date().toISOString(),
+      }).eq("id", defaultConnectionId);
+    }
+
     return new Response(JSON.stringify({ ok: false, error: "sync_failed" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
