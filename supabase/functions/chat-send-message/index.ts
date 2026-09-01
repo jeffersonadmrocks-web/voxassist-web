@@ -142,9 +142,12 @@ Deno.serve(async (req) => {
       external_message_id: gatewayResult.externalMessageId ?? null,
       status: "ENVIADA",
     });
+    // unread_count volta a 0 quando o atendente responde -- mesma
+    // correção do achado real em chat-inbound-webhook (a coluna nunca
+    // era incrementada nem resetada; o filtro "Não lidas" era cosmético).
     await admin
       .from("chat_conversations")
-      .update({ last_message_at: new Date().toISOString(), last_message_preview: buildMessagePreview(text) })
+      .update({ last_message_at: new Date().toISOString(), last_message_preview: buildMessagePreview(text), unread_count: 0 })
       .eq("id", conversation.id);
 
     return respond({ ok: true }, 200);

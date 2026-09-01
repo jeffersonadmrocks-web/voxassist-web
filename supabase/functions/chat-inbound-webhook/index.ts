@@ -37,7 +37,7 @@ const GATEWAY_SERVICE_TOKEN = Deno.env.get("CHAT_GATEWAY_SERVICE_TOKEN");
 const GATEWAY_URL = Deno.env.get("CHAT_GATEWAY_URL");
 
 type ConnectionRow = { id: string; company_id: string; status: string };
-type ConversationRow = { id: string; status: string; last_away_sent_at: string | null };
+type ConversationRow = { id: string; status: string; last_away_sent_at: string | null; unread_count: number | null };
 
 function json(body: Record<string, unknown>, status: number) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
 
     const { data: existingRows } = await admin
       .from("chat_conversations")
-      .select("id, status, last_away_sent_at")
+      .select("id, status, last_away_sent_at, unread_count")
       .eq("connection_id", connectionId)
       .eq("remote_jid", identity.remoteJid)
       .order("created_at", { ascending: false });
@@ -96,6 +96,14 @@ Deno.serve(async (req) => {
           // errado (LID) em mensagens anteriores a esta correção.
           customer_phone: identity.customerPhone,
           sender_lid: identity.senderLid,
+          // Achado real (correção visual, 2026-09-01): unread_count
+          // existia na tabela desde a fundação do Chat, mas nenhuma
+          // function nunca incrementava -- o filtro "Não lidas" do
+          // frontend nunca mostrava nada de verdade. Incrementa aqui
+          // (lido em existingRows, não via SQL bruto); reseta em
+          // chat-send-message (resposta) e ao abrir a conversa no
+          // frontend (leitura).
+          unread_count: Number(current?.unread_count ?? 0) + 1,
         })
         .eq("id", conversationId);
     } else {
@@ -110,6 +118,7 @@ Deno.serve(async (req) => {
           status: "ABERTA",
           last_message_at: new Date().toISOString(),
           last_message_preview: buildMessagePreview(text),
+          unread_count: 1,
         })
         .select("id")
         .single();

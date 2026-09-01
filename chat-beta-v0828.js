@@ -476,6 +476,19 @@
     return rows;
   }
 
+  // "Aguardando há X" -- só quando unread_count>0 (cliente escreveu e
+  // ninguém respondeu ainda; ver correção real em chat-inbound-webhook/
+  // chat-send-message). Tempo calculado a partir de last_message_at,
+  // dado já real -- nenhuma coluna nova.
+  function waitingText(c){
+    if(!(Number(c.unread_count||0)>0)||!c.last_message_at)return'';
+    const mins=Math.max(0,Math.floor((Date.now()-new Date(c.last_message_at).getTime())/60000));
+    if(mins<60)return `Cliente aguardando há ${mins} min`;
+    const h=Math.floor(mins/60),m=mins%60;
+    if(h<24)return `Cliente aguardando há ${h}h${m?m+'min':''}`;
+    return `Cliente aguardando há ${Math.floor(h/24)}d`;
+  }
+
   function convRow(c){
     const name=c.customer_name||c.clients?.name;
     const matched=!!name;
@@ -483,6 +496,7 @@
     const unread=Number(c.unread_count||0);
     const st=CONV_STATUS_LABEL[c.status]||{text:c.status,cls:'neutral'};
     const assignedName=c.profiles?.full_name||null;
+    const wt=waitingText(c);
     return `<li class="vx-cc-row ${String(c.id)===String(hubState.selectedId)?'active':''}" data-conv="${E(c.id)}">
       <div class="vx-cc-avatar ${matched?'':'unmatched'}">${matched?E(initials(name)):'?'}</div>
       <div class="vx-cc-main">
@@ -490,6 +504,7 @@
         <div class="vx-cc-preview"><span class="vx-cc-prev-text">${E(c.last_message_preview||'Sem mensagens ainda')}</span>${unread?`<span class="vx-cc-unread">${unread}</span>`:''}</div>
         <div class="vx-cc-meta ${assignedName?'':'unassigned'}">${E(c.stores?.name||'—')} · ${E(assignedName||'Não atribuída')}</div>
         <div class="vx-cc-status-row"><span class="vx-cc-pill ${st.cls}">${E(st.text)}</span></div>
+        ${wt?`<div class="vx-cc-waiting">${E(wt)}</div>`:''}
       </div>
     </li>`;
   }
@@ -554,8 +569,15 @@
   async function selectConversa(id,skipListRerender){
     stopConversaPoll();
     hubState.selectedId=id;
-    if(!skipListRerender)renderConvList();
     const conv=hubState.list.find(c=>String(c.id)===String(id));
+    // Abrir a conversa marca como lida -- mesma correção real do
+    // unread_count (antes nunca era incrementado nem resetado por
+    // ninguém). Não espera a resposta do PATCH pra atualizar a UI.
+    if(conv&&Number(conv.unread_count||0)>0){
+      conv.unread_count=0;
+      api(`chat_conversations?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({unread_count:0})}).catch(()=>{});
+    }
+    if(!skipListRerender)renderConvList();
     const mid=document.getElementById('vxChatMid');
     if(!mid)return;
     const name=conv?.customer_name||conv?.clients?.name;

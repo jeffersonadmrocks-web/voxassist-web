@@ -147,6 +147,7 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
 .vx-cc-meta{margin-top:4px;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--cc-ink-faint)}
 .vx-cc-meta.unassigned{color:var(--cc-warn-ink)}
 .vx-cc-status-row{display:flex;gap:4px;margin-top:5px}
+.vx-cc-waiting{margin-top:4px;font-size:10.5px;font-weight:700;color:var(--cc-warn-ink)}
 .vx-cc-pill{display:inline-block;font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap}
 .vx-cc-pill.ok{background:var(--cc-ok-bg);color:var(--cc-ok-ink)}
 .vx-cc-pill.warn{background:var(--cc-warn-bg);color:var(--cc-warn-ink)}
