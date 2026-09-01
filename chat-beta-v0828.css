@@ -48,9 +48,39 @@
 .vx-msg-out{justify-content:flex-end}
 .vx-msg-bubble{max-width:70%;padding:8px 12px;border-radius:12px;background:#fff;border:1px solid rgba(8,40,68,.1);font-size:13px;color:#1a2733}
 .vx-msg-out .vx-msg-bubble{background:#082844;color:#fff;border-color:#082844}
-.vx-msg-bubble small{display:block;margin-top:3px;font-size:10px;opacity:.6;text-align:right}
+.vx-msg-bubble small{font-size:10px;opacity:.6}
 
 /* ---------- QR ---------- */
 .vx-conn-qr-modal{max-width:340px;text-align:center}
 .vx-conn-qr-box{min-height:240px;display:flex;align-items:center;justify-content:center;background:#f5f7f9;border-radius:10px;color:#5b6b7a;font-size:13px}
 .vx-conn-qr-box img{border-radius:8px}
+
+/* ---------- horário de atendimento ---------- */
+.vx-hours-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;border-radius:999px;padding:4px 12px;white-space:nowrap}
+.vx-hours-badge::before{content:'';width:7px;height:7px;border-radius:50%}
+.vx-hours-badge-ok{background:#e6f4ea;color:#1e7a3d}
+.vx-hours-badge-ok::before{background:#1e7a3d}
+.vx-hours-badge-off{background:#fff6e0;color:#8a6100}
+.vx-hours-badge-off::before{background:#8a6100}
+
+/* ---------- Conversas (teste) — status/origem/exclusão ---------- */
+.vx-msg-meta{display:flex;justify-content:flex-end;gap:6px;align-items:center;margin-top:3px}
+.vx-msg-tick{font-size:10px;opacity:.7}
+.vx-msg-tick-read{opacity:1;color:#4a90b8}
+.vx-msg-out .vx-msg-tick-read{color:#8fd0ff}
+.vx-msg-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;border-radius:5px;padding:1px 5px}
+.vx-msg-tag-import{background:rgba(8,40,68,.08);color:#082844}
+.vx-msg-out .vx-msg-tag-import{background:rgba(255,255,255,.2);color:#fff}
+.vx-msg-deleted .vx-msg-bubble{opacity:.75;font-style:italic}
+.vx-msg-deleted-label{display:block;font-size:10px;font-style:normal;font-weight:700;opacity:.8;margin-bottom:3px}
+
+/* ---------- Importação de histórico ---------- */
+.vx-import-legend{display:flex;flex-wrap:wrap;gap:6px 10px;font-size:11px;color:#5b6b7a}
+.vx-import-run-card{border:1px solid rgba(8,40,68,.1);border-radius:10px;padding:12px 14px;background:#fff;display:flex;flex-direction:column;gap:8px}
+.vx-import-run-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.vx-import-run-counts{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;font-size:11px;color:#5b6b7a}
+.vx-import-run-counts b{display:block;color:#1a2733;font-size:13px}
+.vx-contact-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:#f5f8fb;border-radius:8px;font-size:12px}
+.vx-contact-row b{color:#1a2733;font-weight:600}
+.vx-contact-row span{color:#5b6b7a;font-size:11px}
+button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}

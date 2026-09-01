@@ -25,6 +25,25 @@
   function role(){return state.profile?.role||'GESTOR'}
   function isGestor(){return role()==='GESTOR'}
 
+  /* ---------- horário de atendimento ----------
+     Mesma regra do backend (chat-inbound-webhook, via
+     _shared/messagingService.ts): segunda a sexta, 08h-18h, horário de
+     Brasília. America/Sao_Paulo é UTC-3 fixo (sem horário de verão
+     desde 2019) -- por isso dá pra calcular só com aritmética de
+     milissegundos, sem depender de Intl/timezone. Isto aqui é só pra
+     exibição (o back-end é quem decide de verdade se manda a mensagem
+     automática); nunca usado pra bloquear nenhuma ação do atendente. */
+  const BUSINESS_TZ_OFFSET_MIN=-180;
+  function isWithinBusinessHoursNow(){
+    const wall=new Date(Date.now()+BUSINESS_TZ_OFFSET_MIN*60*1000);
+    const weekday=wall.getUTCDay(), hour=wall.getUTCHours();
+    return weekday>=1&&weekday<=5&&hour>=8&&hour<18;
+  }
+  function businessHoursBadge(){
+    const open=isWithinBusinessHoursNow();
+    return `<span class="vx-hours-badge vx-hours-badge-${open?'ok':'off'}">${open?'Atendimento aberto agora':'Fora do horário — resposta automática ativa'}</span>`;
+  }
+
   /* ---------- entrada no menu lateral ---------- */
   function ensureNavEntry(){
     const menu=document.querySelector('.desktop-menu');
@@ -107,6 +126,11 @@
       </div>
       <div class="vx-chatbeta-notice">A Digisac continua sendo utilizada pela Vox normalmente, de forma externa e independente, durante esta fase de transição. Esta área vai se tornar o Chat VoxAssist — comunicação própria com o cliente pelo WhatsApp, integrada a clientes e OS.</div>
       <div class="vx-chatbeta-card">
+        <h3>Horário de atendimento</h3>
+        <p class="vx-chatbeta-sub">Segunda a sexta, das 8h às 18h (horário de Brasília). Fora desse período, quem escrever recebe uma mensagem automática avisando que o atendimento está fechado — sem repetir várias vezes pro mesmo cliente, e volta ao normal sozinho no próximo expediente.</p>
+        ${businessHoursBadge()}
+      </div>
+      <div class="vx-chatbeta-card">
         <h3>Configurações</h3>
         <p class="vx-chatbeta-sub">Conexões WhatsApp da empresa ativa — cada conexão representa um número, autenticado por QR Code.</p>
         <div id="chatBetaConnSummary" class="vx-chatbeta-sub">Carregando…</div>
@@ -117,10 +141,16 @@
         <p class="vx-chatbeta-sub">Fluxo mínimo pra validar recebimento/envio real com uma conexão de teste — ainda não é a Central de Conversas completa.</p>
         <button id="chatBetaGoConversas">Conversas → teste</button>
       </div>
+      <div class="vx-chatbeta-card">
+        <h3>Importação de histórico</h3>
+        <p class="vx-chatbeta-sub">Conversas, contatos e mensagens que o WhatsApp disponibilizar na primeira conexão. Estrutura de dados já pronta; o gatilho real ainda depende do gateway (etapa futura) — aqui dá pra acompanhar o que já existir.</p>
+        <button id="chatBetaGoImport">Importação → histórico</button>
+      </div>
     </div>`;
     document.getElementById('chatBetaBack').onclick=goBack;
     document.getElementById('chatBetaGoConexoes').onclick=openConexoesScreen;
     document.getElementById('chatBetaGoConversas').onclick=openConversasScreen;
+    document.getElementById('chatBetaGoImport').onclick=openImportPickerScreen;
     document.getElementById('chatBetaConnSummary').innerHTML=await connectionsSummary();
   }
 
@@ -182,6 +212,7 @@
         ${showConnect?`<button class="primary" data-action="connect" data-id="${E(c.id)}">Conectar</button>`:''}
         ${showReconnect?`<button class="primary" data-action="reconnect" data-id="${E(c.id)}">Reconectar</button>`:''}
         ${showDisconnect?`<button data-action="disconnect" data-id="${E(c.id)}">Desconectar</button>`:''}
+        <button data-action="import" data-id="${E(c.id)}">Importações</button>
       </div>
     </div>`;
   }
@@ -192,6 +223,7 @@
     app.innerHTML=`<div class="vx-chatbeta vx-chatbeta-wide">
       <div class="vx-chatbeta-head">
         <div><button id="conexoesBack">← Voltar</button><h2>Chat → Configurações → Conexões</h2><small>Cada conexão é um número WhatsApp independente, autenticado por QR Code</small></div>
+        ${businessHoursBadge()}
       </div>
       <div class="vx-chatbeta-card">
         <h3>Nova conexão</h3>
@@ -230,6 +262,7 @@
   }
 
   async function handleConnAction(action,connectionId){
+    if(action==='import'){ await openImportScreen(connectionId); return; }
     try{
       if(action==='connect'||action==='reconnect'){
         await gatewayAction(action,{connectionId});
@@ -298,6 +331,122 @@
     },2000);
   }
 
+  /* ---------- Importação de histórico ----------
+     Lê chat_import_runs/chat_contacts direto (RLS já restringe a
+     GESTOR da empresa) -- schema pronto desde o Lote 1/2 do plano
+     técnico de importação, mas o gatilho real (gateway processando
+     messaging-history.set em lotes) ainda não existe, então aqui é
+     leitura + estado vazio honesto, nunca um botão fingindo funcionar. */
+  const IMPORT_STATUS_LABEL={
+    RUNNING:{text:'Importando…',cls:'warn'},
+    COMPLETED:{text:'Sincronização inicial concluída',cls:'ok'},
+    PARTIAL:{text:'Histórico importado parcialmente',cls:'warn'},
+    INTERRUPTED:{text:'Sincronização interrompida',cls:'err'},
+    FAILED:{text:'Falha na importação',cls:'err'},
+  };
+  const CONTACT_STATUS_LABEL={
+    NAO_VINCULADO:{text:'Não vinculado',cls:'neutral'},
+    VINCULADO_CLIENTE:{text:'Vinculado a cliente',cls:'ok'},
+    SOMENTE_CONTATO:{text:'Só contato',cls:'neutral'},
+  };
+
+  async function openImportPickerScreen(){
+    const app=document.querySelector('#app');
+    if(!app)return;
+    app.innerHTML='<div class="vx-chatbeta"><div class="vx-chatbeta-loading">Carregando conexões…</div></div>';
+    try{
+      const connections=await api('chat_connections?select=id,name&order=created_at.desc').catch(()=>[]);
+      if(!connections||!connections.length){
+        app.innerHTML=`<div class="vx-chatbeta"><div class="vx-chatbeta-card"><h3>Importação de histórico</h3><p class="vx-chatbeta-sub">Nenhuma conexão criada ainda — crie uma conexão em Configurações → Conexões primeiro.</p><button id="importBackErr">← Voltar</button></div></div>`;
+        document.getElementById('importBackErr').onclick=renderHome;
+        return;
+      }
+      if(connections.length===1){ await openImportScreen(connections[0].id); return; }
+      app.innerHTML=`<div class="vx-chatbeta">
+        <div class="vx-chatbeta-head"><div><button id="importPickBack">← Voltar</button><h2>Importação de histórico</h2><small>Escolha a conexão</small></div></div>
+        <div class="vx-conn-summary-list">${connections.map(c=>`<div class="vx-conn-summary-row vx-conv-row" data-pick="${E(c.id)}" style="cursor:pointer"><b>${E(c.name)}</b><span>→</span></div>`).join('')}</div>
+      </div>`;
+      document.getElementById('importPickBack').onclick=renderHome;
+      document.querySelectorAll('[data-pick]').forEach(el=>el.onclick=()=>openImportScreen(el.dataset.pick));
+    }catch(e){
+      app.innerHTML=`<div class="vx-chatbeta"><div class="vx-chatbeta-card"><h3>Falha ao carregar conexões</h3><p class="vx-chatbeta-sub">${E(e.message||'Erro desconhecido.')}</p><button id="importBackErr2">← Voltar</button></div></div>`;
+      document.getElementById('importBackErr2').onclick=renderHome;
+    }
+  }
+
+  function importRunCard(r){
+    const label=IMPORT_STATUS_LABEL[r.status]||{text:r.status,cls:'neutral'};
+    const started=r.started_at?new Date(r.started_at).toLocaleString('pt-BR'):'—';
+    const finished=r.finished_at?new Date(r.finished_at).toLocaleString('pt-BR'):'Em andamento';
+    const showResume=r.status==='INTERRUPTED';
+    return `<div class="vx-import-run-card">
+      <div class="vx-import-run-head">
+        <b>${E(r.sync_type==='RECUPERACAO'?'Recuperação':'Inicial')}</b>
+        <span class="vx-conn-badge vx-conn-badge-${E(label.cls)}">${E(label.text)}</span>
+      </div>
+      <div class="vx-chatbeta-sub">Início: ${E(started)} · Término: ${E(finished)}</div>
+      <div class="vx-import-run-counts">
+        <div>Conversas<b>${E(r.chats_received)}</b></div>
+        <div>Contatos<b>${E(r.contacts_received)}</b></div>
+        <div>Mensagens recebidas<b>${E(r.messages_received)}</b></div>
+        <div>Inseridas<b>${E(r.messages_inserted)}</b></div>
+        <div>Duplicadas<b>${E(r.messages_duplicate)}</b></div>
+        <div>Em quarentena<b>${E(r.messages_quarantined)}</b></div>
+        <div>Falharam<b>${E(r.messages_failed)}</b></div>
+      </div>
+      ${r.error_message?`<div class="vx-chatbeta-sub">Erro: ${E(r.error_message)}</div>`:''}
+      ${showResume?`<button class="vx-import-start" disabled title="Depende do gateway aceitar retomada de importação — ainda não implementado">Retomar importação</button>`:''}
+    </div>`;
+  }
+
+  function contactRow(c){
+    const label=CONTACT_STATUS_LABEL[c.status]||{text:c.status,cls:'neutral'};
+    return `<div class="vx-contact-row">
+      <div><b>${E(c.display_name||c.customer_phone||'Contato WhatsApp')}</b><br><span>${E(c.customer_phone||'Telefone não identificado')}</span></div>
+      <span class="vx-conn-badge vx-conn-badge-${E(label.cls)}">${E(label.text)}</span>
+    </div>`;
+  }
+
+  async function openImportScreen(connectionId){
+    const app=document.querySelector('#app');
+    if(!app)return;
+    app.innerHTML='<div class="vx-chatbeta"><div class="vx-chatbeta-loading">Carregando importações…</div></div>';
+    try{
+      const [connRows,runs,contacts]=await Promise.all([
+        api(`chat_connections?id=eq.${connectionId}&select=id,name`).catch(()=>[]),
+        api(`chat_import_runs?connection_id=eq.${connectionId}&select=*&order=started_at.desc`).catch(()=>[]),
+        api(`chat_contacts?connection_id=eq.${connectionId}&select=*&order=created_at.desc&limit=50`).catch(()=>[]),
+      ]);
+      const connName=connRows?.[0]?.name||'Conexão';
+      app.innerHTML=`<div class="vx-chatbeta vx-chatbeta-wide">
+        <div class="vx-chatbeta-head">
+          <div><button id="importBack">← Voltar</button><h2>Importação de histórico — ${E(connName)}</h2><small>Conversas, contatos e mensagens que o WhatsApp disponibilizar</small></div>
+        </div>
+        <div class="vx-chatbeta-card">
+          <h3>Nova importação</h3>
+          <p class="vx-chatbeta-sub">O volume disponível depende do WhatsApp, do aparelho principal e da sessão vinculada — nunca é garantido que o histórico completo esteja disponível.</p>
+          <div class="vx-import-legend">${Object.values(IMPORT_STATUS_LABEL).map(l=>`<span class="vx-conn-badge vx-conn-badge-${E(l.cls)}">${E(l.text)}</span>`).join('')}</div>
+          <button class="primary vx-import-start" id="importStartBtn" disabled title="O gateway ainda não processa messaging-history.set em lotes -- gatilho pendente de implementação">Iniciar importação</button>
+          <p class="vx-chatbeta-sub">Estrutura de banco já pronta (schema aplicado e testado). O disparo real depende do gateway WhatsApp suportar a sincronização de histórico — próxima etapa do plano técnico.</p>
+        </div>
+        <div class="vx-chatbeta-card">
+          <h3>Execuções</h3>
+          ${runs&&runs.length?runs.map(importRunCard).join(''):'<p class="vx-chatbeta-sub">Nenhuma importação executada ainda.</p>'}
+        </div>
+        <div class="vx-chatbeta-card">
+          <h3>Contatos importados</h3>
+          <p class="vx-chatbeta-sub">Nenhum contato do WhatsApp vira cliente automaticamente — vínculo é sempre uma ação manual.</p>
+          <div class="vx-conn-summary-list">${contacts&&contacts.length?contacts.map(contactRow).join(''):'<p class="vx-chatbeta-sub">Nenhum contato importado ainda.</p>'}</div>
+        </div>
+      </div>`;
+      document.getElementById('importBack').onclick=openConexoesScreen;
+      document.getElementById('importStartBtn').onclick=()=>toast?.('Ainda não disponível — depende da implementação do gateway (Lote 5/6 do plano técnico).','err');
+    }catch(e){
+      app.innerHTML=`<div class="vx-chatbeta"><div class="vx-chatbeta-card"><h3>Falha ao carregar importações</h3><p class="vx-chatbeta-sub">${E(e.message||'Erro desconhecido.')}</p><button id="importBackErr3">← Voltar</button></div></div>`;
+      document.getElementById('importBackErr3').onclick=openConexoesScreen;
+    }
+  }
+
   /* ---------- Conversas (teste) — ETAPA D ----------
      Fluxo mínimo pra homologar recebimento/envio real com uma conexão
      de teste. NÃO é a Central de Conversas completa (3 colunas, contexto
@@ -343,13 +492,30 @@
   }
 
   async function loadMensagens(conversationId){
-    return api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at&order=created_at.asc`).catch(()=>[]);
+    return api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at,deleted_at,origin&order=created_at.asc`).catch(()=>[]);
+  }
+
+  // Ticks só fazem sentido pra mensagem enviada por nós (OUTBOUND) --
+  // mesma escada de status.MENSAGENS_STATUS_CHECK: AGUARDANDO_ENVIO ->
+  // ENVIADA -> ENTREGUE -> LIDA, ou FALHOU.
+  function mensagemTick(m){
+    if(m.direction!=='OUTBOUND')return'';
+    if(m.status==='AGUARDANDO_ENVIO')return'<span class="vx-msg-tick">🕐</span>';
+    if(m.status==='ENVIADA')return'<span class="vx-msg-tick">✓</span>';
+    if(m.status==='ENTREGUE')return'<span class="vx-msg-tick">✓✓</span>';
+    if(m.status==='LIDA')return'<span class="vx-msg-tick vx-msg-tick-read">✓✓</span>';
+    if(m.status==='FALHOU')return'<span class="vx-msg-tick" title="Falha no envio">⚠</span>';
+    return'';
   }
 
   function mensagemRow(m){
     const hora=new Date(m.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     const lado=m.direction==='OUTBOUND'?'vx-msg-out':'vx-msg-in';
-    return `<div class="vx-msg-row ${lado}"><div class="vx-msg-bubble"><span>${E(m.body||'[sem texto]')}</span><small>${E(hora)}</small></div></div>`;
+    const isDeleted=!!m.deleted_at;
+    const isImport=m.origin==='IMPORT';
+    const deletedLabel=isDeleted?'<span class="vx-msg-deleted-label">🗑 Apagada no WhatsApp — mantida aqui como registro</span>':'';
+    const importTag=isImport?'<span class="vx-msg-tag vx-msg-tag-import">Histórico</span>':'';
+    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}"><div class="vx-msg-bubble">${deletedLabel}<span>${E(m.body||'[sem texto]')}</span><div class="vx-msg-meta">${importTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div></div>`;
   }
 
   async function openConversaDetail(conversationId){
