@@ -137,9 +137,9 @@
         <button id="chatBetaGoConexoes" class="primary">Configurações → Conexões</button>
       </div>
       <div class="vx-chatbeta-card">
-        <h3>Conversas (teste)</h3>
-        <p class="vx-chatbeta-sub">Fluxo mínimo pra validar recebimento/envio real com uma conexão de teste — ainda não é a Central de Conversas completa.</p>
-        <button id="chatBetaGoConversas">Conversas → teste</button>
+        <h3>Central de Conversas</h3>
+        <p class="vx-chatbeta-sub">Conversas, Chat e Contexto VoxAssist em 3 colunas — busca, filtros, Nova Conversa e histórico real com o cliente.</p>
+        <button id="chatBetaGoConversas">Abrir Central de Conversas</button>
       </div>
       <div class="vx-chatbeta-card">
         <h3>Importação de histórico</h3>
@@ -447,48 +447,276 @@
     }
   }
 
-  /* ---------- Conversas (teste) — ETAPA D ----------
-     Fluxo mínimo pra homologar recebimento/envio real com uma conexão
-     de teste. NÃO é a Central de Conversas completa (3 colunas, contexto
-     de OS/cliente, filtros, transferência) — isso é etapa futura, com
-     validação da estrutura visual antes de implementar. Aqui só existe
-     o essencial pra provar que a mensagem chega e sai de verdade. */
-  let conversasCache={list:[]};
+  /* ---------- Central de Conversas ----------
+     Consolidação Geral (2026-09-01): layout de 3 colunas já aprovado no
+     protótipo congelado (Conversas / Chat / Contexto VoxAssist), com
+     busca, filtros (Todas/Minhas/Não atribuídas/Não lidas) e Nova
+     Conversa permitindo número ainda não cadastrado. Usa só colunas que
+     já existem no schema real (assigned_user_id/client_id/
+     current_store_id/service_order_id/unread_count) -- nenhum dado
+     fictício, nenhuma coluna nova. Preserva 100% do que já era real:
+     QR/conexão/sessão, envio/recebimento, tratamento LID/remote_jid,
+     mensagens reais, ausência automática. Nunca mostra remote_jid/
+     sender_lid como se fosse telefone -- só customer_phone. */
+  const CONV_SELECT='id,customer_phone,customer_name,status,last_message_preview,last_message_at,unread_count,assigned_user_id,client_id,current_store_id,service_order_id,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name),stores!chat_conversations_store_id_fkey(name)';
+  let hubState={list:[],filter:'TODAS',search:'',selectedId:null};
   let conversaAtualId=null;
   let conversaPollTimer=null;
+  let listPollTimer=null;
   function stopConversaPoll(){if(conversaPollTimer){clearInterval(conversaPollTimer);conversaPollTimer=null}}
+  function stopListPoll(){if(listPollTimer){clearInterval(listPollTimer);listPollTimer=null}}
+  function myUserId(){return state?.session?.user?.id||null}
+
+  async function loadConversasHubData(){
+    hubState.list=await api(`chat_conversations?select=${CONV_SELECT}&order=last_message_at.desc.nullslast`).catch(()=>[]);
+  }
 
   async function openConversasScreen(){
     const app=document.querySelector('#app');
     if(!app)return;
-    stopConversaPoll();
-    app.innerHTML='<div class="vx-chatbeta"><div class="vx-chatbeta-loading">Carregando conversas…</div></div>';
+    stopConversaPoll();stopListPoll();
+    hubState.selectedId=null;
+    app.innerHTML='<div class="vx-chatbeta"><div class="vx-chatbeta-loading">Carregando Central de Conversas…</div></div>';
     try{
-      conversasCache.list=await api('chat_conversations?select=id,customer_phone,customer_name,status,last_message_preview,last_message_at&order=last_message_at.desc.nullslast').catch(()=>[]);
-      renderConversasScreen();
+      await loadConversasHubData();
+      renderConversasHub();
+      stopListPoll();
+      listPollTimer=setInterval(async()=>{await loadConversasHubData();renderConvList()},8000);
     }catch(e){
       app.innerHTML=`<div class="vx-chatbeta"><div class="vx-chatbeta-card"><h3>Falha ao carregar Conversas</h3><p class="vx-chatbeta-sub">${E(e.message||'Erro desconhecido.')}</p><button id="conversasBackErr">← Voltar</button></div></div>`;
       document.getElementById('conversasBackErr').onclick=renderHome;
     }
   }
 
-  function renderConversasScreen(){
-    const app=document.querySelector('#app');
-    if(!app)return;
-    const rows=conversasCache.list;
-    app.innerHTML=`<div class="vx-chatbeta vx-chatbeta-wide">
-      <div class="vx-chatbeta-head">
-        <div><button id="conversasBack">← Voltar</button><h2>Conversas (teste)</h2><small>Mensagens reais recebidas/enviadas pela conexão de teste</small></div>
+  function filteredConvList(){
+    const me=myUserId();
+    let rows=hubState.list;
+    if(hubState.filter==='MINHAS')rows=rows.filter(c=>String(c.assigned_user_id||'')===String(me));
+    else if(hubState.filter==='NAO_ATRIBUIDAS')rows=rows.filter(c=>!c.assigned_user_id);
+    else if(hubState.filter==='NAO_LIDAS')rows=rows.filter(c=>Number(c.unread_count||0)>0);
+    const q=hubState.search.trim().toLowerCase();
+    if(q)rows=rows.filter(c=>(c.customer_name||'').toLowerCase().includes(q)||(c.customer_phone||'').toLowerCase().includes(q));
+    return rows;
+  }
+
+  function convRow(c){
+    const isMine=String(c.assigned_user_id||'')===String(myUserId());
+    const hora=c.last_message_at?new Date(c.last_message_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+    const unread=Number(c.unread_count||0);
+    return `<div class="vx-chathub-conv-row ${String(c.id)===String(hubState.selectedId)?'active':''}" data-conv="${E(c.id)}">
+      <div class="vx-chathub-conv-main">
+        <b>${E(c.customer_name||c.customer_phone||'Contato WhatsApp')}</b>
+        <span class="vx-chathub-conv-preview">${E(c.last_message_preview||'Sem mensagens ainda')}</span>
       </div>
-      <div class="vx-conn-summary-list">
-        ${rows.length?rows.map(c=>`<div class="vx-conn-summary-row vx-conv-row" data-conv="${E(c.id)}" style="cursor:pointer">
-          <div><b>${E(c.customer_name||c.customer_phone||'Contato WhatsApp')}</b><br><span class="vx-chatbeta-sub">${E(c.last_message_preview||'Sem mensagens ainda')}</span></div>
-          <span class="vx-conn-badge vx-conn-badge-neutral">${E(c.status)}</span>
-        </div>`).join(''):'<p class="vx-chatbeta-sub">Nenhuma conversa ainda — envie uma mensagem para o número da conexão de teste a partir de outro celular.</p>'}
+      <div class="vx-chathub-conv-side">
+        <small>${E(hora)}</small>
+        ${unread?`<span class="vx-chathub-unread">${unread}</span>`:''}
+        ${isMine?'<span class="vx-chathub-mine" title="Atribuída a você">●</span>':''}
       </div>
     </div>`;
-    document.getElementById('conversasBack').onclick=()=>{stopConversaPoll();renderHome()};
-    document.querySelectorAll('[data-conv]').forEach(el=>el.onclick=()=>openConversaDetail(el.dataset.conv));
+  }
+
+  function renderConvList(){
+    const list=document.getElementById('chatConvList');
+    if(!list)return;
+    const rows=filteredConvList();
+    list.innerHTML=rows.length?rows.map(convRow).join(''):'<p class="vx-chatbeta-sub">Nenhuma conversa encontrada.</p>';
+    list.querySelectorAll('[data-conv]').forEach(el=>el.onclick=()=>selectConversa(el.dataset.conv));
+  }
+
+  function renderConversasHub(){
+    const app=document.querySelector('#app');
+    if(!app)return;
+    app.innerHTML=`<div class="vx-chathub">
+      <div class="vx-chathub-head">
+        <button id="chatHubBack">← Voltar</button>
+        <div class="vx-chathub-brand">VOX<span>ASSIST</span><small>Central de Conversas</small></div>
+        ${businessHoursBadge()}
+      </div>
+      <div class="vx-chathub-body">
+        <aside class="vx-chathub-col vx-chathub-list">
+          <div class="vx-chathub-list-tools">
+            <input id="chatSearch" placeholder="Buscar por nome ou telefone…" value="${E(hubState.search)}">
+            <button id="chatNewConv" class="primary" type="button">+ Nova conversa</button>
+          </div>
+          <div class="vx-chathub-filters">
+            ${[['TODAS','Todas'],['MINHAS','Minhas'],['NAO_ATRIBUIDAS','Não atribuídas'],['NAO_LIDAS','Não lidas']].map(([k,l])=>`<button type="button" data-filter="${k}" class="${hubState.filter===k?'active':''}">${l}</button>`).join('')}
+          </div>
+          <div id="chatConvList" class="vx-chathub-conv-list"></div>
+        </aside>
+        <section class="vx-chathub-col vx-chathub-chat" id="vxChatMid">
+          <div class="vx-chathub-empty">Selecione uma conversa à esquerda, ou inicie uma nova.</div>
+        </section>
+        <aside class="vx-chathub-col vx-chathub-ctx" id="vxChatCtx">
+          <div class="vx-chathub-empty">—</div>
+        </aside>
+      </div>
+    </div>`;
+    document.getElementById('chatHubBack').onclick=()=>{stopConversaPoll();stopListPoll();renderHome()};
+    document.getElementById('chatNewConv').onclick=openNovaConversaModal;
+    document.getElementById('chatSearch').oninput=e=>{hubState.search=e.target.value;renderConvList()};
+    document.querySelectorAll('.vx-chathub-filters [data-filter]').forEach(b=>b.onclick=()=>{
+      hubState.filter=b.dataset.filter;
+      document.querySelectorAll('.vx-chathub-filters [data-filter]').forEach(x=>x.classList.toggle('active',x===b));
+      renderConvList();
+    });
+    renderConvList();
+    if(hubState.selectedId)selectConversa(hubState.selectedId,true);
+  }
+
+  async function selectConversa(id,skipListRerender){
+    stopConversaPoll();
+    hubState.selectedId=id;
+    if(!skipListRerender)renderConvList();
+    const conv=hubState.list.find(c=>String(c.id)===String(id));
+    const mid=document.getElementById('vxChatMid');
+    if(!mid)return;
+    mid.innerHTML=`<div class="vx-chathub-chat-head"><div><b>${E(conv?.customer_name||conv?.customer_phone||'Contato WhatsApp')}</b><small>${E(conv?.customer_phone||'Identificação pendente')}</small></div><span class="vx-conn-badge vx-conn-badge-neutral">${E(conv?.status||'')}</span></div>
+      <div id="vxMsgList" class="vx-msg-list"><div class="vx-chatbeta-loading">Carregando mensagens…</div></div>
+      <form id="vxMsgForm" class="vx-conn-new-form">
+        <input name="body" placeholder="Escrever mensagem…" required maxlength="4000">
+        <button type="submit" class="primary">Enviar</button>
+      </form>`;
+    document.getElementById('vxMsgForm').onsubmit=handleSendMensagem;
+    renderContexto(conv);
+    conversaAtualId=id;
+    await refreshMensagens();
+    stopConversaPoll();
+    conversaPollTimer=setInterval(refreshMensagens,3000);
+  }
+
+  /* ---------- Contexto VoxAssist ---------- */
+  function renderContexto(conv){
+    const ctx=document.getElementById('vxChatCtx');
+    if(!ctx||!conv)return;
+    const clienteNome=conv.clients?.name||null;
+    const lojaNome=conv.stores?.name||null;
+    const responsavelNome=conv.profiles?.full_name||null;
+    const isMine=String(conv.assigned_user_id||'')===String(myUserId());
+    const isFinalizada=conv.status==='FINALIZADA';
+    ctx.innerHTML=`<h4>Contexto VoxAssist</h4>
+      <div class="vx-ctx-block"><span>Cliente</span>${clienteNome?`<b>${E(clienteNome)}</b>`:`<div class="vx-ctx-unlinked"><b>Não vinculado</b><input id="vxCtxClientSearch" placeholder="Buscar cliente por nome ou telefone…"><div id="vxCtxClientResults" class="vx-ctx-client-results"></div></div>`}</div>
+      <div class="vx-ctx-block"><span>Loja atual</span><b>${E(lojaNome||'—')}</b></div>
+      <div class="vx-ctx-block"><span>Responsável</span><b>${E(responsavelNome||'Não atribuída')}</b>${isMine?'':'<button type="button" id="vxCtxAssume" class="secondary">Assumir</button>'}</div>
+      <div class="vx-ctx-block"><span>Ordem de Serviço</span>${conv.service_order_id?'<button type="button" id="vxCtxOpenOs" class="secondary">Abrir OS</button>':'<b>—</b>'}</div>
+      <div class="vx-ctx-actions">${isFinalizada?'<button type="button" id="vxCtxReopen" class="secondary">Reabrir conversa</button>':'<button type="button" id="vxCtxClose" class="secondary">Encerrar conversa</button>'}</div>`;
+    document.getElementById('vxCtxAssume')?.addEventListener('click',()=>assumirConversa(conv.id));
+    document.getElementById('vxCtxReopen')?.addEventListener('click',()=>reabrirConversa(conv.id));
+    document.getElementById('vxCtxClose')?.addEventListener('click',()=>encerrarConversa(conv.id));
+    document.getElementById('vxCtxOpenOs')?.addEventListener('click',()=>window.render('os:'+conv.service_order_id));
+    const searchInput=document.getElementById('vxCtxClientSearch');
+    if(searchInput)searchInput.oninput=()=>renderClientResults(conv.id,searchInput.value);
+  }
+
+  function renderClientResults(conversationId,term){
+    const box=document.getElementById('vxCtxClientResults');
+    if(!box)return;
+    const q=term.trim().toLowerCase();
+    if(q.length<2){box.innerHTML='';return}
+    const matches=(state.clients||[]).filter(c=>(c.name||'').toLowerCase().includes(q)||(c.phone_primary||'').includes(q)).slice(0,6);
+    box.innerHTML=matches.length?matches.map(c=>`<div class="vx-ctx-client-opt" data-client="${E(c.id)}">${E(c.name)}<small>${E(c.phone_primary||'')}</small></div>`).join(''):'<p class="vx-chatbeta-sub">Nenhum cliente encontrado.</p>';
+    box.querySelectorAll('[data-client]').forEach(el=>el.onclick=()=>vincularCliente(conversationId,el.dataset.client));
+  }
+
+  async function refreshConvSummary(conversationId){
+    if(!conversationId)return;
+    const rows=await api(`chat_conversations?id=eq.${conversationId}&select=${CONV_SELECT}`).catch(()=>null);
+    if(!rows||!rows.length)return;
+    const idx=hubState.list.findIndex(c=>String(c.id)===String(conversationId));
+    if(idx>=0)hubState.list[idx]=rows[0];else hubState.list.unshift(rows[0]);
+    renderConvList();
+  }
+
+  async function vincularCliente(conversationId,clientId){
+    try{
+      await api(`chat_conversations?id=eq.${conversationId}`,{method:'PATCH',body:JSON.stringify({client_id:clientId})});
+      toast?.('Cliente vinculado à conversa.');
+      await refreshConvSummary(conversationId);
+      renderContexto(hubState.list.find(c=>String(c.id)===String(conversationId)));
+    }catch(err){toast?.('Não foi possível vincular o cliente: '+err.message,'err')}
+  }
+
+  async function assumirConversa(conversationId){
+    try{
+      await api(`chat_conversations?id=eq.${conversationId}`,{method:'PATCH',body:JSON.stringify({assigned_user_id:myUserId()})});
+      toast?.('Conversa atribuída a você.');
+      await refreshConvSummary(conversationId);
+      renderContexto(hubState.list.find(c=>String(c.id)===String(conversationId)));
+    }catch(err){toast?.('Não foi possível assumir a conversa: '+err.message,'err')}
+  }
+
+  async function mudarStatusConversa(conversationId,status,successMsg){
+    try{
+      await api(`chat_conversations?id=eq.${conversationId}`,{method:'PATCH',body:JSON.stringify({status})});
+      toast?.(successMsg);
+      await refreshConvSummary(conversationId);
+      const conv=hubState.list.find(c=>String(c.id)===String(conversationId));
+      const badge=document.querySelector('#vxChatMid .vx-conn-badge');
+      if(badge&&conv)badge.textContent=conv.status;
+      renderContexto(conv);
+    }catch(err){toast?.('Não foi possível atualizar a conversa: '+err.message,'err')}
+  }
+  function encerrarConversa(conversationId){
+    if(!confirm('Encerrar esta conversa? Ela sai do atendimento ativo, mas o histórico continua disponível.'))return;
+    mudarStatusConversa(conversationId,'FINALIZADA','Conversa encerrada.');
+  }
+  function reabrirConversa(conversationId){
+    mudarStatusConversa(conversationId,'ABERTA','Conversa reaberta.');
+  }
+
+  /* ---------- Nova Conversa ----------
+     Permite iniciar com um número ainda não cadastrado como cliente
+     (cliente vinculado é uma ação separada, no Contexto). Nunca duplica:
+     se já existir conversa ativa com o mesmo número nessa conexão,
+     reaproveita em vez de criar outra (regra já aprovada). */
+  async function openNovaConversaModal(){
+    document.querySelector('#vxNovaConvModal')?.remove();
+    let connections=await api('chat_connections?select=id,name,status&order=created_at.desc').catch(()=>[]);
+    connections=(connections||[]).filter(c=>c.status==='CONECTADO');
+    const bg=document.createElement('div');
+    bg.id='vxNovaConvModal';
+    bg.className='vx-modal-bg';
+    bg.innerHTML=`<div class="vx-modal">
+      <h3>Nova conversa</h3>
+      <p class="vx-chatbeta-sub">Informe o número do WhatsApp — não precisa ser um cliente já cadastrado.</p>
+      ${connections.length?`<form id="vxNovaConvForm" class="vx-conn-new-form vx-conn-new-form-col">
+        ${connections.length>1?`<select name="connectionId">${connections.map(c=>`<option value="${E(c.id)}">${E(c.name)}</option>`).join('')}</select>`:`<input type="hidden" name="connectionId" value="${E(connections[0].id)}">`}
+        <input name="phone" placeholder="Número (com DDD, só dígitos)" required maxlength="20" inputmode="numeric">
+        <input name="name" placeholder="Nome do contato (opcional)" maxlength="120">
+        <div class="vx-modal-actions"><button type="button" data-cancel>Cancelar</button><button type="submit" class="primary">Iniciar conversa</button></div>
+      </form>`:`<p class="vx-chatbeta-sub">Nenhuma conexão conectada no momento — conecte uma em Configurações → Conexões antes de iniciar uma nova conversa.</p><div class="vx-modal-actions"><button type="button" data-cancel>Fechar</button></div>`}
+    </div>`;
+    document.body.appendChild(bg);
+    const close=()=>bg.remove();
+    bg.querySelector('[data-cancel]').onclick=close;
+    bg.addEventListener('click',e=>{if(e.target===bg)close()});
+    bg.querySelector('#vxNovaConvForm')?.addEventListener('submit',e=>handleNovaConversa(e,close));
+  }
+
+  async function handleNovaConversa(e,close){
+    e.preventDefault();
+    const f=new FormData(e.target);
+    const connectionId=String(f.get('connectionId')||'');
+    const phone=String(f.get('phone')||'').replace(/\D/g,'');
+    const name=String(f.get('name')||'').trim()||null;
+    if(!connectionId||!phone)return;
+    const btn=e.target.querySelector('button[type=submit]');
+    btn.disabled=true;
+    try{
+      const existing=await api(`chat_conversations?connection_id=eq.${connectionId}&customer_phone=eq.${phone}&status=in.(ABERTA,EM_ATENDIMENTO,AGUARDANDO_CLIENTE)&select=id&limit=1`).catch(()=>[]);
+      let convId=existing&&existing.length?existing[0].id:null;
+      if(!convId){
+        const created=await api('chat_conversations',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({company_id:state.profile.active_company_id,connection_id:connectionId,customer_phone:phone,customer_name:name,status:'ABERTA',assigned_user_id:myUserId()})});
+        convId=created?.[0]?.id;
+      }
+      close();
+      await loadConversasHubData();
+      renderConvList();
+      if(convId)await selectConversa(convId);
+    }catch(err){
+      toast?.('Não foi possível iniciar a conversa: '+err.message,'err');
+      btn.disabled=false;
+    }
   }
 
   async function loadMensagens(conversationId){
@@ -518,28 +746,6 @@
     return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}"><div class="vx-msg-bubble">${deletedLabel}<span>${E(m.body||'[sem texto]')}</span><div class="vx-msg-meta">${importTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div></div>`;
   }
 
-  async function openConversaDetail(conversationId){
-    conversaAtualId=conversationId;
-    const conv=conversasCache.list.find(c=>String(c.id)===String(conversationId));
-    const app=document.querySelector('#app');
-    if(!app)return;
-    app.innerHTML=`<div class="vx-chatbeta vx-chatbeta-wide">
-      <div class="vx-chatbeta-head">
-        <div><button id="conversaBack">← Voltar</button><h2>${E(conv?.customer_name||conv?.customer_phone||'Contato WhatsApp')}</h2><small>${E(conv?.customer_phone||'Telefone ainda não identificado')}</small></div>
-      </div>
-      <div id="vxMsgList" class="vx-msg-list"><div class="vx-chatbeta-loading">Carregando mensagens…</div></div>
-      <form id="vxMsgForm" class="vx-conn-new-form">
-        <input name="body" placeholder="Escrever mensagem…" required maxlength="4000">
-        <button type="submit" class="primary">Enviar</button>
-      </form>
-    </div>`;
-    document.getElementById('conversaBack').onclick=()=>{stopConversaPoll();openConversasScreen()};
-    document.getElementById('vxMsgForm').onsubmit=handleSendMensagem;
-    await refreshMensagens();
-    stopConversaPoll();
-    conversaPollTimer=setInterval(refreshMensagens,3000);
-  }
-
   async function refreshMensagens(){
     if(!conversaAtualId)return;
     const list=document.getElementById('vxMsgList');
@@ -547,6 +753,7 @@
     const msgs=await loadMensagens(conversaAtualId);
     list.innerHTML=msgs.length?msgs.map(mensagemRow).join(''):'<p class="vx-chatbeta-sub">Nenhuma mensagem ainda.</p>';
     list.scrollTop=list.scrollHeight;
+    await refreshConvSummary(conversaAtualId);
   }
 
   async function handleSendMensagem(e){
