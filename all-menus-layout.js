@@ -20,6 +20,10 @@
     'integracoes':['Integrações','Painel de integrações (WhatsApp, GestãoClick, site) ainda não existe como tela única. A integração de WhatsApp já funciona de verdade em Chat VoxAssist.'],
     'loja-vendas':['Venda de Aparelho','Registro comercial de venda de equipamento (fora do fluxo de conserto) ainda não tem tela própria.'],
     'whatsapp':['Lembretes / WhatsApp','Fila de lembretes automáticos ainda não existe. O envio real de WhatsApp já funciona em Chat VoxAssist, por conversa.'],
+    'financeiro-caixa':['Caixa','Um caixa (abertura/fechamento por período, lançamentos avulsos não vinculados a uma O.S.) ainda não existe. O financeiro hoje só existe vinculado a uma O.S. específica (aba Financeiro, dentro da O.S.).'],
+    'financeiro-parcelas':['Contas / Parcelas','Acompanhamento de parcelamento e pagamentos futuros ainda não tem tela própria. Pagamentos hoje são registrados por O.S., sem parcelamento estruturado.'],
+    'financeiro-relatorio-dia':['Relatório do dia (por forma de pagamento)','Resumo por dinheiro/cartão/Pix ainda não existe. O resumo financeiro real (recebido hoje/no mês) está no Dashboard.'],
+    'auditoria-consolidada':['Auditoria','Um log consolidado de ações de usuários ainda não existe como tela única. Auditorias reais já existem por funcionalidade (histórico de status da O.S., histórico de casos NPS, histórico de compromissos).'],
   };
   function bindTargets(){document.querySelectorAll('[data-target]').forEach(b=>b.onclick=()=>openTarget(b.dataset.target));}
   function renderStructureOnly(target,title,detail){
@@ -89,12 +93,12 @@
     summary('TAREFAS',state.tasks.length,'blue')+summary('PENDENTES',state.tasks.filter(t=>t.status==='PENDENTE').length,'orange')+summary('EM ANDAMENTO',state.tasks.filter(t=>t.status==='EM ANDAMENTO').length,'purple')+summary('CONCLUÍDAS',state.tasks.filter(t=>t.status==='CONCLUIDA').length,'green')
   )}
   function financeiro(){home('Financeiro','Caixa • Recebimentos • Orçamentos • Relatórios',
-    card('$','CAIXA','Lançamentos, formas de pagamento e fechamento do período.','financeiro-operacional','green')+
+    card('$','CAIXA','Lançamentos, formas de pagamento e fechamento do período.','financeiro-caixa','green')+
     card('▤','RECEBIMENTOS','Pagamentos vinculados às OS e lançamentos avulsos.','financeiro-operacional','blue')+
-    card('◷','CONTAS / PARCELAS','Acompanhe parcelamentos e pagamentos futuros.','financeiro-operacional','purple')+
+    card('◷','CONTAS / PARCELAS','Acompanhe parcelamentos e pagamentos futuros.','financeiro-parcelas','purple')+
     card('✓','ORÇAMENTOS APROVADOS','Valores aprovados e situação financeira das OS.','financeiro-operacional','teal')+
     card('×','ORÇAMENTOS RECUSADOS','Histórico gerencial de recusas sem gerar caixa.','financeiro-operacional','orange')+
-    card('▥','RELATÓRIO DO DIA','Resumo por dinheiro, cartão, Pix e demais formas.','financeiro-operacional','cyan')+
+    card('▥','RELATÓRIO DO DIA','Resumo por dinheiro, cartão, Pix e demais formas.','financeiro-relatorio-dia','cyan')+
     card('▧','RECIBOS','Emissão e consulta de recibos.','financeiro-operacional','gray')+
     card('⇩','EXPORTAR PDF / EXCEL','Relatórios financeiros para conferência e gestão.','relatorios-fin','brown')+
     card('⚙','CONFIGURAÇÕES FINANCEIRAS','Meios de pagamento, grupos e permissões.','usuarios-operacional','red'),
@@ -126,7 +130,7 @@
   function configuracoes(){home('Configurações','Usuários • Segurança • Sistema • Backup',
     card('♟','USUÁRIOS','Gestor, atendente, técnico e estoque.','usuarios-operacional','blue')+
     card('⚿','PERMISSÕES','Acesso por módulo, ação, loja, horário e perfil.','usuarios-operacional','purple')+
-    card('◷','SEGURANÇA / AUDITORIA','Logs, inatividade, bloqueios e comportamento suspeito.','usuarios-operacional','red')+
+    card('◷','SEGURANÇA / AUDITORIA','Logs, inatividade, bloqueios e comportamento suspeito.','auditoria-consolidada','red')+
     card('▣','LOJAS','Configuração de Vitória, Serra e regras multi-loja.','usuarios-operacional','cyan')+
     card('⇩','BACKUP / RESTAURAÇÃO','Banco, anexos, configurações e agendamento.','backup','green')+
     card('↻','ATUALIZAÇÕES','Controle de versão e histórico de atualização.','testes-operacional','orange')+
