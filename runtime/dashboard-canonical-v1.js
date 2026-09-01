@@ -12,16 +12,19 @@
  * configurado" -- regra explícita já dada pelo usuário nesta sessão.
  *
  * Achados/decisões de derivação, documentados porque a fonte não é
- * 1:1 óbvia:
+ * 1:1 óbvia. Referência visual = só composição/densidade/estilo; NUNCA
+ * números, rótulos ou vocabulário de status copiados da imagem -- fonte
+ * de verdade é sempre schema real + funcionalidade já aprovada:
  * - dashboard_cases.status: só o default 'NOVO' é confirmado por schema
  *   (sem CHECK constraint, nenhuma outra função do repo escreve nessa
- *   tabela). Uso NOVO/EM_ANDAMENTO/RESOLVIDO pelos rótulos da própria
- *   referência -- se o vocabulário real divergir, os contadores extras
- *   ficam honestamente zerados, nunca inventados.
- * - parts_requests.status: mesma situação (sem CHECK constraint). Uso
- *   normalização por texto (PENDENTE/SOLICITADO, COMPRA, ENTREGA,
- *   RECEBID) e, pra "Atrasados", a data expected_date (sempre real,
- *   independente do texto do status).
+ *   tabela). Uso NOVO (confirmado) e a mesma exclusão !RESOLVIDO/
+ *   CANCELADO já usada no Dashboard canônico original -- nunca uma
+ *   quebra em NOVO/EM ANDAMENTO/RESOLVIDO, que não tem base real.
+ * - parts_requests.status: mesma situação (sem CHECK constraint, nenhum
+ *   outro código escreve nessa tabela). Uso só a contagem total (igual
+ *   ao Dashboard original) e "Atrasados" via expected_date (data real,
+ *   independente do texto do status) -- nunca uma quebra por
+ *   PENDENTE/EM COMPRA/AGUARDANDO ENTREGA, que não tem base real.
  * - "Orçamentos (Mês)"/"Entregues (Mês)": contados via os_status_history
  *   (mudanças de status reais, com changed_at), não por opened_at/
  *   updated_at da OS -- é a única forma correta de saber QUANDO uma OS
@@ -42,7 +45,6 @@
   const startOfMonth=d=>new Date(d.getFullYear(),d.getMonth(),1);
   const withTimeout=(promise,ms,label)=>Promise.race([promise,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+' excedeu '+ms+'ms')),ms))]);
   const pct=(part,total)=>total>0?Math.round((part/total)*100):0;
-  const pctChange=(cur,prev)=>prev>0?Math.round(((cur-prev)/prev)*100):(cur>0?100:0);
 
   async function source(label,path,fallback=[]){
     try{return {label,ok:true,data:await withTimeout(api(path),7000,label)}}catch(error){return {label,ok:false,data:fallback,error}}
@@ -120,20 +122,13 @@
     const tasks=safe(by['Tarefas'].data).filter(t=>!['CONCLUIDO','CANCELADO'].includes(norm(t.status)));
     const casesAll=safe(by['Casos de atenção'].data);
     const casesNovos=casesAll.filter(c=>norm(c.status)==='NOVO');
-    const casesAndamento=casesAll.filter(c=>norm(c.status)==='EM ANDAMENTO');
-    const casesResolvidos=casesAll.filter(c=>norm(c.status)==='RESOLVIDO');
     const casesAbertos=casesAll.filter(c=>!['RESOLVIDO','CANCELADO'].includes(norm(c.status)));
     const partsAll=safe(by['Peças'].data);
-    const partsPendentes=partsAll.filter(p=>['PENDENTE','SOLICITADO'].includes(norm(p.status)));
-    const partsCompra=partsAll.filter(p=>norm(p.status).includes('COMPRA'));
-    const partsEntrega=partsAll.filter(p=>norm(p.status).includes('ENTREGA'));
     const partsAtrasadas=partsAll.filter(p=>p.expected_date&&new Date(p.expected_date)<today&&!norm(p.status).includes('RECEBID'));
-    const partsRecebidasHoje=partsAll.filter(p=>norm(p.status).includes('RECEBID')&&p.updated_at&&isoDate(new Date(p.updated_at))===isoDate(today));
     const finMap=new Map(safe(by['Financeiro'].data).map(f=>[String(f.service_order_id),f]));
     const validPayments=safe(by['Pagamentos'].data).filter(p=>p.paid_at&&!['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA'].includes(norm(p.status)));
     const receivedToday=validPayments.filter(p=>new Date(p.paid_at)>=today).reduce((s,p)=>s+Number(p.amount||0),0);
     const receivedMonth=validPayments.filter(p=>new Date(p.paid_at)>=month0).reduce((s,p)=>s+Number(p.amount||0),0);
-    const receivedPrevMonth=validPayments.filter(p=>new Date(p.paid_at)>=prevMonth0&&new Date(p.paid_at)<month0).reduce((s,p)=>s+Number(p.amount||0),0);
     const readyValue=ready.reduce((s,o)=>s+budget(finMap.get(String(o.id))),0);
     const failures=results.filter(r=>!r.ok).map(r=>r.label);
     const techs=safe(by['Técnicos'].data).filter(t=>norm(t.role)==='TECNICO');
@@ -158,18 +153,8 @@
     }
     const monthEnd=new Date(month0.getFullYear(),month0.getMonth()+1,1);
     const orcamentosMes=monthTransitions('AGUARDANDO APROVACAO',month0,monthEnd);
-    const orcamentosMesAnt=monthTransitions('AGUARDANDO APROVACAO',prevMonth0,month0);
     const entreguesMes=monthTransitions('FINALIZADA',month0,monthEnd);
-    const entreguesMesAnt=monthTransitions('FINALIZADA',prevMonth0,month0);
-    const faturamentoMes=entreguesMes.value, faturamentoMesAnt=entreguesMesAnt.value;
     const activeOpenedThisMonth=active.filter(o=>new Date(o.opened_at)>=month0).length;
-
-    // A receber = orçado em OS prontas ainda não pagas; atrasos>30 dias
-    // = orçado em OS abertas há mais de 30 dias, ainda ativas.
-    const aReceber=readyValue;
-    const atrasos30=active.filter(o=>age(o)>30).reduce((s,o)=>s+budget(finMap.get(String(o.id))),0);
-    const paidThisMonthOrderIds=new Set(validPayments.filter(p=>new Date(p.paid_at)>=month0).map(p=>String(p.service_order_id)));
-    const ticketMedio=paidThisMonthOrderIds.size?receivedMonth/paidThisMonthOrderIds.size:0;
 
     // Gestão Visual -- faixas de idade (0/1-3/4-7/8+ dias), como na
     // referência aprovada.
@@ -258,9 +243,8 @@
       <div class="vx-c-grid-2">
         <section class="vx-c-cases-card"><div class="vx-c-title"><h3>⚠ Casos de Atenção</h3><a href="#" data-drill="casesAbertos" data-title="Casos de Atenção">Ver todos os casos</a></div>
           <div class="vx-c-cases-row">
-            <div><b>${casesNovos.length}</b><span>Novos casos</span><small>Requerem triagem</small></div>
-            <div><b>${casesAndamento.length}</b><span>Em andamento</span><small>Aguardando retorno do cliente</small></div>
-            <div><b>${casesResolvidos.length}</b><span>Resolvidos</span><small>Acompanhe os concluídos</small></div>
+            <div><b>${casesAbertos.length}</b><span>Em aberto</span><small>Ainda não resolvidos</small></div>
+            <div><b>${casesNovos.length}</b><span>Novos</span><small>Aguardando triagem</small></div>
           </div>
         </section>
         <section class="vx-c-opp-card"><div class="vx-c-title"><h3>Oportunidades do Dia</h3><a href="#" data-drill="ready" data-title="Oportunidades do Dia">Ver todas</a></div>
@@ -281,15 +265,12 @@
           ${taskRow('Tirar novos casos de atenção',casesNovos.length)}
           ${taskRow('Retornar clientes pendentes',tasks.length)}
           ${taskRow('Acompanhar orçamentos sem resposta',approval.length)}
-          ${taskRow('Aprovar pedidos de peças',partsPendentes.length)}
+          ${taskRow('Aprovar pedidos de peças',partsAll.length)}
           ${taskRow('Confirmar aparelhos prontos',ready.length)}
         </section>
         <section class="vx-c-list-card"><div class="vx-c-title"><h3>Pedidos de Peças</h3><a href="#" data-drill="active" data-title="Pedidos de Peças">Ver todas</a></div>
-          ${iconRow('◷','Pendentes de aprovação',partsPendentes.length,'')}
-          ${iconRow('🛒','Em compra',partsCompra.length,'')}
-          ${iconRow('🚚','Aguardando entrega',partsEntrega.length,'')}
-          ${iconRow('⚠','Atrasados',partsAtrasadas.length,'warn')}
-          ${iconRow('✓','Recebidos hoje',partsRecebidasHoje.length,'ok')}
+          ${iconRow('◷','Total de pedidos em aberto',partsAll.length,'')}
+          ${iconRow('⚠','Atrasados (prazo esperado vencido)',partsAtrasadas.length,'warn')}
         </section>
         <section class="vx-c-list-card"><div class="vx-c-title"><h3>Gestão por Exceção</h3><a href="#" data-drill="repair" data-title="Gestão por Exceção">Ver todas</a></div>
           ${iconRow('⚠','OS paradas há mais de 7 dias',overdueRepair.length,'warn')}
@@ -313,14 +294,11 @@
 
       <div class="vx-c-grid-2">
         <section class="vx-c-goals-card"><div class="vx-c-title"><h3>Metas e Bonificação</h3><a href="#" id="vxGoalsDetail">Ver detalhes</a></div><div class="vx-c-goals-empty"><span class="vx-c-goals-icon">◷</span><p>Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</p></div></section>
-        <section class="vx-c-fin-card"><div class="vx-c-title"><h3>Resumo Financeiro</h3><a href="#" data-drill="active" data-title="Resumo Financeiro">Ver financeiro completo</a></div>
+        <section class="vx-c-fin-card"><div class="vx-c-title"><h3>Resumo Financeiro</h3><small>somente pagamentos registrados</small></div>
           <div class="vx-c-fin-grid">
-            <div><span>Faturamento (Mês)</span><b>${M(faturamentoMes)}</b><small class="${faturamentoMes>=faturamentoMesAnt?'ok':'err'}">${pctChange(faturamentoMes,faturamentoMesAnt)>=0?'+':''}${pctChange(faturamentoMes,faturamentoMesAnt)}% vs mês anterior</small></div>
-            <div><span>Recebimentos (Mês)</span><b>${M(receivedMonth)}</b><small class="${receivedMonth>=receivedPrevMonth?'ok':'err'}">${pctChange(receivedMonth,receivedPrevMonth)>=0?'+':''}${pctChange(receivedMonth,receivedPrevMonth)}% vs mês anterior</small></div>
-            <div><span>Orçamentos (Mês)</span><b>${M(orcamentosMes.value)}</b><small class="${orcamentosMes.value>=orcamentosMesAnt.value?'ok':'err'}">${pctChange(orcamentosMes.value,orcamentosMesAnt.value)>=0?'+':''}${pctChange(orcamentosMes.value,orcamentosMesAnt.value)}% vs mês anterior</small></div>
-            <div><span>A receber</span><b>${M(aReceber)}</b></div>
-            <div><span>Atrasos acima de 30 dias</span><b class="err">${M(atrasos30)}</b></div>
-            <div><span>Ticket médio (Mês)</span><b>${M(ticketMedio)}</b></div>
+            <div><span>Recebido hoje</span><b>${M(receivedToday)}</b></div>
+            <div><span>Recebido no mês</span><b>${M(receivedMonth)}</b></div>
+            <div><span>Valor em prontos</span><b>${M(readyValue)}</b></div>
           </div>
         </section>
       </div>

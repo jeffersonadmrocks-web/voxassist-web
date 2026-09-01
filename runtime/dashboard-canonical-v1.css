@@ -46,7 +46,7 @@
 /* ---------- Casos de Atenção + Oportunidades ---------- */
 .vx-c-cases-card{border-color:#f0c6c4!important;background:var(--vx-risk-bg)!important}
 .vx-c-cases-card h3{color:var(--vx-risk)}
-.vx-c-cases-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.vx-c-cases-row{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
 .vx-c-cases-row>div{background:var(--vx-surface);border-radius:9px;padding:10px}
 .vx-c-cases-row b{display:block;font-size:20px;color:var(--vx-risk);font-weight:800}
 .vx-c-cases-row span{display:block;font-size:11px;font-weight:700;color:var(--vx-text);margin-top:2px}
