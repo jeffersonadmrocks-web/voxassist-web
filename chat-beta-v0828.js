@@ -115,6 +115,13 @@
   let selectedTagSwatch=TAG_SWATCH_COLORS[0];
   let tagPopoverOpenFor=null;
 
+  /* ---------- Nota interna (Fase 3) ----------
+     Mensagem visível só pra equipe, NUNCA enviada ao WhatsApp -- grava
+     direto em chat_messages (origin='INTERNAL') via REST, nunca
+     passando por chat-send-message (a única function que despacha pro
+     gateway). Reseta ao trocar de conversa, igual ao protótipo. */
+  let internalNoteMode=false;
+
   async function loadTags(){
     cache.tags=await api('chat_tags?select=*&order=label').catch(()=>[]);
   }
@@ -604,6 +611,7 @@
 
   async function selectConversa(id,skipListRerender){
     stopConversaPoll();
+    internalNoteMode=false;
     hubState.selectedId=id;
     const conv=hubState.list.find(c=>String(c.id)===String(id));
     // Abrir a conversa marca como lida -- mesma correção real do
@@ -641,10 +649,19 @@
       </div>
       <div id="vxMsgList" class="vx-msg-list"><div class="vx-chatbeta-loading">Carregando mensagens…</div></div>
       <form id="vxMsgForm" class="vx-cc-composer">
+        <button type="button" id="vxNoteToggleBtn" class="vx-cc-note-btn" title="Nota interna" aria-label="Alternar nota interna">📝</button>
         <input name="body" placeholder="Escrever mensagem…" required maxlength="4000">
         <button type="submit" class="vx-cc-send-btn">Enviar</button>
       </form>`;
     document.getElementById('vxMsgForm').onsubmit=handleSendMensagem;
+    document.getElementById('vxNoteToggleBtn').onclick=()=>{
+      internalNoteMode=!internalNoteMode;
+      const form=document.getElementById('vxMsgForm');
+      form.classList.toggle('note-mode',internalNoteMode);
+      document.getElementById('vxNoteToggleBtn').classList.toggle('active',internalNoteMode);
+      const inputEl=form.querySelector('input[name=body]');
+      inputEl.placeholder=internalNoteMode?'Escrever nota interna (não enviada ao cliente)…':'Escrever mensagem…';
+    };
     document.getElementById('vxCtxAssume')?.addEventListener('click',()=>assumirConversa(conv.id));
     document.getElementById('vxCtxReopen')?.addEventListener('click',()=>reabrirConversa(conv.id));
     document.getElementById('vxCtxClose')?.addEventListener('click',()=>encerrarConversa(conv.id));
@@ -924,7 +941,7 @@
   }
 
   async function loadMensagens(conversationId){
-    return api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at,deleted_at,origin&order=created_at.asc`).catch(()=>[]);
+    return api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at,deleted_at,origin,sender_user_id,profiles!chat_messages_sender_user_id_fkey(full_name)&order=created_at.asc`).catch(()=>[]);
   }
 
   // Ticks só fazem sentido pra mensagem enviada por nós (OUTBOUND) --
@@ -942,6 +959,10 @@
 
   function mensagemRow(m){
     const hora=new Date(m.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    if(m.origin==='INTERNAL'){
+      const autor=m.profiles?.full_name||'—';
+      return `<div class="vx-msg-row vx-msg-internal"><div class="vx-msg-bubble vx-msg-bubble-internal"><span class="vx-msg-internal-tag">📝 Nota interna — visível só pra equipe</span><span><b>${E(autor)}:</b> ${E(m.body||'')}</span><small>${E(hora)}</small></div></div>`;
+    }
     const lado=m.direction==='OUTBOUND'?'vx-msg-out':'vx-msg-in';
     const isDeleted=!!m.deleted_at;
     const isImport=m.origin==='IMPORT';
@@ -979,12 +1000,21 @@
     const input=e.target.querySelector('input[name=body]');
     btn.disabled=true;
     try{
-      const res=await fetch(CFG.url+'/functions/v1/chat-send-message',{
-        method:'POST',headers:authHeaders(),
-        body:JSON.stringify({conversationId:conversaAtualId,body}),
-      });
-      const data=await res.json().catch(()=>null);
-      if(!res.ok||!data?.ok)throw new Error(data?.message||data?.error||'Falha ao enviar.');
+      if(internalNoteMode){
+        // Grava direto via REST -- nunca passa por chat-send-message,
+        // que é a única function que despacha mensagem pro gateway/
+        // WhatsApp. Não atualiza last_message_preview/last_message_at/
+        // unread_count da conversa (essas colunas são só pra
+        // resumo real de conversa com o cliente).
+        await api('chat_messages',{method:'POST',body:JSON.stringify({company_id:state.profile.active_company_id,conversation_id:conversaAtualId,direction:'OUTBOUND',origin:'INTERNAL',message_type:'TEXT',body,sender_user_id:myUserId()})});
+      }else{
+        const res=await fetch(CFG.url+'/functions/v1/chat-send-message',{
+          method:'POST',headers:authHeaders(),
+          body:JSON.stringify({conversationId:conversaAtualId,body}),
+        });
+        const data=await res.json().catch(()=>null);
+        if(!res.ok||!data?.ok)throw new Error(data?.message||data?.error||'Falha ao enviar.');
+      }
       input.value='';
       await refreshMensagens();
     }catch(err){

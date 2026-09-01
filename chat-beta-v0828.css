@@ -49,6 +49,10 @@
 .vx-msg-bubble{max-width:70%;padding:8px 12px;border-radius:12px;background:#fff;border:1px solid rgba(8,40,68,.1);font-size:13px;color:#1a2733}
 .vx-msg-out .vx-msg-bubble{background:#082844;color:#fff;border-color:#082844}
 .vx-msg-bubble small{font-size:10px;opacity:.6}
+.vx-msg-internal{justify-content:center}
+.vx-msg-bubble-internal{max-width:80%;text-align:left;background:var(--cc-warn-bg,#fdf1d4);color:var(--cc-warn-ink,#8a5f00);border:1px solid transparent;border-radius:12px;padding:8px 12px;font-size:12.5px}
+.vx-msg-internal-tag{display:block;font-size:10px;font-weight:800;letter-spacing:.02em;margin-bottom:3px}
+.vx-msg-bubble-internal small{display:block;margin-top:3px;opacity:.7}
 
 /* ---------- QR ---------- */
 .vx-conn-qr-modal{max-width:340px;text-align:center}
@@ -179,10 +183,15 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
 .vx-cc-pane-thread .vx-msg-bubble{border-radius:10px;box-shadow:0 1px 2px rgba(20,45,75,.06)}
 .vx-cc-pane-thread .vx-msg-out .vx-msg-bubble{background:var(--cc-bubble-out);border-color:var(--cc-bubble-out)}
 .vx-cc-pane-thread .vx-msg-tick-read{color:var(--cc-tick-read)}
-.vx-cc-composer{flex:none;padding:10px 14px;border-top:1px solid var(--cc-border);display:flex;gap:8px;align-items:center}
+.vx-cc-composer{flex:none;padding:10px 14px;border-top:1px solid var(--cc-border);display:flex;gap:8px;align-items:center;transition:background .12s}
+.vx-cc-composer.note-mode{background:var(--cc-warn-bg)}
+.vx-cc-composer.note-mode input{background:var(--cc-surface)}
 .vx-cc-composer input{flex:1;border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink);border-radius:9px;padding:10px 12px;font-size:13px}
 .vx-cc-send-btn{border:0;background:var(--cc-accent);color:#fff;border-radius:9px;padding:0 18px;height:36px;font-size:13px;font-weight:700;cursor:pointer}
 .vx-cc-send-btn:hover{background:var(--cc-accent-hover)}
+.vx-cc-note-btn{border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink-dim);width:36px;height:36px;border-radius:9px;cursor:pointer;font-size:15px;flex:none;display:flex;align-items:center;justify-content:center}
+.vx-cc-note-btn:hover{background:var(--cc-accent-soft);color:var(--cc-accent)}
+.vx-cc-note-btn.active{background:var(--cc-warn-bg);color:var(--cc-warn-ink);border-color:transparent}
 
 .vx-cc-ctx-body{padding:13px;overflow-y:auto;display:flex;flex-direction:column;gap:11px}
 .vx-cc-ctx-empty{color:var(--cc-ink-faint);font-size:12px;text-align:center;margin:auto}
