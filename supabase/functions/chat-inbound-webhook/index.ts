@@ -19,14 +19,25 @@
 // (que agora pode ser nulo, quando o remetente é um LID ainda não
 // resolvido). Ver chat_conversations_lid_model_20260831.sql.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { buildMessagePreview, decideConversationTarget, nextStatusOnInboundMessage, resolveInboundIdentity } from "../_shared/messagingService.ts";
+import {
+  AWAY_MESSAGE_TEXT,
+  buildMessagePreview,
+  decideAwayMessage,
+  decideConversationTarget,
+  nextStatusOnInboundMessage,
+  resolveInboundIdentity,
+} from "../_shared/messagingService.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GATEWAY_SERVICE_TOKEN = Deno.env.get("CHAT_GATEWAY_SERVICE_TOKEN");
+// Mesma URL/token já usados em chat-send-message pra falar com o
+// gateway -- reaproveitado aqui pra mandar a mensagem automática de
+// ausência, nenhum segredo novo.
+const GATEWAY_URL = Deno.env.get("CHAT_GATEWAY_URL");
 
-type ConnectionRow = { id: string; company_id: string };
-type ConversationRow = { id: string; status: string };
+type ConnectionRow = { id: string; company_id: string; status: string };
+type ConversationRow = { id: string; status: string; last_away_sent_at: string | null };
 
 function json(body: Record<string, unknown>, status: number) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -56,21 +67,23 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    const { data: connection } = await admin.from("chat_connections").select("id, company_id").eq("id", connectionId).maybeSingle<ConnectionRow>();
+    const { data: connection } = await admin.from("chat_connections").select("id, company_id, status").eq("id", connectionId).maybeSingle<ConnectionRow>();
     if (!connection) return json({ ok: false, error: "connection_not_found" }, 404);
 
     const { data: existingRows } = await admin
       .from("chat_conversations")
-      .select("id, status")
+      .select("id, status, last_away_sent_at")
       .eq("connection_id", connectionId)
       .eq("remote_jid", identity.remoteJid)
       .order("created_at", { ascending: false });
     const target = decideConversationTarget((existingRows ?? []) as ConversationRow[]);
 
     let conversationId: string;
+    let lastAwaySentAt: string | null = null;
     if (target.action === "REUSE") {
       conversationId = target.conversationId;
       const current = (existingRows ?? []).find((c) => c.id === conversationId);
+      lastAwaySentAt = current?.last_away_sent_at ?? null;
       const nextStatus = current ? nextStatusOnInboundMessage(current.status) : "ABERTA";
       await admin
         .from("chat_conversations")
@@ -123,6 +136,44 @@ Deno.serve(async (req) => {
       }
       console.error("[chat-inbound-webhook] falha ao gravar mensagem:", msgError.message);
       return json({ ok: false, error: "message_insert_failed" }, 500);
+    }
+
+    // Mensagem automática de ausência fora do horário de atendimento --
+    // nunca bloqueia nem falha a resposta principal (a mensagem do
+    // cliente já foi gravada com sucesso acima); melhor esforço, best
+    // effort. Não atualiza last_message_preview/last_message_at da
+    // conversa -- o que precisa aparecer pro atendente é a pergunta
+    // real do cliente, não o aviso automático.
+    try {
+      const decision = decideAwayMessage(new Date(), lastAwaySentAt);
+      if (decision.shouldSend && connection.status === "CONECTADO" && GATEWAY_URL && GATEWAY_SERVICE_TOKEN) {
+        const gatewayRes = await fetch(`${GATEWAY_URL}/connections/${connectionId}/send`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${GATEWAY_SERVICE_TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ to: identity.remoteJid, body: AWAY_MESSAGE_TEXT }),
+        });
+        const gatewayData = await gatewayRes.json().catch(() => null);
+        if (gatewayRes.ok && gatewayData?.ok) {
+          await admin.from("chat_messages").insert({
+            company_id: connection.company_id,
+            conversation_id: conversationId,
+            connection_id: connectionId,
+            remote_jid: identity.remoteJid,
+            from_me: true,
+            direction: "OUTBOUND",
+            body: AWAY_MESSAGE_TEXT,
+            external_message_id: gatewayData.externalMessageId ?? null,
+            provider_message_id: gatewayData.externalMessageId ?? null,
+            origin: "REALTIME",
+            status: "ENVIADA",
+          });
+          await admin.from("chat_conversations").update({ last_away_sent_at: new Date().toISOString() }).eq("id", conversationId);
+        } else {
+          console.error("[chat-inbound-webhook] falha ao enviar mensagem de ausência:", gatewayData?.error ?? gatewayRes.status);
+        }
+      }
+    } catch (e) {
+      console.error("[chat-inbound-webhook] erro ao processar mensagem de ausência:", e instanceof Error ? e.message : e);
     }
 
     return json({ ok: true, conversationId }, 200);
