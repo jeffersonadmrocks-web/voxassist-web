@@ -4,7 +4,7 @@
 // carga extra e um segundo poller. Roda a cada 15-30min (menos urgente que
 // a agenda). Nunca escreve em appointments/service_orders/external_appointments.
 //
-// Achado real (2026-08-31, verificação direta no banco): a function usava
+// Achado real #1 (2026-08-31, verificação direta no banco): a function usava
 // AGUARDANDO_ELEGIBILIDADE/ELEGIVEL_PARA_NPS, valores que NUNCA existiram
 // na constraint de nps_cases.situacao -- todo insert cuja classificação não
 // fosse NAO_ELEGIVEL violava a constraint e falhava. O bug ficava invisível
@@ -14,6 +14,13 @@
 // cuja classificação era NAO_ELEGIVEL -> situacao=FINALIZADO, que é um valor
 // válido), 16 perdidos silenciosamente a cada execução (238 execuções "com
 // sucesso", todas com orders_processed=0 nos ciclos mais recentes).
+//
+// Achado real #2 (mesmo dia): filial vinha de uma tentativa de resolver
+// por technician_id -> profiles.store_id -> stores.name, que nunca
+// resolvia porque nenhuma dessas tabelas está populada hoje. A REGRA
+// CORRETA é outra: a conexão Electrolux atual só enxerga dados da Vox
+// Serra -- a filial vem da CONEXÃO que sincronizou o atendimento
+// (electrolux_connections), nunca de inferência por técnico/endereço.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   classifyCase,
@@ -33,9 +40,11 @@ type ConcludedAppointment = {
   external_created_at: string | null;
   concluded_at: string | null;
   client_phone: string | null;
-  technician_id: string | null;
   nps_closed_inferred_at: string | null;
+  connection_id: string | null;
 };
+
+type ElectroluxConnection = { id: string; filial: "VITORIA" | "SERRA" };
 
 type HistoryRow = {
   previous_data: { appointment_date?: string | null };
@@ -43,36 +52,6 @@ type HistoryRow = {
 };
 
 type FailedDetail = { external_appointment_id: string; error: string };
-
-// Normaliza o nome da loja (com ou sem acento/caixa) pro enum aceito por
-// nps_cases.filial ('VITORIA' | 'SERRA'). Nunca inventa um valor -- se não
-// bater com nenhum dos dois, devolve null.
-function normalizeFilial(name: string | null | undefined): "VITORIA" | "SERRA" | null {
-  if (!name) return null;
-  const diacritics = new RegExp("[̀-ͯ]", "g");
-  const upper = name.normalize("NFD").replace(diacritics, "").toUpperCase().trim();
-  if (upper === "VITORIA") return "VITORIA";
-  if (upper === "SERRA") return "SERRA";
-  return null;
-}
-
-// Achado real: technician_id -> profiles.store_id existe no schema, mas
-// nenhum técnico Electrolux tem store_id preenchido hoje (confirmado
-// direto no banco) -- filial fica null pra todo mundo até esse cadastro
-// existir. Não é um bug desta function: assim que o dado passar a existir,
-// resolve sozinho, sem precisar mexer aqui de novo.
-// deno-lint-ignore no-explicit-any
-async function resolveFilial(
-  supabase: any,
-  technicianId: string | null
-): Promise<"VITORIA" | "SERRA" | null> {
-  if (!technicianId) return null;
-  const { data: profile } = await supabase.from("profiles").select("store_id").eq("id", technicianId).maybeSingle();
-  const storeId = (profile as { store_id: string | null } | null)?.store_id;
-  if (!storeId) return null;
-  const { data: store } = await supabase.from("stores").select("name").eq("id", storeId).maybeSingle();
-  return normalizeFilial((store as { name: string | null } | null)?.name);
-}
 
 Deno.serve(async () => {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
@@ -85,12 +64,22 @@ Deno.serve(async () => {
   const failedDetails: FailedDetail[] = [];
 
   try {
+    // Conexões ativas -- hoje só existe Serra, mas o código já resolve
+    // filial pela conexão de cada atendimento (connection_id), não por
+    // um valor fixo em código. defaultConnection só entra como fallback
+    // pra atendimentos antigos sem connection_id ainda carimbado, e só
+    // quando existe exatamente uma conexão ativa (sem ambiguidade).
+    const { data: connectionsRaw } = await supabase.from("electrolux_connections").select("id, filial").eq("active", true);
+    const connections = (connectionsRaw || []) as ElectroluxConnection[];
+    const filialByConnectionId = new Map(connections.map((c) => [c.id, c.filial]));
+    const defaultConnection = connections.length === 1 ? connections[0] : null;
+
     const { data: existingCaseLinks } = await supabase.from("nps_cases").select("external_appointment_id");
     const alreadyTracked = new Set((existingCaseLinks || []).map((c: { external_appointment_id: string }) => c.external_appointment_id));
 
     const { data: concludedRaw, error: fetchError } = await supabase
       .from("external_appointments")
-      .select("id, external_created_at, concluded_at, client_phone, technician_id, nps_closed_inferred_at")
+      .select("id, external_created_at, concluded_at, client_phone, nps_closed_inferred_at, connection_id")
       .eq("origin", "ELECTROLUX")
       .eq("status", "CONCLUIDO");
     if (fetchError) throw new Error(fetchError.message);
@@ -135,13 +124,17 @@ Deno.serve(async () => {
 
       const eligibleAt = new Date(new Date(appt.concluded_at!).getTime() + ELIGIBILITY_GATE_HOURS * 60 * 60 * 1000).toISOString();
       const surveyDeadline = new Date(new Date(appt.concluded_at!).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      const filial = await resolveFilial(supabase, appt.technician_id);
+      // Filial vem SEMPRE da conexão que sincronizou o atendimento --
+      // nunca de técnico, endereço ou qualquer outra inferência.
+      const connectionId = appt.connection_id ?? defaultConnection?.id ?? null;
+      const filial = connectionId ? filialByConnectionId.get(connectionId) ?? null : null;
 
       const { data: saved, error } = await supabase
         .from("nps_cases")
         .insert({
           external_appointment_id: appt.id,
           filial,
+          connection_id: connectionId,
           classification,
           situacao,
           opened_at: appt.external_created_at,

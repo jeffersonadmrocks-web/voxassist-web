@@ -29,7 +29,10 @@ type ExistingRow = {
   nps_missing_since: string | null;
   nps_closed_inferred_at: string | null;
   company_id: string | null;
+  connection_id: string | null;
 };
+
+type ElectroluxConnection = { id: string; filial: "VITORIA" | "SERRA" };
 
 Deno.serve(async () => {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
@@ -38,6 +41,15 @@ Deno.serve(async () => {
   const basicAuth = "Basic " + btoa(`${ELECTROLUX_API_USER}:${ELECTROLUX_API_PASSWORD}`);
 
   try {
+    // Carimba qual conexão Electrolux sincronizou cada atendimento --
+    // rastreabilidade pra quando existir mais de uma (ver
+    // electrolux_connections_20260831.sql). Hoje só existe Serra, então
+    // defaultConnection cobre todos os registros; sem ambiguidade
+    // enquanto for a única conexão ativa.
+    const { data: connectionsRaw } = await supabase.from("electrolux_connections").select("id, filial").eq("active", true);
+    const connections = (connectionsRaw || []) as ElectroluxConnection[];
+    const defaultConnection = connections.length === 1 ? connections[0] : null;
+
     const res = await fetch(`${ELECTROLUX_API_URL}/api/dashboard/service-orders`, {
       headers: { Authorization: basicAuth },
     });
@@ -46,7 +58,7 @@ Deno.serve(async () => {
 
     const { data: existingRowsRaw } = await supabase
       .from("external_appointments")
-      .select("id, external_id, status, technician_id, appointment_date, period, concluded_at, nps_missing_count, nps_missing_since, nps_closed_inferred_at, company_id")
+      .select("id, external_id, status, technician_id, appointment_date, period, concluded_at, nps_missing_count, nps_missing_since, nps_closed_inferred_at, company_id, connection_id")
       .eq("origin", "ELECTROLUX");
     const existingRows = (existingRowsRaw || []) as ExistingRow[];
     const existingById = new Map(existingRows.map((r) => [r.external_id, r]));
@@ -72,6 +84,7 @@ Deno.serve(async () => {
         // sessão de usuário normal, ou pior, ficava visível pra todas as
         // empresas ao mesmo tempo antes desse fix existir.
         company_id: existing?.company_id ?? ELECTROLUX_DEFAULT_COMPANY_ID,
+        connection_id: existing?.connection_id ?? defaultConnection?.id ?? null,
         concluded_at: resolveConcludedAt(row.status, existing?.concluded_at),
         // Se voltou a aparecer, qualquer inferência de encerramento por
         // ausência é cancelada. O histórico do atendimento é preservado.
