@@ -56,7 +56,18 @@
     btn.className='nav';
     btn.dataset.chatBetaEntry='1';
     btn.innerHTML='◆ <span>CHAT — BETA</span>';
-    btn.onclick=openChatBetaScreen;
+    // Achado real (Fase 1 da correção visual, 2026-09-01): o clique
+    // aqui ia pra uma tela intermediária ("Chat — Beta", com cards de
+    // Horário/Configurações/Conversas/Importação) antes da Central de
+    // Conversas de verdade -- o protótipo aprovado (central-conversas-
+    // mockup.html) entra direto no board de 3 colunas. Configurações →
+    // Conexões e Importação continuam alcançáveis de dentro do board
+    // (engrenagem no cabeçalho), só não são mais a primeira tela.
+    btn.onclick=()=>{
+      document.querySelectorAll('.nav').forEach(b=>b.classList.remove('active'));
+      document.querySelector('[data-chat-beta-entry]')?.classList.add('active');
+      openConversasScreen();
+    };
     menu.appendChild(btn);
   }
   const observer=new MutationObserver(ensureNavEntry);
@@ -93,66 +104,7 @@
   }
 
   /* ---------- navegação ---------- */
-  let cache={connections:[],stores:[]};
-
-  async function openChatBetaScreen(){
-    const app=document.querySelector('#app');
-    if(!app)return;
-    document.querySelectorAll('.nav').forEach(b=>b.classList.remove('active'));
-    document.querySelector('[data-chat-beta-entry]')?.classList.add('active');
-    await renderHome();
-  }
-
-  // Busca as conexões toda vez que a tela inicial abre — mesmo achado
-  // real documentado abaixo (renderConexoesScreen): sem isso, quem olha
-  // só a tela inicial nunca sabe se uma conexão existente ficou
-  // desconectada (ou "sumiu" por falta de refresh, como já aconteceu).
-  async function connectionsSummary(){
-    const rows=await api('chat_connections?select=id,name,status&order=created_at.desc').catch(()=>null);
-    if(!rows)return'<p class="vx-chatbeta-sub">Não foi possível carregar o resumo de conexões.</p>';
-    if(!rows.length)return'<p class="vx-chatbeta-sub">Nenhuma conexão criada ainda.</p>';
-    return `<div class="vx-conn-summary-list">${rows.map(c=>{
-      const label=STATUS_LABEL[c.status]||{text:c.status,cls:'neutral'};
-      return `<div class="vx-conn-summary-row"><b>${E(c.name)}</b><span class="vx-conn-badge vx-conn-badge-${E(label.cls)}">${E(label.text)}</span></div>`;
-    }).join('')}</div>`;
-  }
-
-  async function renderHome(){
-    const app=document.querySelector('#app');
-    if(!app)return;
-    app.innerHTML=`<div class="vx-chatbeta">
-      <div class="vx-chatbeta-head">
-        <div><button id="chatBetaBack">← Voltar</button><h2>Chat — Beta</h2><small>Chat VoxAssist · ambiente de homologação</small></div>
-      </div>
-      <div class="vx-chatbeta-notice">A Digisac continua sendo utilizada pela Vox normalmente, de forma externa e independente, durante esta fase de transição. Esta área vai se tornar o Chat VoxAssist — comunicação própria com o cliente pelo WhatsApp, integrada a clientes e OS.</div>
-      <div class="vx-chatbeta-card">
-        <h3>Horário de atendimento</h3>
-        <p class="vx-chatbeta-sub">Segunda a sexta, das 8h às 18h (horário de Brasília). Fora desse período, quem escrever recebe uma mensagem automática avisando que o atendimento está fechado — sem repetir várias vezes pro mesmo cliente, e volta ao normal sozinho no próximo expediente.</p>
-        ${businessHoursBadge()}
-      </div>
-      <div class="vx-chatbeta-card">
-        <h3>Configurações</h3>
-        <p class="vx-chatbeta-sub">Conexões WhatsApp da empresa ativa — cada conexão representa um número, autenticado por QR Code.</p>
-        <div id="chatBetaConnSummary" class="vx-chatbeta-sub">Carregando…</div>
-        <button id="chatBetaGoConexoes" class="primary">Configurações → Conexões</button>
-      </div>
-      <div class="vx-chatbeta-card">
-        <h3>Central de Conversas</h3>
-        <p class="vx-chatbeta-sub">Conversas, Chat e Contexto VoxAssist em 3 colunas — busca, filtros, Nova Conversa e histórico real com o cliente.</p>
-        <button id="chatBetaGoConversas">Abrir Central de Conversas</button>
-      </div>
-      <div class="vx-chatbeta-card">
-        <h3>Importação de histórico</h3>
-        <p class="vx-chatbeta-sub">Conversas, contatos e mensagens que o WhatsApp disponibilizar na primeira conexão. Estrutura de dados já pronta; o gatilho real ainda depende do gateway (etapa futura) — aqui dá pra acompanhar o que já existir.</p>
-        <button id="chatBetaGoImport">Importação → histórico</button>
-      </div>
-    </div>`;
-    document.getElementById('chatBetaBack').onclick=goBack;
-    document.getElementById('chatBetaGoConexoes').onclick=openConexoesScreen;
-    document.getElementById('chatBetaGoConversas').onclick=openConversasScreen;
-    document.getElementById('chatBetaGoImport').onclick=openImportPickerScreen;
-    document.getElementById('chatBetaConnSummary').innerHTML=await connectionsSummary();
-  }
+  let cache={connections:[],stores:[],attendants:[]};
 
   /* ---------- Conexões ---------- */
   const STATUS_LABEL={
@@ -183,7 +135,7 @@
       renderConexoesScreen();
     }catch(e){
       app.innerHTML=`<div class="vx-chatbeta"><div class="vx-chatbeta-card"><h3>Falha ao carregar Conexões</h3><p class="vx-chatbeta-sub">${E(e.message||'Erro desconhecido.')}</p><button id="conexoesBackErr">← Voltar</button></div></div>`;
-      document.getElementById('conexoesBackErr').onclick=renderHome;
+      document.getElementById('conexoesBackErr').onclick=openConversasScreen;
     }
   }
 
@@ -237,7 +189,7 @@
         ${cache.connections.length?cache.connections.map(connectionCard).join(''):'<div class="vx-chatbeta-sub">Nenhuma conexão criada ainda.</div>'}
       </div>
     </div>`;
-    document.getElementById('conexoesBack').onclick=renderHome;
+    document.getElementById('conexoesBack').onclick=openConversasScreen;
     document.getElementById('novaConexaoForm').onsubmit=handleCreateConexao;
     document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>handleConnAction(b.dataset.action,b.dataset.id));
   }
@@ -358,7 +310,7 @@
       const connections=await api('chat_connections?select=id,name&order=created_at.desc').catch(()=>[]);
       if(!connections||!connections.length){
         app.innerHTML=`<div class="vx-chatbeta"><div class="vx-chatbeta-card"><h3>Importação de histórico</h3><p class="vx-chatbeta-sub">Nenhuma conexão criada ainda — crie uma conexão em Configurações → Conexões primeiro.</p><button id="importBackErr">← Voltar</button></div></div>`;
-        document.getElementById('importBackErr').onclick=renderHome;
+        document.getElementById('importBackErr').onclick=openConversasScreen;
         return;
       }
       if(connections.length===1){ await openImportScreen(connections[0].id); return; }
@@ -366,11 +318,11 @@
         <div class="vx-chatbeta-head"><div><button id="importPickBack">← Voltar</button><h2>Importação de histórico</h2><small>Escolha a conexão</small></div></div>
         <div class="vx-conn-summary-list">${connections.map(c=>`<div class="vx-conn-summary-row vx-conv-row" data-pick="${E(c.id)}" style="cursor:pointer"><b>${E(c.name)}</b><span>→</span></div>`).join('')}</div>
       </div>`;
-      document.getElementById('importPickBack').onclick=renderHome;
+      document.getElementById('importPickBack').onclick=openConversasScreen;
       document.querySelectorAll('[data-pick]').forEach(el=>el.onclick=()=>openImportScreen(el.dataset.pick));
     }catch(e){
       app.innerHTML=`<div class="vx-chatbeta"><div class="vx-chatbeta-card"><h3>Falha ao carregar conexões</h3><p class="vx-chatbeta-sub">${E(e.message||'Erro desconhecido.')}</p><button id="importBackErr2">← Voltar</button></div></div>`;
-      document.getElementById('importBackErr2').onclick=renderHome;
+      document.getElementById('importBackErr2').onclick=openConversasScreen;
     }
   }
 
@@ -458,8 +410,8 @@
      QR/conexão/sessão, envio/recebimento, tratamento LID/remote_jid,
      mensagens reais, ausência automática. Nunca mostra remote_jid/
      sender_lid como se fosse telefone -- só customer_phone. */
-  const CONV_SELECT='id,customer_phone,customer_name,status,last_message_preview,last_message_at,unread_count,assigned_user_id,client_id,current_store_id,service_order_id,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name),stores!chat_conversations_store_id_fkey(name)';
-  let hubState={list:[],filter:'TODAS',search:'',selectedId:null};
+  const CONV_SELECT='id,customer_phone,customer_name,status,last_message_preview,last_message_at,unread_count,assigned_user_id,client_id,current_store_id,connection_id,service_order_id,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name),stores!chat_conversations_store_id_fkey(name)';
+  let hubState={list:[],filter:'TODAS',search:'',storeFilter:'',connectionFilter:'',selectedId:null};
   let conversaAtualId=null;
   let conversaPollTimer=null;
   let listPollTimer=null;
@@ -470,6 +422,9 @@
   async function loadConversasHubData(){
     hubState.list=await api(`chat_conversations?select=${CONV_SELECT}&order=last_message_at.desc.nullslast`).catch(()=>[]);
   }
+  async function loadAttendants(){
+    cache.attendants=await api('profiles?select=id,full_name,role&active=eq.true&role=in.(GESTOR,ATENDENTE)&order=full_name').catch(()=>[]);
+  }
 
   async function openConversasScreen(){
     const app=document.querySelector('#app');
@@ -478,15 +433,35 @@
     hubState.selectedId=null;
     app.innerHTML='<div class="vx-chatbeta"><div class="vx-chatbeta-loading">Carregando Central de Conversas…</div></div>';
     try{
-      await loadConversasHubData();
+      await Promise.all([loadConversasHubData(),loadConexoesData(),loadAttendants()]);
       renderConversasHub();
       stopListPoll();
       listPollTimer=setInterval(async()=>{await loadConversasHubData();renderConvList()},8000);
     }catch(e){
       app.innerHTML=`<div class="vx-chatbeta"><div class="vx-chatbeta-card"><h3>Falha ao carregar Conversas</h3><p class="vx-chatbeta-sub">${E(e.message||'Erro desconhecido.')}</p><button id="conversasBackErr">← Voltar</button></div></div>`;
-      document.getElementById('conversasBackErr').onclick=renderHome;
+      document.getElementById('conversasBackErr').onclick=openConversasScreen;
     }
   }
+
+  /* ---------- linguagem visual alinhada ao protótipo aprovado
+     (central-conversas-mockup.html) -- Fase 1 da correção visual,
+     2026-09-01: só camada visual, nenhuma tabela nova, nenhuma lógica
+     de negócio alterada. Recursos que o protótipo mostra mas que
+     exigem schema novo (tags, nota interna, respostas rápidas,
+     resposta com citação, anexos, Robô de Atendimento, Monitor de
+     Atividades) ficam para as próximas fases -- não fingidos aqui. */
+  function initials(name){
+    const parts=String(name||'').trim().split(/\s+/).filter(Boolean);
+    if(!parts.length)return '?';
+    return (parts[0][0]+(parts[1]?.[0]||'')).toUpperCase();
+  }
+  const CONV_STATUS_LABEL={
+    ABERTA:{text:'Aberta',cls:'ok'},
+    EM_ATENDIMENTO:{text:'Em atendimento',cls:'info'},
+    AGUARDANDO_CLIENTE:{text:'Aguardando cliente',cls:'warn'},
+    FINALIZADA:{text:'Encerrada',cls:'err'},
+    ARQUIVADA:{text:'Arquivada',cls:'neutral'},
+  };
 
   function filteredConvList(){
     const me=myUserId();
@@ -494,70 +469,82 @@
     if(hubState.filter==='MINHAS')rows=rows.filter(c=>String(c.assigned_user_id||'')===String(me));
     else if(hubState.filter==='NAO_ATRIBUIDAS')rows=rows.filter(c=>!c.assigned_user_id);
     else if(hubState.filter==='NAO_LIDAS')rows=rows.filter(c=>Number(c.unread_count||0)>0);
+    if(hubState.storeFilter)rows=rows.filter(c=>String(c.current_store_id||'')===hubState.storeFilter);
+    if(hubState.connectionFilter)rows=rows.filter(c=>String(c.connection_id||'')===hubState.connectionFilter);
     const q=hubState.search.trim().toLowerCase();
     if(q)rows=rows.filter(c=>(c.customer_name||'').toLowerCase().includes(q)||(c.customer_phone||'').toLowerCase().includes(q));
     return rows;
   }
 
   function convRow(c){
-    const isMine=String(c.assigned_user_id||'')===String(myUserId());
+    const name=c.customer_name||c.clients?.name;
+    const matched=!!name;
     const hora=c.last_message_at?new Date(c.last_message_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
     const unread=Number(c.unread_count||0);
-    return `<div class="vx-chathub-conv-row ${String(c.id)===String(hubState.selectedId)?'active':''}" data-conv="${E(c.id)}">
-      <div class="vx-chathub-conv-main">
-        <b>${E(c.customer_name||c.customer_phone||'Contato WhatsApp')}</b>
-        <span class="vx-chathub-conv-preview">${E(c.last_message_preview||'Sem mensagens ainda')}</span>
+    const st=CONV_STATUS_LABEL[c.status]||{text:c.status,cls:'neutral'};
+    const assignedName=c.profiles?.full_name||null;
+    return `<li class="vx-cc-row ${String(c.id)===String(hubState.selectedId)?'active':''}" data-conv="${E(c.id)}">
+      <div class="vx-cc-avatar ${matched?'':'unmatched'}">${matched?E(initials(name)):'?'}</div>
+      <div class="vx-cc-main">
+        <div class="vx-cc-line1"><span class="vx-cc-name ${matched?'':'unmatched'}">${matched?E(name):'Contato WhatsApp'}</span><span class="vx-cc-time">${E(hora)}</span></div>
+        <div class="vx-cc-preview"><span class="vx-cc-prev-text">${E(c.last_message_preview||'Sem mensagens ainda')}</span>${unread?`<span class="vx-cc-unread">${unread}</span>`:''}</div>
+        <div class="vx-cc-meta ${assignedName?'':'unassigned'}">${E(c.stores?.name||'—')} · ${E(assignedName||'Não atribuída')}</div>
+        <div class="vx-cc-status-row"><span class="vx-cc-pill ${st.cls}">${E(st.text)}</span></div>
       </div>
-      <div class="vx-chathub-conv-side">
-        <small>${E(hora)}</small>
-        ${unread?`<span class="vx-chathub-unread">${unread}</span>`:''}
-        ${isMine?'<span class="vx-chathub-mine" title="Atribuída a você">●</span>':''}
-      </div>
-    </div>`;
+    </li>`;
   }
 
   function renderConvList(){
     const list=document.getElementById('chatConvList');
     if(!list)return;
     const rows=filteredConvList();
-    list.innerHTML=rows.length?rows.map(convRow).join(''):'<p class="vx-chatbeta-sub">Nenhuma conversa encontrada.</p>';
+    list.innerHTML=rows.length?rows.map(convRow).join(''):'<div class="vx-cc-empty-list">Nenhuma conversa neste filtro.</div>';
     list.querySelectorAll('[data-conv]').forEach(el=>el.onclick=()=>selectConversa(el.dataset.conv));
   }
 
   function renderConversasHub(){
     const app=document.querySelector('#app');
     if(!app)return;
-    app.innerHTML=`<div class="vx-chathub">
-      <div class="vx-chathub-head">
-        <button id="chatHubBack">← Voltar</button>
-        <div class="vx-chathub-brand">VOX<span>ASSIST</span><small>Central de Conversas</small></div>
+    app.innerHTML=`<div class="vx-cc-wrap">
+      <div class="vx-cc-top">
+        <button id="chatHubBack" class="vx-cc-back">← Voltar</button>
+        <div class="vx-cc-title-block"><h1>Central de Conversas</h1><p>Chat VoxAssist · desktop, 3 colunas</p></div>
         ${businessHoursBadge()}
+        <button id="chatHubSettings" class="vx-cc-settings-btn" type="button" title="Configurações → Conexões">⚙ Conexões</button>
       </div>
-      <div class="vx-chathub-body">
-        <aside class="vx-chathub-col vx-chathub-list">
-          <div class="vx-chathub-list-tools">
-            <input id="chatSearch" placeholder="Buscar por nome ou telefone…" value="${E(hubState.search)}">
-            <button id="chatNewConv" class="primary" type="button">+ Nova conversa</button>
+      <div class="vx-cc-board">
+        <section class="vx-cc-pane vx-cc-pane-list">
+          <div class="vx-cc-pane-head">
+            <div class="vx-cc-pane-head-row"><h2>Conversas</h2><button class="vx-cc-new-btn" id="chatNewConv" type="button">+ Nova</button></div>
+            <div class="vx-cc-search"><input id="chatSearch" placeholder="Buscar por nome ou telefone…" value="${E(hubState.search)}"></div>
+            <div class="vx-cc-filter-chips">
+              ${[['TODAS','Todas'],['MINHAS','Minhas'],['NAO_ATRIBUIDAS','Não atribuídas'],['NAO_LIDAS','Não lidas']].map(([k,l])=>`<button type="button" class="vx-cc-chip ${hubState.filter===k?'active':''}" data-filter="${k}">${l}</button>`).join('')}
+            </div>
+            <div class="vx-cc-filter-selects">
+              <select id="chatStoreFilter"><option value="">Todas as lojas</option>${cache.stores.map(s=>`<option value="${E(s.id)}" ${hubState.storeFilter===String(s.id)?'selected':''}>${E(s.name)}</option>`).join('')}</select>
+              <select id="chatConnFilter"><option value="">Todas as conexões</option>${cache.connections.map(c=>`<option value="${E(c.id)}" ${hubState.connectionFilter===String(c.id)?'selected':''}>${E(c.name)}</option>`).join('')}</select>
+            </div>
           </div>
-          <div class="vx-chathub-filters">
-            ${[['TODAS','Todas'],['MINHAS','Minhas'],['NAO_ATRIBUIDAS','Não atribuídas'],['NAO_LIDAS','Não lidas']].map(([k,l])=>`<button type="button" data-filter="${k}" class="${hubState.filter===k?'active':''}">${l}</button>`).join('')}
-          </div>
-          <div id="chatConvList" class="vx-chathub-conv-list"></div>
-        </aside>
-        <section class="vx-chathub-col vx-chathub-chat" id="vxChatMid">
-          <div class="vx-chathub-empty">Selecione uma conversa à esquerda, ou inicie uma nova.</div>
+          <ul id="chatConvList" class="vx-cc-conv-list"></ul>
         </section>
-        <aside class="vx-chathub-col vx-chathub-ctx" id="vxChatCtx">
-          <div class="vx-chathub-empty">—</div>
+        <section class="vx-cc-pane vx-cc-pane-thread" id="vxChatMid">
+          <div class="vx-cc-thread-empty">Selecione uma conversa à esquerda, ou inicie uma nova.</div>
+        </section>
+        <aside class="vx-cc-pane vx-cc-pane-ctx">
+          <div class="vx-cc-pane-head"><h2>Contexto VoxAssist</h2></div>
+          <div class="vx-cc-ctx-body" id="vxChatCtx"><p class="vx-cc-ctx-empty">Selecione uma conversa para ver o contexto.</p></div>
         </aside>
       </div>
     </div>`;
-    document.getElementById('chatHubBack').onclick=()=>{stopConversaPoll();stopListPoll();renderHome()};
+    document.getElementById('chatHubBack').onclick=()=>{stopConversaPoll();stopListPoll();goBack()};
+    document.getElementById('chatHubSettings').onclick=()=>{stopConversaPoll();stopListPoll();openConexoesScreen()};
     document.getElementById('chatNewConv').onclick=openNovaConversaModal;
     document.getElementById('chatSearch').oninput=e=>{hubState.search=e.target.value;renderConvList()};
-    document.querySelectorAll('.vx-chathub-filters [data-filter]').forEach(b=>b.onclick=()=>{
+    document.getElementById('chatStoreFilter').onchange=e=>{hubState.storeFilter=e.target.value;renderConvList()};
+    document.getElementById('chatConnFilter').onchange=e=>{hubState.connectionFilter=e.target.value;renderConvList()};
+    document.querySelectorAll('.vx-cc-filter-chips [data-filter]').forEach(b=>b.onclick=()=>{
       hubState.filter=b.dataset.filter;
-      document.querySelectorAll('.vx-chathub-filters [data-filter]').forEach(x=>x.classList.toggle('active',x===b));
+      document.querySelectorAll('.vx-cc-filter-chips [data-filter]').forEach(x=>x.classList.toggle('active',x===b));
       renderConvList();
     });
     renderConvList();
@@ -571,13 +558,40 @@
     const conv=hubState.list.find(c=>String(c.id)===String(id));
     const mid=document.getElementById('vxChatMid');
     if(!mid)return;
-    mid.innerHTML=`<div class="vx-chathub-chat-head"><div><b>${E(conv?.customer_name||conv?.customer_phone||'Contato WhatsApp')}</b><small>${E(conv?.customer_phone||'Identificação pendente')}</small></div><span class="vx-conn-badge vx-conn-badge-neutral">${E(conv?.status||'')}</span></div>
+    const name=conv?.customer_name||conv?.clients?.name;
+    const matched=!!name;
+    const st=CONV_STATUS_LABEL[conv?.status]||{text:conv?.status||'',cls:'neutral'};
+    const isMine=String(conv?.assigned_user_id||'')===String(myUserId());
+    const isFinalizada=conv?.status==='FINALIZADA';
+    const otherAttendants=cache.attendants.filter(a=>String(a.id)!==String(conv?.assigned_user_id||''));
+    mid.innerHTML=`<div class="vx-cc-thread-head">
+        <div class="vx-cc-thread-avatar ${matched?'':'unmatched'}">${matched?E(initials(name)):'?'}</div>
+        <div class="vx-cc-thread-head-main">
+          <div class="vx-cc-thread-title">${matched?E(name):'Contato WhatsApp'} <span class="vx-cc-pill ${st.cls}">${E(st.text)}</span></div>
+          <div class="vx-cc-thread-sub">📱 ${E(conv?.customer_phone||'Identificação pendente')} · ${E(conv?.stores?.name||'—')}</div>
+        </div>
+        <div class="vx-cc-thread-actions">
+          ${isMine?'':'<button type="button" class="vx-cc-th-btn vx-cc-th-btn-success" id="vxCtxAssume">Assumir</button>'}
+          <div class="vx-cc-transfer-wrap">
+            <button type="button" class="vx-cc-th-btn" id="vxCtxTransferBtn">Transferir</button>
+            <div class="vx-cc-transfer-pop" id="vxCtxTransferPop" hidden>
+              ${otherAttendants.length?otherAttendants.map(a=>`<button type="button" class="vx-cc-transfer-opt" data-transfer-to="${E(a.id)}">${E(a.full_name)}</button>`).join(''):'<div class="vx-cc-transfer-empty">Nenhum outro atendente ativo.</div>'}
+            </div>
+          </div>
+          ${isFinalizada?'<button type="button" class="vx-cc-th-btn" id="vxCtxReopen">Reabrir</button>':'<button type="button" class="vx-cc-th-btn vx-cc-th-btn-danger" id="vxCtxClose">Encerrar</button>'}
+        </div>
+      </div>
       <div id="vxMsgList" class="vx-msg-list"><div class="vx-chatbeta-loading">Carregando mensagens…</div></div>
-      <form id="vxMsgForm" class="vx-conn-new-form">
+      <form id="vxMsgForm" class="vx-cc-composer">
         <input name="body" placeholder="Escrever mensagem…" required maxlength="4000">
-        <button type="submit" class="primary">Enviar</button>
+        <button type="submit" class="vx-cc-send-btn">Enviar</button>
       </form>`;
     document.getElementById('vxMsgForm').onsubmit=handleSendMensagem;
+    document.getElementById('vxCtxAssume')?.addEventListener('click',()=>assumirConversa(conv.id));
+    document.getElementById('vxCtxReopen')?.addEventListener('click',()=>reabrirConversa(conv.id));
+    document.getElementById('vxCtxClose')?.addEventListener('click',()=>encerrarConversa(conv.id));
+    document.getElementById('vxCtxTransferBtn')?.addEventListener('click',e=>{e.stopPropagation();const p=document.getElementById('vxCtxTransferPop');p.hidden=!p.hidden});
+    document.querySelectorAll('[data-transfer-to]').forEach(b=>b.onclick=()=>transferirConversa(conv.id,b.dataset.transferTo));
     renderContexto(conv);
     conversaAtualId=id;
     await refreshMensagens();
@@ -592,18 +606,23 @@
     const clienteNome=conv.clients?.name||null;
     const lojaNome=conv.stores?.name||null;
     const responsavelNome=conv.profiles?.full_name||null;
-    const isMine=String(conv.assigned_user_id||'')===String(myUserId());
-    const isFinalizada=conv.status==='FINALIZADA';
-    ctx.innerHTML=`<h4>Contexto VoxAssist</h4>
-      <div class="vx-ctx-block"><span>Cliente</span>${clienteNome?`<b>${E(clienteNome)}</b>`:`<div class="vx-ctx-unlinked"><b>Não vinculado</b><input id="vxCtxClientSearch" placeholder="Buscar cliente por nome ou telefone…"><div id="vxCtxClientResults" class="vx-ctx-client-results"></div></div>`}</div>
-      <div class="vx-ctx-block"><span>Loja atual</span><b>${E(lojaNome||'—')}</b></div>
-      <div class="vx-ctx-block"><span>Responsável</span><b>${E(responsavelNome||'Não atribuída')}</b>${isMine?'':'<button type="button" id="vxCtxAssume" class="secondary">Assumir</button>'}</div>
-      <div class="vx-ctx-block"><span>Ordem de Serviço</span>${conv.service_order_id?'<button type="button" id="vxCtxOpenOs" class="secondary">Abrir OS</button>':'<b>—</b>'}</div>
-      <div class="vx-ctx-actions">${isFinalizada?'<button type="button" id="vxCtxReopen" class="secondary">Reabrir conversa</button>':'<button type="button" id="vxCtxClose" class="secondary">Encerrar conversa</button>'}</div>`;
-    document.getElementById('vxCtxAssume')?.addEventListener('click',()=>assumirConversa(conv.id));
-    document.getElementById('vxCtxReopen')?.addEventListener('click',()=>reabrirConversa(conv.id));
-    document.getElementById('vxCtxClose')?.addEventListener('click',()=>encerrarConversa(conv.id));
+    const st=CONV_STATUS_LABEL[conv.status]||{text:conv.status,cls:'neutral'};
+    const deletedEvents=(hubState.currentMessages||[]).filter(m=>m.deleted_at).map(m=>({time:new Date(m.created_at).toLocaleString('pt-BR'),text:`Mensagem apagada no WhatsApp (${m.direction==='OUTBOUND'?'enviada':'recebida'})`}));
+    const clientCard=clienteNome?`<div class="vx-cc-ctx-card"><h3>Cliente</h3><div class="vx-cc-ctx-client-name">${E(clienteNome)}</div><div class="vx-cc-ctx-client-line">📞 ${E(conv.customer_phone||'—')}</div></div>`
+      :`<div class="vx-cc-ctx-card"><h3>Cliente</h3><p class="vx-cc-ctx-unmatched-label">Contato não vinculado</p><input id="vxCtxClientSearch" class="vx-cc-ctx-search" placeholder="Buscar cliente por nome ou telefone…"><div id="vxCtxClientResults" class="vx-cc-ctx-client-results"></div></div>`;
+    const osCard=`<div class="vx-cc-ctx-card"><h3>Ordem de Serviço</h3>${conv.service_order_id?'<button type="button" class="vx-cc-ctx-link-btn" id="vxCtxOpenOs">Abrir OS →</button>':'<p class="vx-cc-ctx-empty-text">Nenhuma OS vinculada.</p>'}</div>`;
+    const atendimentoCard=`<div class="vx-cc-ctx-card"><h3>Atendimento</h3>
+      <div class="vx-cc-ctx-kv"><span>Status</span><span class="vx-cc-pill ${st.cls}">${E(st.text)}</span></div>
+      <div class="vx-cc-ctx-kv"><span>Loja atual</span><span>${E(lojaNome||'—')}</span></div>
+      <div class="vx-cc-ctx-kv"><span>Responsável</span><span>${E(responsavelNome||'Não atribuída')}</span></div>
+      </div>`;
+    const auditCard=deletedEvents.length?`<div class="vx-cc-ctx-card"><h3>Auditoria da conversa</h3>${deletedEvents.map(a=>`<div class="vx-cc-ctx-kv"><span>${E(a.text)}</span><span>${E(a.time)}</span></div>`).join('')}</div>`:'';
+    const actionsCard=`<div class="vx-cc-ctx-card"><h3>Ações</h3><div class="vx-cc-ctx-actions">
+      <button type="button" class="vx-cc-ctx-action-btn" id="vxCtxTransferStore">Transferir loja</button>
+      </div></div>`;
+    ctx.innerHTML=clientCard+osCard+atendimentoCard+auditCard+actionsCard;
     document.getElementById('vxCtxOpenOs')?.addEventListener('click',()=>window.render('os:'+conv.service_order_id));
+    document.getElementById('vxCtxTransferStore')?.addEventListener('click',()=>openTransferLojaModal(conv.id,conv.current_store_id));
     const searchInput=document.getElementById('vxCtxClientSearch');
     if(searchInput)searchInput.oninput=()=>renderClientResults(conv.id,searchInput.value);
   }
@@ -650,10 +669,7 @@
       await api(`chat_conversations?id=eq.${conversationId}`,{method:'PATCH',body:JSON.stringify({status})});
       toast?.(successMsg);
       await refreshConvSummary(conversationId);
-      const conv=hubState.list.find(c=>String(c.id)===String(conversationId));
-      const badge=document.querySelector('#vxChatMid .vx-conn-badge');
-      if(badge&&conv)badge.textContent=conv.status;
-      renderContexto(conv);
+      if(String(hubState.selectedId)===String(conversationId))await selectConversa(conversationId,true);
     }catch(err){toast?.('Não foi possível atualizar a conversa: '+err.message,'err')}
   }
   function encerrarConversa(conversationId){
@@ -662,6 +678,41 @@
   }
   function reabrirConversa(conversationId){
     mudarStatusConversa(conversationId,'ABERTA','Conversa reaberta.');
+  }
+  async function transferirConversa(conversationId,targetUserId){
+    try{
+      await api(`chat_conversations?id=eq.${conversationId}`,{method:'PATCH',body:JSON.stringify({assigned_user_id:targetUserId})});
+      const target=cache.attendants.find(a=>String(a.id)===String(targetUserId));
+      toast?.(`Conversa transferida para ${target?.full_name||'outro atendente'}.`);
+      await refreshConvSummary(conversationId);
+      if(String(hubState.selectedId)===String(conversationId))await selectConversa(conversationId,true);
+    }catch(err){toast?.('Não foi possível transferir a conversa: '+err.message,'err')}
+  }
+  function openTransferLojaModal(conversationId,currentStoreId){
+    document.querySelector('#vxTransferLojaModal')?.remove();
+    const bg=document.createElement('div');
+    bg.id='vxTransferLojaModal';
+    bg.className='vx-modal-bg';
+    const options=cache.stores.filter(s=>String(s.id)!==String(currentStoreId||''));
+    bg.innerHTML=`<div class="vx-modal">
+      <h3>Transferir loja da conversa</h3>
+      <p class="vx-chatbeta-sub">A conexão WhatsApp não muda — ela atende todas as lojas da empresa. Só a loja associada a esta conversa muda.</p>
+      ${options.length?options.map(s=>`<button type="button" class="vx-cc-transfer-opt" data-store="${E(s.id)}">${E(s.name)}</button>`).join(''):'<p class="vx-chatbeta-sub">Nenhuma outra loja cadastrada.</p>'}
+      <div class="vx-modal-actions"><button type="button" data-cancel>Fechar</button></div>
+    </div>`;
+    document.body.appendChild(bg);
+    const close=()=>bg.remove();
+    bg.querySelector('[data-cancel]').onclick=close;
+    bg.addEventListener('click',e=>{if(e.target===bg)close()});
+    bg.querySelectorAll('[data-store]').forEach(btn=>btn.onclick=async()=>{
+      try{
+        await api(`chat_conversations?id=eq.${conversationId}`,{method:'PATCH',body:JSON.stringify({current_store_id:btn.dataset.store})});
+        toast?.('Loja da conversa atualizada.');
+        close();
+        await refreshConvSummary(conversationId);
+        renderContexto(hubState.list.find(c=>String(c.id)===String(conversationId)));
+      }catch(err){toast?.('Não foi possível transferir a loja: '+err.message,'err')}
+    });
   }
 
   /* ---------- Nova Conversa ----------
@@ -751,9 +802,19 @@
     const list=document.getElementById('vxMsgList');
     if(!list)return stopConversaPoll();
     const msgs=await loadMensagens(conversaAtualId);
+    const deletedBefore=(hubState.currentMessages||[]).filter(m=>m.deleted_at).length;
+    hubState.currentMessages=msgs;
     list.innerHTML=msgs.length?msgs.map(mensagemRow).join(''):'<p class="vx-chatbeta-sub">Nenhuma mensagem ainda.</p>';
     list.scrollTop=list.scrollHeight;
     await refreshConvSummary(conversaAtualId);
+    const deletedAfter=msgs.filter(m=>m.deleted_at).length;
+    // Só re-renderiza o Contexto se algo relevante pra ele mudou (nova
+    // mensagem apagada) -- nunca a cada poll de 3s, senão apaga o que o
+    // atendente estiver digitando na busca de "vincular cliente".
+    if(deletedAfter!==deletedBefore&&String(hubState.selectedId)===String(conversaAtualId)){
+      const conv=hubState.list.find(c=>String(c.id)===String(conversaAtualId));
+      if(conv)renderContexto(conv);
+    }
   }
 
   async function handleSendMensagem(e){
