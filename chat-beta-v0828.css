@@ -101,7 +101,7 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
   --cc-err-bg:#fdeaea;--cc-err-ink:#a3231f;
   --cc-info-bg:#e9eff6;--cc-info-ink:#2f6bab;
   --cc-neutral-bg:#eef1f4;--cc-neutral-ink:#5c6773;
-  --cc-bubble-out:#0e3f68;--cc-tick-read:#4a90b8;
+  --cc-bubble-out:#2f6bab;--cc-tick-read:#d6ecff;
   --cc-shadow:0 4px 14px rgba(20,45,75,.045);
 }
 .vx-cc-wrap *{box-sizing:border-box;font-family:'Inter','Segoe UI',Arial,sans-serif}
