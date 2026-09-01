@@ -104,7 +104,42 @@
   }
 
   /* ---------- navegação ---------- */
-  let cache={connections:[],stores:[],attendants:[]};
+  let cache={connections:[],stores:[],attendants:[],tags:[]};
+
+  /* ---------- Tags (Fase 2) ----------
+     Catálogo por empresa (chat_tags) + atribuição por conversa
+     (chat_conversation_tags) -- ver migration chat_tags. Uma conversa
+     guarda só os ids das tags atribuídas; rótulo/cor vêm sempre do
+     catálogo (cache.tags), nunca duplicados na conversa. */
+  const TAG_SWATCH_COLORS=['#8a5cc9','#1f8a5f','#c9483d','#b8860b','#2f6bab','#1f7a8c','#a34a9b','#5c6773'];
+  let selectedTagSwatch=TAG_SWATCH_COLORS[0];
+  let tagPopoverOpenFor=null;
+
+  async function loadTags(){
+    cache.tags=await api('chat_tags?select=*&order=label').catch(()=>[]);
+  }
+
+  function hexToRgba(hex,alpha){
+    const h=String(hex||'').replace('#','');
+    const r=parseInt(h.substring(0,2),16)||0,g=parseInt(h.substring(2,4),16)||0,b=parseInt(h.substring(4,6),16)||0;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function tagPill(t,removable){
+    return `<span class="vx-cc-tag-pill" style="background:${hexToRgba(t.color,.14)};color:${E(t.color)};border-color:${hexToRgba(t.color,.4)}">${E(t.label)}${removable?`<button type="button" class="vx-cc-tag-remove" data-tag-remove="${E(t.id)}" aria-label="Remover tag ${E(t.label)}">×</button>`:''}</span>`;
+  }
+
+  function convTagIds(c){
+    return (c.chat_conversation_tags||[]).map(x=>String(x.tag_id));
+  }
+
+  function convTagsHtml(c){
+    const ids=convTagIds(c);
+    const tags=ids.map(id=>cache.tags.find(t=>String(t.id)===id)).filter(Boolean);
+    if(!tags.length)return'';
+    const shown=tags.slice(0,2), rest=tags.length-shown.length;
+    return `<div class="vx-cc-conv-tags">${shown.map(t=>tagPill(t,false)).join('')}${rest>0?`<span class="vx-cc-tag-more">+${rest}</span>`:''}</div>`;
+  }
 
   /* ---------- Conexões ---------- */
   const STATUS_LABEL={
@@ -410,7 +445,7 @@
      QR/conexão/sessão, envio/recebimento, tratamento LID/remote_jid,
      mensagens reais, ausência automática. Nunca mostra remote_jid/
      sender_lid como se fosse telefone -- só customer_phone. */
-  const CONV_SELECT='id,customer_phone,customer_name,status,last_message_preview,last_message_at,unread_count,assigned_user_id,client_id,current_store_id,connection_id,service_order_id,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name),stores!chat_conversations_store_id_fkey(name)';
+  const CONV_SELECT='id,customer_phone,customer_name,status,last_message_preview,last_message_at,unread_count,assigned_user_id,client_id,current_store_id,connection_id,service_order_id,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name),stores!chat_conversations_store_id_fkey(name),chat_conversation_tags(tag_id)';
   let hubState={list:[],filter:'TODAS',search:'',storeFilter:'',connectionFilter:'',selectedId:null};
   let conversaAtualId=null;
   let conversaPollTimer=null;
@@ -433,7 +468,7 @@
     hubState.selectedId=null;
     app.innerHTML='<div class="vx-chatbeta"><div class="vx-chatbeta-loading">Carregando Central de Conversas…</div></div>';
     try{
-      await Promise.all([loadConversasHubData(),loadConexoesData(),loadAttendants()]);
+      await Promise.all([loadConversasHubData(),loadConexoesData(),loadAttendants(),loadTags()]);
       renderConversasHub();
       stopListPoll();
       listPollTimer=setInterval(async()=>{await loadConversasHubData();renderConvList()},8000);
@@ -505,6 +540,7 @@
         <div class="vx-cc-meta ${assignedName?'':'unassigned'}">${E(c.stores?.name||'—')} · ${E(assignedName||'Não atribuída')}</div>
         <div class="vx-cc-status-row"><span class="vx-cc-pill ${st.cls}">${E(st.text)}</span></div>
         ${wt?`<div class="vx-cc-waiting">${E(wt)}</div>`:''}
+        ${convTagsHtml(c)}
       </div>
     </li>`;
   }
@@ -632,6 +668,19 @@
     const deletedEvents=(hubState.currentMessages||[]).filter(m=>m.deleted_at).map(m=>({time:new Date(m.created_at).toLocaleString('pt-BR'),text:`Mensagem apagada no WhatsApp (${m.direction==='OUTBOUND'?'enviada':'recebida'})`}));
     const clientCard=clienteNome?`<div class="vx-cc-ctx-card"><h3>Cliente</h3><div class="vx-cc-ctx-client-name">${E(clienteNome)}</div><div class="vx-cc-ctx-client-line">📞 ${E(conv.customer_phone||'—')}</div></div>`
       :`<div class="vx-cc-ctx-card"><h3>Cliente</h3><p class="vx-cc-ctx-unmatched-label">Contato não vinculado</p><input id="vxCtxClientSearch" class="vx-cc-ctx-search" placeholder="Buscar cliente por nome ou telefone…"><div id="vxCtxClientResults" class="vx-cc-ctx-client-results"></div></div>`;
+    const assignedTagIds=convTagIds(conv);
+    const tagsCard=`<div class="vx-cc-ctx-card"><h3>Tags</h3><div class="vx-cc-ctx-tags">
+      ${assignedTagIds.map(id=>cache.tags.find(t=>String(t.id)===id)).filter(Boolean).map(t=>tagPill(t,true)).join('')}
+      <button type="button" class="vx-cc-tag-add-btn" id="vxCtxTagAddBtn">+ tag</button>
+      <div class="vx-cc-tag-popover" id="vxCtxTagPopover" ${String(tagPopoverOpenFor)===String(conv.id)?'':'hidden'}>
+        <div class="vx-cc-tag-popover-list" id="vxCtxTagPopoverList"></div>
+        <div class="vx-cc-tag-new-row">
+          <input type="text" id="vxCtxTagNewLabel" placeholder="Nova tag…" maxlength="24" autocomplete="off">
+          <div class="vx-cc-tag-swatches" id="vxCtxTagSwatches"></div>
+          <button type="button" id="vxCtxTagCreateBtn">Criar tag</button>
+        </div>
+      </div>
+      </div></div>`;
     const osCard=`<div class="vx-cc-ctx-card"><h3>Ordem de Serviço</h3>${conv.service_order_id?'<button type="button" class="vx-cc-ctx-link-btn" id="vxCtxOpenOs">Abrir OS →</button>':'<p class="vx-cc-ctx-empty-text">Nenhuma OS vinculada.</p>'}</div>`;
     const atendimentoCard=`<div class="vx-cc-ctx-card"><h3>Atendimento</h3>
       <div class="vx-cc-ctx-kv"><span>Status</span><span class="vx-cc-pill ${st.cls}">${E(st.text)}</span></div>
@@ -642,11 +691,93 @@
     const actionsCard=`<div class="vx-cc-ctx-card"><h3>Ações</h3><div class="vx-cc-ctx-actions">
       <button type="button" class="vx-cc-ctx-action-btn" id="vxCtxTransferStore">Transferir loja</button>
       </div></div>`;
-    ctx.innerHTML=clientCard+osCard+atendimentoCard+auditCard+actionsCard;
+    ctx.innerHTML=clientCard+tagsCard+osCard+atendimentoCard+auditCard+actionsCard;
     document.getElementById('vxCtxOpenOs')?.addEventListener('click',()=>window.render('os:'+conv.service_order_id));
     document.getElementById('vxCtxTransferStore')?.addEventListener('click',()=>openTransferLojaModal(conv.id,conv.current_store_id));
     const searchInput=document.getElementById('vxCtxClientSearch');
     if(searchInput)searchInput.oninput=()=>renderClientResults(conv.id,searchInput.value);
+    ctx.querySelectorAll('[data-tag-remove]').forEach(btn=>{
+      btn.onclick=()=>toggleConversationTag(conv.id,btn.dataset.tagRemove,false);
+    });
+    document.getElementById('vxCtxTagAddBtn')?.addEventListener('click',e=>{
+      e.stopPropagation();
+      tagPopoverOpenFor=(String(tagPopoverOpenFor)===String(conv.id))?null:conv.id;
+      renderContexto(conv);
+    });
+    renderTagPopoverContent(conv);
+  }
+
+  /* Conteúdo do popover de tags renderizado à parte (não pelo
+     ctx.innerHTML acima) pra poder repintar só a lista/swatches -- ao
+     trocar a cor selecionada, por exemplo -- sem fechar o popover nem
+     perder o texto já digitado no campo de nova tag. */
+  function renderTagPopoverContent(conv){
+    const list=document.getElementById('vxCtxTagPopoverList');
+    const swatchesEl=document.getElementById('vxCtxTagSwatches');
+    if(!list||!swatchesEl)return;
+    const assignedIds=convTagIds(conv);
+    list.innerHTML=cache.tags.length?cache.tags.map(t=>`
+      <div class="vx-cc-tag-popover-item">
+        <label><input type="checkbox" data-tag-toggle="${E(t.id)}" ${assignedIds.includes(String(t.id))?'checked':''}><span class="vx-cc-tag-dot" style="background:${E(t.color)}"></span>${E(t.label)}</label>
+        <button type="button" class="vx-cc-tag-delete-btn" data-tag-delete="${E(t.id)}" title="Excluir tag" aria-label="Excluir tag ${E(t.label)}">🗑</button>
+      </div>`).join(''):'<div class="vx-cc-tag-empty">Nenhuma tag criada ainda.</div>';
+    list.querySelectorAll('[data-tag-toggle]').forEach(cb=>{
+      cb.onchange=()=>toggleConversationTag(conv.id,cb.dataset.tagToggle,cb.checked);
+    });
+    list.querySelectorAll('[data-tag-delete]').forEach(btn=>{
+      btn.onclick=()=>deleteTagFromCatalog(btn.dataset.tagDelete);
+    });
+    swatchesEl.innerHTML=TAG_SWATCH_COLORS.map(color=>`<button type="button" class="vx-cc-tag-swatch ${color===selectedTagSwatch?'selected':''}" style="background:${color}" data-swatch="${color}" aria-label="Cor ${color}"></button>`).join('');
+    swatchesEl.querySelectorAll('[data-swatch]').forEach(btn=>{
+      btn.onclick=()=>{selectedTagSwatch=btn.dataset.swatch;renderTagPopoverContent(conv)};
+    });
+    const createBtn=document.getElementById('vxCtxTagCreateBtn');
+    if(createBtn)createBtn.onclick=()=>{
+      const input=document.getElementById('vxCtxTagNewLabel');
+      createTagAndAssign(conv.id,input.value,selectedTagSwatch);
+      selectedTagSwatch=TAG_SWATCH_COLORS[0];
+    };
+  }
+
+  async function toggleConversationTag(conversationId,tagId,checked){
+    try{
+      if(checked){
+        await api('chat_conversation_tags',{method:'POST',body:JSON.stringify({conversation_id:conversationId,tag_id:tagId,company_id:state.profile.active_company_id,created_by:myUserId()})});
+      }else{
+        await api(`chat_conversation_tags?conversation_id=eq.${conversationId}&tag_id=eq.${tagId}`,{method:'DELETE'});
+      }
+      await refreshConvSummary(conversationId);
+      if(String(hubState.selectedId)===String(conversationId))renderContexto(hubState.list.find(c=>String(c.id)===String(conversationId)));
+    }catch(err){toast?.('Não foi possível atualizar a tag: '+err.message,'err')}
+  }
+
+  async function createTagAndAssign(conversationId,label,color){
+    const trimmed=String(label||'').trim();
+    if(!trimmed)return;
+    try{
+      const created=await api('chat_tags',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({company_id:state.profile.active_company_id,label:trimmed,color,created_by:myUserId()})});
+      const tag=created?.[0];
+      if(!tag)throw new Error('Falha ao criar a tag.');
+      cache.tags.push(tag);
+      await toggleConversationTag(conversationId,tag.id,true);
+      toast?.(`Tag "${trimmed}" criada.`);
+    }catch(err){toast?.('Não foi possível criar a tag: '+err.message,'err')}
+  }
+
+  async function deleteTagFromCatalog(tagId){
+    const tag=cache.tags.find(t=>String(t.id)===String(tagId));
+    if(!confirm(`Excluir a tag "${tag?.label||''}"? Ela sai de todas as conversas que a usam.`))return;
+    try{
+      await api(`chat_tags?id=eq.${tagId}`,{method:'DELETE'});
+      cache.tags=cache.tags.filter(t=>String(t.id)!==String(tagId));
+      await loadConversasHubData();
+      renderConvList();
+      if(hubState.selectedId){
+        const conv=hubState.list.find(c=>String(c.id)===String(hubState.selectedId));
+        if(conv)renderContexto(conv);
+      }
+      toast?.(`Tag "${tag?.label||''}" excluída.`);
+    }catch(err){toast?.('Não foi possível excluir a tag: '+err.message,'err')}
   }
 
   function renderClientResults(conversationId,term){
