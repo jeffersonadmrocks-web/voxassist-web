@@ -34,8 +34,6 @@
     bg.querySelectorAll('[data-os]').forEach(tr=>tr.onclick=()=>{const id=tr.dataset.os;bg.remove();if(typeof window.render==='function')window.render('os:'+id);else if(typeof render==='function')render('os:'+id);});
   }
 
-  function card(title,value,sub='',tone='',key=''){return `<button type="button" class="vx-c-kpi ${tone}" data-drill="${key}"><span>${E(title)}</span><b>${E(value)}</b><small>${E(sub)}</small></button>`}
-  function item(title,sub,badge=''){return `<div class="vx-c-row"><div><strong>${E(title)}</strong><small>${E(sub)}</small></div>${badge?`<span>${E(badge)}</span>`:''}</div>`}
   function orderValue(o,finMap){const direct=Number(o.total_amount||o.budget_total||o.valor_total||o.total||o.amount||0);if(direct)return direct;return budget(finMap.get(String(o.id)))}
   function prodSubBlock(kind,title,stores,techs,groups){
     return `<div class="vx-c-prod-sub" data-kind="${kind}"><div class="vx-c-prod-sub-head"><strong>${E(title)}</strong><div class="vx-c-prod-period"><button type="button" data-period="mes" class="active">MÊS</button><button type="button" data-period="semana">SEMANA</button><button type="button" data-period="dia">DIA</button></div></div><div class="vx-c-prod-metrics"><div><span>APARELHOS</span><b data-count>0</b></div><div><span>VALOR</span><b data-value>R$ 0,00</b></div></div><div class="vx-c-prod-filters"><label>LOJA<select data-filter="store"><option value="">TODAS</option>${stores.map(s=>`<option value="${E(s.id)}">${E(s.name)}</option>`).join('')}</select></label><label>GRUPO<select data-filter="group"><option value="">TODOS</option>${groups.map(g=>`<option value="${E(g)}">${E(g)}</option>`).join('')}</select></label><label>TÉCNICO<select data-filter="tech"><option value="">TODOS</option>${techs.map(t=>`<option value="${E(t.id)}">${E(t.full_name)}</option>`).join('')}</select></label></div></div>`;
@@ -100,24 +98,72 @@
     const receivedMonth=validPayments.filter(p=>new Date(p.paid_at)>=month0).reduce((s,p)=>s+Number(p.amount||0),0);
     const readyValue=ready.reduce((s,o)=>s+budget(finMap.get(String(o.id))),0);
     const failures=results.filter(r=>!r.ok).map(r=>r.label);
-    const drills={active,analysis,approval,repair,ready,overdue:[...overdueAnalysis,...overdueApproval,...overdueRepair],noTech,urgent};
     const stores=safe(by['Lojas'].data);
     const techs=safe(by['Técnicos'].data).filter(t=>norm(t.role)==='TECNICO');
     const prodOrders=orders.map(o=>({...o,__group:inferGroup(o.equipments?.product_type)}));
     const groups=[...new Set(prodOrders.map(o=>o.__group).filter(Boolean))].sort();
 
+    // Derivados 100% a partir dos mesmos arrays já calculados acima --
+    // nenhuma consulta nova, nenhum número fictício.
+    const demais=active.filter(o=>!analysis.includes(o)&&!approval.includes(o)&&!repair.includes(o));
+    const overdueTotal=overdueAnalysis.length+overdueApproval.length+overdueRepair.length;
+    const gargaloOpcoes=[['Análise',overdueAnalysis],['Aprovação',overdueApproval],['Conserto',overdueRepair]];
+    const gargalo=gargaloOpcoes.reduce((max,cur)=>cur[1].length>max[1].length?cur:max,gargaloOpcoes[0]);
+    const riscoCombinado=urgent.filter(o=>overdueAnalysis.includes(o)||overdueApproval.includes(o)||overdueRepair.includes(o));
+    const drills={active,analysis,approval,repair,ready,demais,overdue:[...overdueAnalysis,...overdueApproval,...overdueRepair],noTech,urgent,riscoCombinado,gargalo:gargalo[1]};
+
+    function situationCard(title,rows,overdueRows,key){
+      const tone=overdueRows&&overdueRows.length?'warn':'';
+      return `<button type="button" class="vx-c-sit-card ${tone}" data-drill="${key}" data-title="${E(title)}"><span class="vx-c-sit-label">${E(title)}</span><b class="vx-c-sit-value">${rows.length}</b>${overdueRows?`<small class="vx-c-sit-sub">${overdueRows.length?overdueRows.length+' acima do prazo':'dentro do prazo'}</small>`:'<small class="vx-c-sit-sub">prontos e demais situações</small>'}</button>`;
+    }
+    function todayTile(icon,label,n){return `<div class="vx-c-today-tile"><span class="vx-c-today-icon">${icon}</span><b>${n}</b><small>${E(label)}</small></div>`}
+    function exceptionCard(kind,icon,title,value,sub,key){return `<button type="button" class="vx-c-exc-card vx-c-exc-${kind}" data-drill="${key}" data-title="${E(title)}"><span class="vx-c-exc-icon">${icon}</span><div><b>${E(value)}</b><strong>${E(title)}</strong><small>${E(sub)}</small></div></button>`}
+
     app.innerHTML=`<div class="vx-canonical">
       ${failures.length?`<div class="vx-c-warning"><strong>Dados parciais:</strong> ${E(failures.join(', '))} não responderam. O Dashboard continuou com as demais fontes.</div>`:''}
-      <div class="vx-c-head"><div><h2>${role()==='GESTOR'?'Visão Geral da Operação':role()==='TECNICO'?'Minha Central Técnica':'Minha Central de Atendimento'}</h2><p>Indicadores rastreáveis, sem valores demonstrativos.</p></div><span>${new Date().toLocaleDateString('pt-BR')}</span></div>
-      <div class="vx-c-kpis">${card('OS Ativas',active.length,'em andamento','', 'active')}${card('Aguardando Análise',analysis.length,overdueAnalysis.length+' acima de 3 dias',overdueAnalysis.length?'warn':'','analysis')}${card('Aguardando Aprovação',approval.length,overdueApproval.length+' acima de 2 dias',overdueApproval.length?'warn':'','approval')}${card('Em Conserto',repair.length,overdueRepair.length+' acima de 7 dias',overdueRepair.length?'warn':'','repair')}${card('Prontos para Entrega',ready.length,M(readyValue),'ok','ready')}</div>
-      <div class="vx-c-grid"><section><div class="vx-c-title"><h3>Radar de Gestão</h3><small>falhas e oportunidades acionáveis</small></div>${item('OS acima do prazo',`${overdueAnalysis.length} análise • ${overdueApproval.length} aprovação • ${overdueRepair.length} conserto`,String(overdueAnalysis.length+overdueApproval.length+overdueRepair.length))}${item('OS sem técnico definido','Risco de fila sem responsável',String(noTech.length))}${item('OS urgentes','Prioridades declaradas na operação',String(urgent.length))}${item('Aparelhos prontos','Oportunidade de contato para retirada',String(ready.length))}<div class="vx-c-actions"><button data-drill="overdue">Ver atrasos</button><button data-drill="noTech">Ver sem técnico</button><button data-drill="urgent">Ver urgentes</button></div></section>
-      <section><div class="vx-c-title"><h3>Hoje</h3><small>trabalho e compromissos</small></div>${item('Agenda',apps.length+' compromisso'+(apps.length===1?'':'s'))}${item('Tarefas pendentes',tasks.length+' atividade'+(tasks.length===1?'':'s'))}${item('Casos de atenção',cases.length+' caso'+(cases.length===1?'':'s'))}${item('Pedidos de peças',parts.length+' pendente'+(parts.length===1?'':'s'))}</section></div>
-      <div class="vx-c-grid"><section><div class="vx-c-title"><h3>Resumo Financeiro</h3><small>somente pagamentos registrados</small></div><div class="vx-c-fin"><div><span>Recebido hoje</span><b>${M(receivedToday)}</b></div><div><span>Recebido no mês</span><b>${M(receivedMonth)}</b></div><div><span>Valor em prontos</span><b>${M(readyValue)}</b></div></div></section>
-      <section><div class="vx-c-title"><h3>Metas e Bonificação</h3><small>sem valores fictícios</small></div><div class="vx-c-empty">Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</div></section></div>
-      ${role()==='GESTOR'?`<div class="vx-c-grid vx-c-grid-1"><section><div class="vx-c-title"><h3>Produtividade</h3><small>prontos × entregues, por loja/grupo/técnico</small></div><div class="vx-c-prod-grid">${prodSubBlock('ready','APARELHOS PRONTOS',stores,techs,groups)}${prodSubBlock('delivered','APARELHOS ENTREGUES',stores,techs,groups)}</div></section></div>`:''}
+      <div class="vx-c-hero"><div><span class="vx-c-hero-eyebrow">VOXASSIST · CENTRAL OPERACIONAL</span><h2>${role()==='GESTOR'?'Visão Geral da Operação':role()==='TECNICO'?'Minha Central Técnica':'Minha Central de Atendimento'}</h2><p>Indicadores rastreáveis, sem valores demonstrativos.</p></div><span class="vx-c-hero-date">${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}</span></div>
+
+      <div class="vx-c-situations">
+        ${situationCard('Aguardando Análise',analysis,overdueAnalysis,'analysis')}
+        ${situationCard('Aguardando Aprovação',approval,overdueApproval,'approval')}
+        ${situationCard('Em Conserto',repair,overdueRepair,'repair')}
+        ${situationCard('Demais Situações',demais,null,'demais')}
+      </div>
+
+      <section class="vx-c-today">
+        <div class="vx-c-title"><h3>Central do Dia</h3><small>${active.length} OS ativas no total · o que precisa da sua atenção agora</small></div>
+        <div class="vx-c-today-grid">
+          ${todayTile('★','Oportunidades do Dia',ready.length)}
+          ${todayTile('!','Casos de Atenção',cases.length)}
+          ${todayTile('☑','Tarefas / Atividades',tasks.length)}
+          ${todayTile('▣','Pedidos de Peças',parts.length)}
+          ${todayTile('◷','Agenda / Compromissos',apps.length)}
+        </div>
+      </section>
+
+      <section class="vx-c-exceptions">
+        <div class="vx-c-title"><h3>Gestão por Exceção</h3><small>painel executivo · atrasos, riscos e oportunidades</small></div>
+        <div class="vx-c-exc-grid">
+          ${exceptionCard('risk','⚠','Atrasos',overdueTotal,`${overdueAnalysis.length} análise • ${overdueApproval.length} aprovação • ${overdueRepair.length} conserto`,'overdue')}
+          ${exceptionCard('risk','◎','OS sem responsável',noTech.length,'Risco de fila sem técnico definido','noTech')}
+          ${exceptionCard('warn','▲','Urgências',urgent.length,'Prioridades declaradas na operação','urgent')}
+          ${exceptionCard('warn','⏳','Gargalo predominante',gargalo[1].length,`Etapa mais travada: ${gargalo[0]}`,'gargalo')}
+          ${exceptionCard('risk risk-strong','☠','Risco combinado',riscoCombinado.length,'Urgente e acima do prazo ao mesmo tempo','riscoCombinado')}
+          ${exceptionCard('opportunity','✓','Oportunidade',ready.length,'Aparelhos prontos para contato de retirada','ready')}
+        </div>
+      </section>
+
+      <div class="vx-c-grid-2">
+        <section class="vx-c-fin-card"><div class="vx-c-title"><h3>Resumo Financeiro</h3><small>somente pagamentos registrados</small></div>
+          <div class="vx-c-fin-strip"><div class="vx-c-fin-chip"><span>Recebido hoje</span><b>${M(receivedToday)}</b></div><div class="vx-c-fin-chip"><span>Recebido no mês</span><b>${M(receivedMonth)}</b></div><div class="vx-c-fin-chip"><span>Valor em prontos</span><b>${M(readyValue)}</b></div></div>
+        </section>
+        <section class="vx-c-goals-card"><div class="vx-c-title"><h3>Metas e Bonificação</h3><small>sem valores fictícios</small></div><div class="vx-c-goals-empty"><span class="vx-c-goals-icon">◷</span><p>Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</p></div></section>
+      </div>
+
+      ${role()==='GESTOR'?`<section class="vx-c-prod-card"><div class="vx-c-title"><h3>Produtividade</h3><small>prontos × entregues, por loja/grupo/técnico</small></div><div class="vx-c-prod-grid">${prodSubBlock('ready','APARELHOS PRONTOS',stores,techs,groups)}${prodSubBlock('delivered','APARELHOS ENTREGUES',stores,techs,groups)}</div></section>`:''}
       ${discovery()}
     </div>`;
-    app.querySelectorAll('[data-drill]').forEach(el=>el.onclick=()=>{const k=el.dataset.drill;if(drills[k])modal(el.textContent.trim()||'Detalhamento',drills[k]);});
+    app.querySelectorAll('[data-drill]').forEach(el=>el.onclick=()=>{const k=el.dataset.drill;if(drills[k])modal(el.dataset.title||el.textContent.trim()||'Detalhamento',drills[k]);});
     app.querySelectorAll('.vx-c-prod-sub').forEach(sec=>{
       prodRecalc(sec,prodOrders,finMap);
       sec.querySelectorAll('select').forEach(s=>s.onchange=()=>prodRecalc(sec,prodOrders,finMap));

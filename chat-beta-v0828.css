@@ -86,13 +86,13 @@
 button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
 
 /* ---------- Central de Conversas (3 colunas) ---------- */
-.vx-chathub{display:flex;flex-direction:column;gap:12px;padding:16px;height:calc(100vh - 128px);min-height:520px;box-sizing:border-box}
+.vx-chathub{display:flex;flex-direction:column;gap:12px;padding:16px;height:calc(100vh - 128px);min-height:520px;box-sizing:border-box;max-width:1680px;margin:0 auto;width:100%}
 .vx-chathub-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .vx-chathub-head button{background:none;border:none;color:#082844;cursor:pointer;font-size:13px;font-weight:600;opacity:.85}
 .vx-chathub-brand{display:flex;align-items:baseline;gap:8px;font-weight:800;color:#082844;letter-spacing:.02em}
 .vx-chathub-brand span{color:#1e63a8}
 .vx-chathub-brand small{font-weight:600;color:#5b6b7a;letter-spacing:0;margin-left:4px}
-.vx-chathub-body{flex:1;min-height:0;display:grid;grid-template-columns:300px 1fr 280px;gap:12px}
+.vx-chathub-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(270px,1fr) minmax(420px,2fr) minmax(270px,1fr);gap:12px}
 .vx-chathub-col{background:#fff;border:1px solid rgba(8,40,68,.1);border-radius:12px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .vx-chathub-list{padding:12px;gap:10px}
 .vx-chathub-list-tools{display:flex;gap:8px}
