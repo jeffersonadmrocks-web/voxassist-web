@@ -1,0 +1,73 @@
+/* Robô de Atendimento (Fase 6) -- reaproveita as variáveis --cc-* já
+   definidas em chat-beta-v0828.css (mesma identidade visual da
+   Central de Conversas, nenhuma paleta nova). */
+/* Achado real: .vx-bf-card label input[type=text]{display:block}
+   abaixo tem especificidade maior que a regra nativa [hidden]{display:
+   none} do user-agent -- sem isto, o atributo hidden do "Valor
+   esperado" (condição de step) parava de esconder o campo. */
+[hidden]{display:none!important}
+.vx-bf-wrap{max-width:920px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-direction:column;gap:16px}
+.vx-bf-head{display:flex;align-items:center;gap:14px}
+.vx-bf-back{border:1px solid var(--cc-border);background:var(--cc-surface);color:var(--cc-ink-dim);font-weight:700;font-size:12.5px;padding:8px 12px;border-radius:8px;cursor:pointer}
+.vx-bf-back:hover{background:var(--cc-accent-soft);color:var(--cc-accent)}
+.vx-bf-head-title h1{margin:0;font-size:19px;color:var(--cc-navy)}
+.vx-bf-head-title p{margin:2px 0 0;font-size:12.5px;color:var(--cc-ink-faint)}
+
+.vx-bf-card{background:var(--cc-surface);border:1px solid var(--cc-border);border-radius:12px;padding:16px 18px;box-shadow:var(--cc-shadow)}
+.vx-bf-card h3{margin:0 0 4px;font-size:15px;color:var(--cc-navy)}
+.vx-bf-sub{margin:0 0 12px;font-size:12px;color:var(--cc-ink-faint);line-height:1.5}
+.vx-bf-empty{color:var(--cc-ink-faint);font-size:12px;font-style:italic;text-align:center;padding:10px 0}
+
+.vx-bf-textarea{width:100%;min-height:70px;border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink);border-radius:8px;padding:9px 11px;font-size:13px;font-family:inherit;resize:vertical}
+.vx-bf-textarea:disabled{opacity:.7}
+.vx-bf-save-btn,.vx-bf-add-btn{margin-top:10px;border:0;background:var(--cc-accent);color:#fff;font-weight:700;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer}
+.vx-bf-save-btn:hover,.vx-bf-add-btn:hover{background:var(--cc-accent-hover)}
+
+.vx-bf-card label{display:block;font-size:11.5px;font-weight:700;color:var(--cc-ink-dim);margin-bottom:10px}
+.vx-bf-card label input[type=text],.vx-bf-card label input[type=number],.vx-bf-card label select{display:block;width:100%;margin-top:4px;border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink);border-radius:7px;padding:7px 9px;font-size:12.5px;font-family:inherit;font-weight:400}
+.vx-bf-toggle{display:flex;align-items:center;gap:8px;font-weight:600}
+.vx-bf-toggle input{margin:0}
+
+.vx-bf-step-row{border:1px solid var(--cc-border);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--cc-surface-2)}
+.vx-bf-step-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.vx-bf-step-order{font-size:11px;font-weight:800;color:var(--cc-ink-faint);flex:none}
+.vx-bf-step-question{flex:1;border:1px solid var(--cc-border);background:var(--cc-surface);color:var(--cc-ink);border-radius:6px;padding:6px 8px;font-size:12.5px;font-weight:600}
+.vx-bf-step-actions{display:flex;align-items:center;gap:4px;flex:none}
+.vx-bf-step-actions button{border:1px solid var(--cc-border);background:var(--cc-surface);color:var(--cc-ink-dim);width:26px;height:26px;border-radius:6px;cursor:pointer;font-size:12px}
+.vx-bf-step-actions button:disabled{opacity:.35;cursor:default}
+.vx-bf-step-active{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--cc-ink-dim);white-space:nowrap;margin:0}
+.vx-bf-step-remove{color:var(--cc-err-ink)!important}
+.vx-bf-step-fields{display:flex;gap:10px;margin-bottom:6px}
+.vx-bf-step-fields label{flex:1;margin-bottom:0}
+.vx-bf-step-options{margin-top:8px;padding-top:8px;border-top:1px dashed var(--cc-border)}
+.vx-bf-step-options-label{font-size:11px;font-weight:700;color:var(--cc-ink-dim);margin-bottom:6px}
+.vx-bf-step-options-label small{font-weight:400;color:var(--cc-ink-faint)}
+.vx-bf-options-list{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.vx-bf-option-row{display:flex;gap:6px;align-items:center}
+.vx-bf-option-row input{flex:1;border:1px solid var(--cc-border);background:var(--cc-surface);border-radius:6px;padding:5px 7px;font-size:12px}
+.vx-bf-option-row button{border:0;background:none;color:var(--cc-err-ink);cursor:pointer;font-size:12px}
+.vx-bf-step-options>button{border:1px solid var(--cc-border);background:var(--cc-surface);color:var(--cc-accent);font-size:11px;font-weight:700;padding:5px 9px;border-radius:6px;cursor:pointer;margin-right:6px}
+.vx-bf-step-condition{display:flex;gap:10px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--cc-border)}
+.vx-bf-step-condition label{flex:1;margin-bottom:0}
+.vx-bf-step-condition select,.vx-bf-step-condition input{margin-top:4px}
+
+.vx-bf-version-status{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--cc-border);margin-bottom:10px;font-size:12.5px;font-weight:600;color:var(--cc-ink-dim)}
+.vx-bf-version-status button{border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink-dim);font-weight:700;font-size:12px;padding:8px 14px;border-radius:8px;cursor:pointer}
+.vx-bf-version-status button.primary{border:0;background:var(--cc-accent);color:#fff}
+.vx-bf-version-status button.primary:hover{background:var(--cc-accent-hover)}
+.vx-bf-version-history-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--cc-ink-faint);margin:10px 0 6px}
+
+.vx-bf-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.vx-bf-table th{text-align:left;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--cc-ink-faint);padding:6px 8px;border-bottom:1px solid var(--cc-border)}
+.vx-bf-table td{padding:7px 8px;border-bottom:1px solid var(--cc-border);color:var(--cc-ink)}
+.vx-bf-table button{border:1px solid var(--cc-border);background:var(--cc-surface);color:var(--cc-ink-dim);font-size:11px;font-weight:700;padding:4px 9px;border-radius:6px;cursor:pointer}
+.vx-bf-specificity-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--cc-accent-soft);color:var(--cc-accent);font-size:11px;font-weight:800}
+
+.vx-bf-rule-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--cc-border)}
+.vx-bf-rule-form select,.vx-bf-rule-form input{border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink);border-radius:7px;padding:7px 9px;font-size:12px;font-family:inherit}
+.vx-bf-rule-form button{border:0;background:var(--cc-accent);color:#fff;font-weight:700;font-size:12px;padding:7px 14px;border-radius:7px;cursor:pointer}
+
+.vx-bf-tester{margin-top:14px;padding-top:12px;border-top:1px solid var(--cc-border);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.vx-bf-tester select,.vx-bf-tester input{border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink);border-radius:7px;padding:7px 9px;font-size:12px;font-family:inherit}
+.vx-bf-tester button{border:1px solid var(--cc-accent);background:var(--cc-accent-soft);color:var(--cc-accent);font-weight:700;font-size:12px;padding:7px 12px;border-radius:7px;cursor:pointer}
+.vx-bf-tester-result{width:100%;font-size:12.5px;font-weight:600;color:var(--cc-ink-dim);padding-top:4px}

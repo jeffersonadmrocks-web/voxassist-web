@@ -708,6 +708,7 @@
         <button id="chatHubBack" class="vx-cc-back">← Voltar</button>
         <div class="vx-cc-title-block"><h1>Central de Conversas</h1><p>Chat VoxAssist · desktop, 3 colunas</p></div>
         ${businessHoursBadge()}
+        ${isGestor()?'<button id="chatHubBotConfig" class="vx-cc-settings-btn" type="button" title="Configurar o Robô de Atendimento inicial">🤖 Robô de Atendimento</button>':''}
         <button id="chatHubSettings" class="vx-cc-settings-btn" type="button" title="Configurações → Conexões (adicionar, remover, reconectar números)">⚙ Configurações</button>
       </div>
       <div class="vx-cc-board">
@@ -736,6 +737,7 @@
     </div>`;
     document.getElementById('chatHubBack').onclick=()=>{stopConversaPoll();stopListPoll();goBack()};
     document.getElementById('chatHubSettings').onclick=()=>{stopConversaPoll();stopListPoll();openConexoesScreen()};
+    document.getElementById('chatHubBotConfig')?.addEventListener('click',()=>{stopConversaPoll();stopListPoll();if(typeof window.render==='function')window.render('chat-bot-config')});
     document.getElementById('chatNewConv').onclick=openNovaConversaModal;
     document.getElementById('chatSearch').oninput=e=>{hubState.search=e.target.value;renderConvList()};
     document.getElementById('chatStoreFilter').onchange=e=>{hubState.storeFilter=e.target.value;renderConvList()};
