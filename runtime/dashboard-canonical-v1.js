@@ -147,9 +147,35 @@
     const partsRecebidasHoje=partsAll.filter(p=>norm(p.status).includes('RECEBID')&&p.updated_at&&isoDate(new Date(p.updated_at))===isoDate(today));
     const finMap=new Map(safe(by['Financeiro'].data).map(f=>[String(f.service_order_id),f]));
     const validPayments=safe(by['Pagamentos'].data).filter(p=>p.paid_at&&!['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA'].includes(norm(p.status)));
-    const receivedToday=validPayments.filter(p=>new Date(p.paid_at)>=today).reduce((s,p)=>s+Number(p.amount||0),0);
     const receivedMonth=validPayments.filter(p=>new Date(p.paid_at)>=month0).reduce((s,p)=>s+Number(p.amount||0),0);
-    const readyValue=ready.reduce((s,o)=>s+budget(finMap.get(String(o.id))),0);
+
+    // Resumo Financeiro -- 6 métricas com definição explícita dada pelo
+    // usuário em 2026-09-01 (a imagem de referência é só o layout; as
+    // definições de cada card vieram por texto, não da imagem):
+    // 1. Faturamento realizado = quanto efetivamente entrou no mês
+    //    (= receivedMonth, já real).
+    // 2. A receber = orçado em OS já aprovadas ou concluídas
+    //    (AGUARDANDO CONSERTO/EM CONSERTO/PRONTO PARA ENTREGA/
+    //    FINALIZADA), menos o que já foi pago dessa OS.
+    // 3. Média diária = faturamento realizado dividido pelos dias já
+    //    passados do mês corrente.
+    // 4. Ticket médio recebido = faturamento realizado dividido pelo
+    //    número de OS distintas que receberam pagamento no mês.
+    // 5. Oportunidade de faturamento = orçado em OS aprovadas ainda em
+    //    conserto (não prontas) -- é o "repair" já calculado acima.
+    // 6. Meta do mês = sem tabela real de meta financeira persistida
+    //    (mesma situação do card "Metas e Bonificação" ao lado) --
+    //    fica honestamente "Não configurado", nunca um número inventado.
+    const paidByOrder=new Map();
+    validPayments.forEach(p=>{const k=String(p.service_order_id);paidByOrder.set(k,(paidByOrder.get(k)||0)+Number(p.amount||0))});
+    const aReceber=orders.filter(o=>['AGUARDANDO CONSERTO','EM CONSERTO','PRONTO PARA ENTREGA','FINALIZADA'].includes(norm(o.status))).reduce((s,o)=>{
+      const bud=budget(finMap.get(String(o.id))), paid=paidByOrder.get(String(o.id))||0;
+      return s+Math.max(0,bud-paid);
+    },0);
+    const mediaDiaria=receivedMonth/Math.max(1,today.getDate());
+    const paidThisMonthOrderIds=new Set(validPayments.filter(p=>new Date(p.paid_at)>=month0).map(p=>String(p.service_order_id)));
+    const ticketMedioRecebido=paidThisMonthOrderIds.size?receivedMonth/paidThisMonthOrderIds.size:0;
+    const oportunidadeFaturamento=repair.reduce((s,o)=>s+budget(finMap.get(String(o.id))),0);
     const failures=results.filter(r=>!r.ok).map(r=>r.label);
     const techs=safe(by['Técnicos'].data).filter(t=>norm(t.role)==='TECNICO');
     const history=safe(by['Histórico de status'].data);
@@ -321,9 +347,12 @@
         <section class="vx-c-goals-card"><div class="vx-c-title"><h3>Metas e Bonificação</h3><a href="#" id="vxGoalsDetail">Ver detalhes</a></div><div class="vx-c-goals-empty"><span class="vx-c-goals-icon">◷</span><p>Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</p></div></section>
         <section class="vx-c-fin-card"><div class="vx-c-title"><h3>Resumo Financeiro</h3><small>somente pagamentos registrados</small></div>
           <div class="vx-c-fin-grid">
-            <div><span>Recebido hoje</span><b>${M(receivedToday)}</b></div>
-            <div><span>Recebido no mês</span><b>${M(receivedMonth)}</b></div>
-            <div><span>Valor em prontos</span><b>${M(readyValue)}</b></div>
+            <div><span>Faturamento realizado (Mês)</span><b>${M(receivedMonth)}</b></div>
+            <div><span>A receber</span><b>${M(aReceber)}</b></div>
+            <div><span>Média diária</span><b>${M(mediaDiaria)}</b></div>
+            <div><span>Ticket médio recebido</span><b>${M(ticketMedioRecebido)}</b></div>
+            <div><span>Oportunidade de faturamento</span><b>${M(oportunidadeFaturamento)}</b></div>
+            <div><span>Meta do mês</span><b class="vx-c-fin-empty">Não configurado</b></div>
           </div>
         </section>
       </div>
