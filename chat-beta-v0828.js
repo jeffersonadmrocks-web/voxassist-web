@@ -592,11 +592,12 @@
      QR/conexão/sessão, envio/recebimento, tratamento LID/remote_jid,
      mensagens reais, ausência automática. Nunca mostra remote_jid/
      sender_lid como se fosse telefone -- só customer_phone. */
-  const CONV_SELECT='id,customer_phone,customer_name,status,last_message_preview,last_message_at,unread_count,assigned_user_id,client_id,current_store_id,connection_id,service_order_id,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name),stores!chat_conversations_store_id_fkey(name),chat_conversation_tags(tag_id)';
-  let hubState={list:[],filter:'TODAS',search:'',storeFilter:'',connectionFilter:'',selectedId:null,currentTransferHistory:[]};
+  const CONV_SELECT='id,customer_phone,customer_name,status,last_message_preview,last_message_at,unread_count,assigned_user_id,client_id,current_store_id,connection_id,service_order_id,next_callback_at,next_callback_reason,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name),stores!chat_conversations_store_id_fkey(name),chat_conversation_tags(tag_id)';
+  let hubState={list:[],filter:'TODAS',search:'',storeFilter:'',connectionFilter:'',selectedId:null,currentTransferHistory:[],activeTab:'CENTRAL'};
   let conversaAtualId=null;
   let conversaPollTimer=null;
   let listPollTimer=null;
+  let threadSearchQuery='';
   function stopConversaPoll(){if(conversaPollTimer){clearInterval(conversaPollTimer);conversaPollTimer=null}}
   function stopListPoll(){if(listPollTimer){clearInterval(listPollTimer);listPollTimer=null}}
   function myUserId(){return state?.session?.user?.id||null}
@@ -613,6 +614,7 @@
     if(!app)return;
     stopConversaPoll();stopListPoll();
     hubState.selectedId=null;
+    hubState.activeTab='CENTRAL';
     app.innerHTML='<div class="vx-chatbeta"><div class="vx-chatbeta-loading">Carregando Central de Conversas…</div></div>';
     try{
       await Promise.all([loadConversasHubData(),loadConexoesData(),loadAttendants(),loadTags(),loadQuickReplies()]);
@@ -637,6 +639,18 @@
     if(!parts.length)return '?';
     return (parts[0][0]+(parts[1]?.[0]||'')).toUpperCase();
   }
+  // Achado do usuário em 2026-09-02 (mockup aprovado): faltavam os
+  // chips "Tempo excedido" e "Retornos de hoje". "Sem resposta" fica de
+  // fora por ser hoje idêntico a "Não lidas" (unread_count>0 só
+  // acontece quando o cliente escreveu e ninguém respondeu ainda --
+  // ver waitingText abaixo) -- duplicar o chip com nome diferente
+  // criaria dois filtros iguais, não reportado sem confirmação.
+  const CONV_FILTER_CHIPS=[['TODAS','Todas'],['MINHAS','Minhas'],['NAO_ATRIBUIDAS','Não atribuídas'],['NAO_LIDAS','Não lidas'],['TEMPO_EXCEDIDO','Tempo excedido'],['RETORNOS_HOJE','Retornos de hoje']];
+  // Limiar padrão de "tempo excedido" -- ainda não configurável por
+  // empresa (isso é a Fase 6/Monitor de atividades); até lá, mesmo
+  // valor fixo aqui e lá, pra nunca ter dois números diferentes pro
+  // mesmo conceito.
+  const SLA_WAIT_LIMIT_MIN=30;
   const CONV_STATUS_LABEL={
     ABERTA:{text:'Aberta',cls:'ok'},
     EM_ATENDIMENTO:{text:'Em atendimento',cls:'info'},
@@ -651,10 +665,19 @@
     if(hubState.filter==='MINHAS')rows=rows.filter(c=>String(c.assigned_user_id||'')===String(me));
     else if(hubState.filter==='NAO_ATRIBUIDAS')rows=rows.filter(c=>!c.assigned_user_id);
     else if(hubState.filter==='NAO_LIDAS')rows=rows.filter(c=>Number(c.unread_count||0)>0);
+    else if(hubState.filter==='TEMPO_EXCEDIDO')rows=rows.filter(c=>{
+      if(!(Number(c.unread_count||0)>0)||!c.last_message_at)return false;
+      return Math.floor((Date.now()-new Date(c.last_message_at).getTime())/60000)>=SLA_WAIT_LIMIT_MIN;
+    });
+    else if(hubState.filter==='RETORNOS_HOJE')rows=rows.filter(c=>{
+      if(!c.next_callback_at)return false;
+      const d=new Date(c.next_callback_at),now=new Date();
+      return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth()&&d.getDate()===now.getDate();
+    });
     if(hubState.storeFilter)rows=rows.filter(c=>String(c.current_store_id||'')===hubState.storeFilter);
     if(hubState.connectionFilter)rows=rows.filter(c=>String(c.connection_id||'')===hubState.connectionFilter);
     const q=hubState.search.trim().toLowerCase();
-    if(q)rows=rows.filter(c=>(c.customer_name||'').toLowerCase().includes(q)||(c.customer_phone||'').toLowerCase().includes(q));
+    if(q)rows=rows.filter(c=>(c.customer_name||'').toLowerCase().includes(q)||(c.customer_phone||'').toLowerCase().includes(q)||(c.clients?.name||'').toLowerCase().includes(q));
     return rows;
   }
 
@@ -692,6 +715,50 @@
     </li>`;
   }
 
+  // Achado do usuário em 2026-09-02 (mockup aprovado): a busca da lista
+  // era só um filtro simples da lista já visível -- sem dropdown
+  // agrupado nem detecção de telefone novo digitado. Regra de telefone
+  // válido replicada de normalizePhone em
+  // supabase/functions/_shared/messagingService.ts:12-18 -- mesmo
+  // critério do backend, não um regex novo inventado aqui.
+  function normalizePhoneLocal(raw){
+    const digits=String(raw||'').replace(/\D/g,'');
+    if(!digits)return null;
+    const withoutCountryCode=digits.startsWith('55')&&digits.length>11?digits.slice(2):digits;
+    if(!/^[1-9]{2}9?\d{8}$/.test(withoutCountryCode))return null;
+    return withoutCountryCode;
+  }
+  function isPhoneCandidate(raw){return !!normalizePhoneLocal(raw)}
+  let searchDropdownWired=false;
+  function ensureSearchDropdownOutsideClickHandler(){
+    if(searchDropdownWired)return;
+    searchDropdownWired=true;
+    document.addEventListener('click',e=>{
+      const box=document.getElementById('chatSearchResults');
+      if(box&&!box.hidden&&!e.target.closest('.vx-cc-search'))box.hidden=true;
+    });
+  }
+  function renderSearchDropdown(){
+    const box=document.getElementById('chatSearchResults');
+    if(!box)return;
+    const q=hubState.search.trim();
+    if(!q){box.hidden=true;box.innerHTML='';return}
+    const ql=q.toLowerCase();
+    const matches=hubState.list.filter(c=>(c.customer_name||'').toLowerCase().includes(ql)||(c.customer_phone||'').toLowerCase().includes(ql)||(c.clients?.name||'').toLowerCase().includes(ql)).slice(0,6);
+    const phone=normalizePhoneLocal(q);
+    let html='';
+    if(matches.length)html+=`<div class="vx-cc-sr-group">Conversas</div>`+matches.map(c=>{
+      const name=c.customer_name||c.clients?.name||'Contato WhatsApp';
+      return `<div class="vx-cc-sr-row" data-sr-conv="${E(c.id)}"><div class="vx-cc-sr-avatar">${E(initials(name))}</div><div><div class="vx-cc-sr-name">${E(name)}</div><div class="vx-cc-sr-sub">${E(c.customer_phone||'')}</div></div></div>`;
+    }).join('');
+    if(phone)html+=`<div class="vx-cc-sr-newphone" data-sr-newphone="${E(phone)}"><div class="vx-cc-sr-newphone-icon">+</div><div><div class="vx-cc-sr-newphone-title">Iniciar nova conversa</div><div class="vx-cc-sr-newphone-sub">${E(phone)}</div></div></div>`;
+    if(!html)html='<div class="vx-cc-sr-empty">Nenhuma conversa encontrada.</div>';
+    box.innerHTML=html;
+    box.hidden=false;
+    box.querySelectorAll('[data-sr-conv]').forEach(el=>el.onclick=()=>{box.hidden=true;selectConversa(el.dataset.srConv)});
+    box.querySelectorAll('[data-sr-newphone]').forEach(el=>el.onclick=()=>{box.hidden=true;openNovaConversaModal(el.dataset.srNewphone)});
+  }
+
   function renderConvList(){
     const list=document.getElementById('chatConvList');
     if(!list)return;
@@ -700,24 +767,66 @@
     list.querySelectorAll('[data-conv]').forEach(el=>el.onclick=()=>selectConversa(el.dataset.conv));
   }
 
+  /* ---------- abas Central de Conversas / Robô de Atendimento ----------
+     Achado do usuário em 2026-09-02 (comparação com o mockup aprovado,
+     artifact 42ebf5fb): o botão do robô navegava pra uma tela totalmente
+     separada, parecendo "outro sistema". chat-bot-config-v1.js continua
+     substituindo #app inteiro (nenhuma das duas telas renderiza dentro
+     de sub-container) -- não dá pra manter o quadro de 3 painéis
+     escondido atrás sem reescrever as duas telas. O que dá pra entregar
+     sem esse risco: a MESMA barra de abas, clicável nos dois estados,
+     injetada no topo do #app depois de cada render -- parece uma aba,
+     navega como aba, sem duplicar lógica de roteamento nenhuma. */
+  function chatTabBar(active){
+    if(!isGestor())return'';
+    return `<div class="vx-cc-tabbar">
+      <button type="button" class="vx-cc-tab ${active==='CENTRAL'?'active':''}" data-chat-tab="CENTRAL">Central de Conversas</button>
+      <button type="button" class="vx-cc-tab ${active==='ROBO'?'active':''}" data-chat-tab="ROBO">🤖 Robô de Atendimento</button>
+    </div>`;
+  }
+  function wireChatTabBar(){
+    document.querySelectorAll('[data-chat-tab]').forEach(b=>b.onclick=()=>{
+      if(b.dataset.chatTab==='CENTRAL')switchToCentralTab();
+      else if(b.dataset.chatTab==='ROBO')switchToRoboTab();
+    });
+  }
+  async function switchToRoboTab(){
+    if(hubState.activeTab==='ROBO')return;
+    stopConversaPoll();stopListPoll();
+    hubState.activeTab='ROBO';
+    const app=document.querySelector('#app');
+    if(app)app.innerHTML='<div class="vx-chatbeta"><div class="vx-chatbeta-loading">Carregando Robô de Atendimento…</div></div>';
+    if(typeof window.renderChatBotConfig==='function')await window.renderChatBotConfig();
+    document.querySelector('#app')?.insertAdjacentHTML('afterbegin',chatTabBar('ROBO'));
+    wireChatTabBar();
+  }
+  function switchToCentralTab(){
+    if(hubState.activeTab==='CENTRAL')return;
+    hubState.activeTab='CENTRAL';
+    renderConversasHub();
+    stopListPoll();
+    listPollTimer=setInterval(async()=>{await loadConversasHubData();renderConvList()},8000);
+  }
+
   function renderConversasHub(){
     const app=document.querySelector('#app');
     if(!app)return;
+    hubState.activeTab='CENTRAL';
     app.innerHTML=`<div class="vx-cc-wrap">
+      ${chatTabBar('CENTRAL')}
       <div class="vx-cc-top">
         <button id="chatHubBack" class="vx-cc-back">← Voltar</button>
         <div class="vx-cc-title-block"><h1>Central de Conversas</h1><p>Chat VoxAssist · desktop, 3 colunas</p></div>
         ${businessHoursBadge()}
-        ${isGestor()?'<button id="chatHubBotConfig" class="vx-cc-settings-btn" type="button" title="Configurar o Robô de Atendimento inicial">🤖 Robô de Atendimento</button>':''}
         <button id="chatHubSettings" class="vx-cc-settings-btn" type="button" title="Configurações → Conexões (adicionar, remover, reconectar números)">⚙ Configurações</button>
       </div>
       <div class="vx-cc-board">
         <section class="vx-cc-pane vx-cc-pane-list">
           <div class="vx-cc-pane-head">
             <div class="vx-cc-pane-head-row"><h2>Conversas</h2><button class="vx-cc-new-btn" id="chatNewConv" type="button">+ Nova</button></div>
-            <div class="vx-cc-search"><input id="chatSearch" placeholder="Buscar por nome ou telefone…" value="${E(hubState.search)}"></div>
+            <div class="vx-cc-search"><input id="chatSearch" placeholder="Buscar por nome ou telefone…" value="${E(hubState.search)}" autocomplete="off"><div class="vx-cc-search-results" id="chatSearchResults" hidden></div></div>
             <div class="vx-cc-filter-chips">
-              ${[['TODAS','Todas'],['MINHAS','Minhas'],['NAO_ATRIBUIDAS','Não atribuídas'],['NAO_LIDAS','Não lidas']].map(([k,l])=>`<button type="button" class="vx-cc-chip ${hubState.filter===k?'active':''}" data-filter="${k}">${l}</button>`).join('')}
+              ${CONV_FILTER_CHIPS.map(([k,l])=>`<button type="button" class="vx-cc-chip ${hubState.filter===k?'active':''}" data-filter="${k}">${l}</button>`).join('')}
             </div>
             <div class="vx-cc-filter-selects">
               <select id="chatStoreFilter"><option value="">Todas as lojas</option>${cache.stores.map(s=>`<option value="${E(s.id)}" ${hubState.storeFilter===String(s.id)?'selected':''}>${E(s.name)}</option>`).join('')}</select>
@@ -737,9 +846,11 @@
     </div>`;
     document.getElementById('chatHubBack').onclick=()=>{stopConversaPoll();stopListPoll();goBack()};
     document.getElementById('chatHubSettings').onclick=()=>{stopConversaPoll();stopListPoll();openConexoesScreen()};
-    document.getElementById('chatHubBotConfig')?.addEventListener('click',()=>{stopConversaPoll();stopListPoll();if(typeof window.render==='function')window.render('chat-bot-config')});
+    wireChatTabBar();
     document.getElementById('chatNewConv').onclick=openNovaConversaModal;
-    document.getElementById('chatSearch').oninput=e=>{hubState.search=e.target.value;renderConvList()};
+    document.getElementById('chatSearch').oninput=e=>{hubState.search=e.target.value;renderConvList();renderSearchDropdown()};
+    document.getElementById('chatSearch').addEventListener('focus',()=>{if(hubState.search.trim())renderSearchDropdown()});
+    ensureSearchDropdownOutsideClickHandler();
     document.getElementById('chatStoreFilter').onchange=e=>{hubState.storeFilter=e.target.value;renderConvList()};
     document.getElementById('chatConnFilter').onchange=e=>{hubState.connectionFilter=e.target.value;renderConvList()};
     document.querySelectorAll('.vx-cc-filter-chips [data-filter]').forEach(b=>b.onclick=()=>{
@@ -756,6 +867,7 @@
     internalNoteMode=false;
     quickReplyPopoverOpen=false;
     replyingTo=null;
+    threadSearchQuery='';
     hubState.selectedId=id;
     const conv=hubState.list.find(c=>String(c.id)===String(id));
     // Abrir a conversa marca como lida -- mesma correção real do
@@ -789,6 +901,23 @@
             </div>
           </div>
           ${isFinalizada?'<button type="button" class="vx-cc-th-btn" id="vxCtxReopen">Reabrir</button>':'<button type="button" class="vx-cc-th-btn vx-cc-th-btn-danger" id="vxCtxClose">Encerrar</button>'}
+        </div>
+      </div>
+      <div class="vx-cc-thread-toolbar">
+        <div class="vx-cc-tb-search-wrap">
+          <button type="button" class="vx-cc-tb-btn" id="vxThreadSearchBtn" title="Buscar nesta conversa">🔍 Buscar na conversa</button>
+          <div class="vx-cc-tb-search-box" id="vxThreadSearchBox" hidden><input type="text" id="vxThreadSearchInput" placeholder="Buscar nas mensagens desta conversa…"></div>
+        </div>
+        <div class="vx-cc-callback-wrap">
+          <button type="button" class="vx-cc-tb-btn ${conv?.next_callback_at?'active':''}" id="vxCallbackBtn" title="Agendar retorno para esta conversa">📅 ${conv?.next_callback_at?'Retorno: '+new Date(conv.next_callback_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'Agendar retorno'}</button>
+          <div class="vx-cc-callback-pop" id="vxCallbackPop" hidden>
+            <label>Data e hora<input type="datetime-local" id="vxCallbackWhen" value="${conv?.next_callback_at?E(new Date(new Date(conv.next_callback_at).getTime()-new Date(conv.next_callback_at).getTimezoneOffset()*60000).toISOString().slice(0,16)):''}"></label>
+            <label>Motivo<input type="text" id="vxCallbackReason" maxlength="200" value="${E(conv?.next_callback_reason||'')}" placeholder="Ex.: cliente pediu pra ligar depois das 14h"></label>
+            <div class="vx-cc-callback-pop-actions">
+              <button type="button" id="vxCallbackSave">Agendar</button>
+              ${conv?.next_callback_at?'<button type="button" id="vxCallbackClear">Cancelar retorno</button>':''}
+            </div>
+          </div>
         </div>
       </div>
       <div id="vxMsgList" class="vx-msg-list"><div class="vx-chatbeta-loading">Carregando mensagens…</div></div>
@@ -846,6 +975,20 @@
       p.querySelectorAll('[data-transfer-to]').forEach(b=>{b.onclick=()=>transferirConversa(conv.id,b.dataset.transferTo)});
     });
     document.querySelectorAll('[data-transfer-to]').forEach(b=>b.onclick=()=>transferirConversa(conv.id,b.dataset.transferTo));
+    document.getElementById('vxThreadSearchBtn').onclick=()=>{
+      const box=document.getElementById('vxThreadSearchBox');
+      box.hidden=!box.hidden;
+      if(!box.hidden)document.getElementById('vxThreadSearchInput').focus();
+    };
+    document.getElementById('vxThreadSearchInput').oninput=e=>{threadSearchQuery=e.target.value;applyThreadSearchFilter()};
+    document.getElementById('vxCallbackBtn').onclick=e=>{e.stopPropagation();const p=document.getElementById('vxCallbackPop');p.hidden=!p.hidden};
+    document.getElementById('vxCallbackSave').onclick=()=>{
+      const when=document.getElementById('vxCallbackWhen').value;
+      const reason=document.getElementById('vxCallbackReason').value.trim();
+      if(!when)return toast?.('Escolha a data e hora do retorno.','err');
+      scheduleCallback(conv.id,new Date(when).toISOString(),reason);
+    };
+    document.getElementById('vxCallbackClear')?.addEventListener('click',()=>clearCallback(conv.id));
     hubState.currentTransferHistory=await api(`chat_conversation_events?conversation_id=eq.${id}&action=eq.TRANSFER&select=*&order=created_at.desc`).catch(()=>[]);
     renderContexto(conv);
     conversaAtualId=id;
@@ -1124,6 +1267,50 @@
       if(String(hubState.selectedId)===String(conversationId))await selectConversa(conversationId,true);
     }catch(err){toast?.('Não foi possível transferir a conversa: '+err.message,'err')}
   }
+  // "📅 Agendar retorno" -- achado do usuário em 2026-09-02 (mockup
+  // aprovado, artifact 42ebf5fb): faltava na barra de ferramentas da
+  // conversa. Guarda só o PRÓXIMO retorno (chat_conversations.
+  // next_callback_at/next_callback_reason, migration
+  // 20260902010000) -- o histórico completo fica no evento
+  // SCHEDULE_CALLBACK/CLEAR_CALLBACK via logConversationEvent, mesmo
+  // padrão já usado por TRANSFER/ASSUMIR.
+  async function scheduleCallback(conversationId,whenIso,reason){
+    try{
+      const conv=hubState.list.find(c=>String(c.id)===String(conversationId));
+      const previous={next_callback_at:conv?.next_callback_at||null,next_callback_reason:conv?.next_callback_reason||null};
+      const next={next_callback_at:whenIso,next_callback_reason:reason||null};
+      await api(`chat_conversations?id=eq.${conversationId}`,{method:'PATCH',body:JSON.stringify(next)});
+      await logConversationEvent(conversationId,'SCHEDULE_CALLBACK',previous,next);
+      if(conv)Object.assign(conv,next);
+      toast?.('Retorno agendado.');
+      if(String(hubState.selectedId)===String(conversationId))await selectConversa(conversationId,true);
+      else renderConvList();
+    }catch(err){toast?.('Não foi possível agendar o retorno: '+err.message,'err')}
+  }
+  async function clearCallback(conversationId){
+    try{
+      const conv=hubState.list.find(c=>String(c.id)===String(conversationId));
+      const previous={next_callback_at:conv?.next_callback_at||null,next_callback_reason:conv?.next_callback_reason||null};
+      const next={next_callback_at:null,next_callback_reason:null};
+      await api(`chat_conversations?id=eq.${conversationId}`,{method:'PATCH',body:JSON.stringify(next)});
+      await logConversationEvent(conversationId,'CLEAR_CALLBACK',previous,next);
+      if(conv)Object.assign(conv,next);
+      toast?.('Retorno cancelado.');
+      if(String(hubState.selectedId)===String(conversationId))await selectConversa(conversationId,true);
+      else renderConvList();
+    }catch(err){toast?.('Não foi possível cancelar o retorno: '+err.message,'err')}
+  }
+  // "🔍 Buscar na conversa" -- 100% client-side sobre
+  // hubState.currentMessages, já carregado por refreshMensagens; nunca
+  // dispara uma chamada nova ao banco.
+  function applyThreadSearchFilter(){
+    const list=document.getElementById('vxMsgList');
+    if(!list)return;
+    const q=threadSearchQuery.trim().toLowerCase();
+    list.querySelectorAll('.vx-msg-row[data-msg-body]').forEach(row=>{
+      row.hidden=!!q&&!row.dataset.msgBody.includes(q);
+    });
+  }
   function openTransferLojaModal(conversationId,currentStoreId){
     document.querySelector('#vxTransferLojaModal')?.remove();
     const bg=document.createElement('div');
@@ -1156,7 +1343,12 @@
      (cliente vinculado é uma ação separada, no Contexto). Nunca duplica:
      se já existir conversa ativa com o mesmo número nessa conexão,
      reaproveita em vez de criar outra (regra já aprovada). */
-  async function openNovaConversaModal(){
+  async function openNovaConversaModal(prefillPhone){
+    // Chamado tanto como listener direto de clique (recebe o
+    // MouseEvent, ignorado aqui) quanto pelo dropdown de busca (recebe
+    // o telefone já normalizado como string) -- só usa o argumento
+    // quando é mesmo uma string.
+    const phoneValue=typeof prefillPhone==='string'?prefillPhone:'';
     document.querySelector('#vxNovaConvModal')?.remove();
     let connections=await api('chat_connections?select=id,name,status&order=created_at.desc').catch(()=>[]);
     connections=(connections||[]).filter(c=>c.status==='CONECTADO');
@@ -1168,7 +1360,7 @@
       <p class="vx-chatbeta-sub">Informe o número do WhatsApp — não precisa ser um cliente já cadastrado.</p>
       ${connections.length?`<form id="vxNovaConvForm" class="vx-conn-new-form vx-conn-new-form-col">
         ${connections.length>1?`<select name="connectionId">${connections.map(c=>`<option value="${E(c.id)}">${E(c.name)}</option>`).join('')}</select>`:`<input type="hidden" name="connectionId" value="${E(connections[0].id)}">`}
-        <input name="phone" placeholder="Número (com DDD, só dígitos)" required maxlength="20" inputmode="numeric">
+        <input name="phone" placeholder="Número (com DDD, só dígitos)" required maxlength="20" inputmode="numeric" value="${E(phoneValue)}">
         <input name="name" placeholder="Nome do contato (opcional)" maxlength="120">
         <div class="vx-modal-actions"><button type="button" data-cancel>Cancelar</button><button type="submit" class="primary">Iniciar conversa</button></div>
       </form>`:`<p class="vx-chatbeta-sub">Nenhuma conexão conectada no momento — conecte uma em Configurações → Conexões antes de iniciar uma nova conversa.</p><div class="vx-modal-actions"><button type="button" data-cancel>Fechar</button></div>`}
@@ -1242,7 +1434,7 @@
     const quoteBlock=m.reply_to?`<div class="vx-msg-quote"><b>${E(quoteSnippetAuthor(m.reply_to))}</b><span>${E(quoteSnippetText(m.reply_to))}</span></div>`:'';
     if(m.origin==='INTERNAL'){
       const autor=m.profiles?.full_name||'—';
-      return `<div class="vx-msg-row vx-msg-internal"><div class="vx-msg-bubble vx-msg-bubble-internal">${quoteBlock}<span class="vx-msg-internal-tag">📝 Nota interna — visível só pra equipe</span><span><b>${E(autor)}:</b> ${E(m.body||'')}</span><small>${E(hora)}</small></div><button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button></div>`;
+      return `<div class="vx-msg-row vx-msg-internal" data-msg-body="${E((m.body||'').toLowerCase())}"><div class="vx-msg-bubble vx-msg-bubble-internal">${quoteBlock}<span class="vx-msg-internal-tag">📝 Nota interna — visível só pra equipe</span><span><b>${E(autor)}:</b> ${E(m.body||'')}</span><small>${E(hora)}</small></div><button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button></div>`;
     }
     const lado=m.direction==='OUTBOUND'?'vx-msg-out':'vx-msg-in';
     const isDeleted=!!m.deleted_at;
@@ -1259,7 +1451,7 @@
     const replyBtn=isDeleted?'':`<button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button>`;
     const isMedia=m.message_type&&m.message_type!=='TEXT'&&m.media_storage_path;
     const bodyHtml=isMedia?mediaBodyHtml(m):`<span>${E(m.body||'[sem texto]')}</span>`;
-    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}"><div class="vx-msg-bubble${isBot?' vx-msg-bubble-bot':''}">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}${botTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}</div>`;
+    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}" data-msg-body="${E((m.body||'').toLowerCase())}"><div class="vx-msg-bubble${isBot?' vx-msg-bubble-bot':''}">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}${botTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}</div>`;
   }
   function renderReplyBanner(){
     const el=document.getElementById('vxReplyBanner');
@@ -1288,6 +1480,7 @@
     list.scrollTop=list.scrollHeight;
     list.querySelectorAll('[data-reply]').forEach(btn=>btn.onclick=()=>startReply(btn.dataset.reply));
     wireMediaElements(list);
+    applyThreadSearchFilter();
     await refreshConvSummary(conversaAtualId);
     const deletedAfter=msgs.filter(m=>m.deleted_at).length;
     // Só re-renderiza o Contexto se algo relevante pra ele mudou (nova
