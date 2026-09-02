@@ -104,7 +104,7 @@
   }
 
   /* ---------- navegação ---------- */
-  let cache={connections:[],stores:[],attendants:[],tags:[],quickReplies:[]};
+  let cache={connections:[],stores:[],attendants:[],tags:[],quickReplies:[],presence:[],lastRefreshAt:null};
 
   /* ---------- Respostas rápidas (Fase 4) ----------
      Templates reutilizáveis de mensagem, por empresa -- mesmo padrão
@@ -617,6 +617,19 @@
   async function loadAttendants(){
     cache.attendants=await api('profiles?select=id,full_name,role&active=eq.true&role=in.(GESTOR,ATENDENTE)&order=full_name').catch(()=>[]);
   }
+  // Achado do usuário em 2026-09-02 (referência visual aprovada): a
+  // barra de status do rodapé ("Atendentes online") precisa de dado
+  // real, não inventado -- mesma tabela/limiar já usados no Monitor de
+  // atividades (presence-heartbeat-v1.js / user_presence, <10min).
+  async function loadPresence(){
+    cache.presence=await api('user_presence?select=user_id,last_seen_at,logged_out_at').catch(()=>[]);
+  }
+  function isAttendantOnline(userId){
+    const p=cache.presence.find(x=>String(x.user_id)===String(userId));
+    if(!p)return false;
+    if(p.logged_out_at&&new Date(p.logged_out_at).getTime()>=new Date(p.last_seen_at).getTime())return false;
+    return (Date.now()-new Date(p.last_seen_at).getTime())/60000<10;
+  }
 
   async function openConversasScreen(){
     const app=document.querySelector('#app');
@@ -626,10 +639,11 @@
     hubState.activeTab='CENTRAL';
     app.innerHTML='<div class="vx-chatbeta"><div class="vx-chatbeta-loading">Carregando Central de Conversas…</div></div>';
     try{
-      await Promise.all([loadConversasHubData(),loadConexoesData(),loadAttendants(),loadTags(),loadQuickReplies()]);
+      await Promise.all([loadConversasHubData(),loadConexoesData(),loadAttendants(),loadTags(),loadQuickReplies(),loadPresence()]);
+      cache.lastRefreshAt=new Date();
       renderConversasHub();
       stopListPoll();
-      listPollTimer=setInterval(async()=>{await loadConversasHubData();renderConvList()},8000);
+      listPollTimer=setInterval(async()=>{await loadConversasHubData();await loadPresence();cache.lastRefreshAt=new Date();renderConvList();renderStatusBar()},8000);
     }catch(e){
       app.innerHTML=`<div class="vx-chatbeta"><div class="vx-chatbeta-card"><h3>Falha ao carregar Conversas</h3><p class="vx-chatbeta-sub">${E(e.message||'Erro desconhecido.')}</p><button id="conversasBackErr">← Voltar</button></div></div>`;
       document.getElementById('conversasBackErr').onclick=openConversasScreen;
@@ -828,6 +842,25 @@
     listPollTimer=setInterval(async()=>{await loadConversasHubData();renderConvList()},8000);
   }
 
+  // Achado do usuário em 2026-09-02 (referência visual aprovada): barra
+  // de status no rodapé -- todo número aqui é dado real já carregado
+  // (hubState.list/cache.presence/cache.connections), nunca inventado.
+  function renderStatusBar(){
+    const bar=document.getElementById('vxChatStatusBar');
+    if(!bar)return;
+    const operational=cache.connections.some(c=>c.status==='CONECTADO');
+    const onlineCount=cache.attendants.filter(a=>isAttendantOnline(a.id)).length;
+    const ativas=hubState.list.filter(c=>c.status!=='FINALIZADA').length;
+    const aguardando=hubState.list.filter(c=>Number(c.unread_count||0)>0).length;
+    bar.innerHTML=`
+      <span class="vx-cc-status-item"><span class="vx-cc-status-dot ${operational?'ok':'off'}"></span>Sistema ${operational?'operacional':'sem conexão ativa'}</span>
+      <span class="vx-cc-status-item">👤 Atendentes online: <b>${onlineCount}</b></span>
+      <span class="vx-cc-status-item">💬 Conversas ativas: <b>${ativas}</b></span>
+      <span class="vx-cc-status-item">⏳ Aguardando: <b>${aguardando}</b></span>
+      <span class="vx-cc-status-item vx-cc-status-refresh">🔄 Atualizado ${cache.lastRefreshAt?cache.lastRefreshAt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'agora'}</span>
+    `;
+  }
+
   function renderConversasHub(){
     const app=document.querySelector('#app');
     if(!app)return;
@@ -839,8 +872,8 @@
         <div class="vx-cc-title-block"><h1>Central de Conversas</h1><p>Chat VoxAssist · desktop, 3 colunas</p></div>
         ${businessHoursBadge()}
         <div class="vx-cc-top-actions">
-          ${isGestor()?'<button id="chatHubMonitor" class="vx-cc-settings-btn" type="button" title="Monitor de atividades -- visão do gestor sobre a operação">📊 Monitor</button><button id="chatHubUsers" class="vx-cc-settings-btn" type="button" title="Usuários -- WhatsApp interno">👤 Usuários</button>':''}
-          <button id="chatHubSettings" class="vx-cc-settings-btn" type="button" title="Configurações → Conexões (adicionar, remover, reconectar números)">⚙ Configurações</button>
+          ${isGestor()?`<button id="chatHubMonitor" class="vx-cc-settings-btn" type="button"><span class="vx-cc-settings-btn-ic">📊</span><span class="vx-cc-settings-btn-txt"><b>Monitor</b><small>Atendimento e métricas</small></span></button><button id="chatHubUsers" class="vx-cc-settings-btn" type="button"><span class="vx-cc-settings-btn-ic">👤</span><span class="vx-cc-settings-btn-txt"><b>Usuários</b><small>Atendentes e permissões</small></span></button>`:''}
+          <button id="chatHubSettings" class="vx-cc-settings-btn" type="button"><span class="vx-cc-settings-btn-ic">⚙</span><span class="vx-cc-settings-btn-txt"><b>Configurações</b><small>Regras e preferências</small></span></button>
         </div>
       </div>
       <div class="vx-cc-board">
@@ -872,7 +905,9 @@
           <div class="vx-cc-ctx-body" id="vxChatCtx"><p class="vx-cc-ctx-empty">Selecione uma conversa para ver o contexto.</p></div>
         </aside>
       </div>
+      <div class="vx-cc-statusbar" id="vxChatStatusBar"></div>
     </div>`;
+    renderStatusBar();
     document.getElementById('chatHubBack').onclick=()=>{stopConversaPoll();stopListPoll();goBack()};
     document.getElementById('chatHubSettings').onclick=()=>{stopConversaPoll();stopListPoll();openConexoesScreen()};
     document.getElementById('chatHubMonitor')?.addEventListener('click',()=>{stopConversaPoll();stopListPoll();if(typeof window.render==='function')window.render('chat-monitor')});

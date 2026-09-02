@@ -134,6 +134,20 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
 .vx-cc-top-actions{margin-left:auto;display:flex;gap:8px;padding:4px;border:1px solid var(--cc-border);border-radius:11px;background:var(--cc-surface-2)}
 .vx-cc-top-actions .vx-cc-settings-btn{border-color:transparent;background:transparent}
 .vx-cc-top-actions .vx-cc-settings-btn:hover{background:var(--cc-surface)}
+.vx-cc-settings-btn{display:flex;align-items:center;gap:8px;text-align:left}
+.vx-cc-settings-btn-ic{font-size:15px;flex:none}
+.vx-cc-settings-btn-txt{display:flex;flex-direction:column;gap:1px;line-height:1.2}
+.vx-cc-settings-btn-txt b{font-size:11.5px;color:var(--cc-ink)}
+.vx-cc-settings-btn-txt small{font-size:9.5px;color:var(--cc-ink-faint);font-weight:600}
+/* Achado do usuário em 2026-09-02 (referência visual aprovada): barra
+   de status no rodapé -- dado real (presença/fila/conexões), nunca
+   inventado. */
+.vx-cc-statusbar{display:flex;align-items:center;gap:22px;flex-wrap:wrap;padding:9px 16px;border:1px solid var(--cc-border);border-radius:11px;background:var(--cc-surface);font-size:11.5px;color:var(--cc-ink-dim);max-width:1760px;margin:0 auto;width:100%}
+.vx-cc-status-item{display:flex;align-items:center;gap:5px}
+.vx-cc-status-item b{color:var(--cc-navy)}
+.vx-cc-status-refresh{margin-left:auto;color:var(--cc-ink-faint)}
+.vx-cc-status-dot{width:7px;height:7px;border-radius:50%;background:var(--cc-ok-ink)}
+.vx-cc-status-dot.off{background:var(--cc-err-ink)}
 
 /* Achado do usuário em 2026-09-02: no mockup aprovado o Robô de
    Atendimento é uma aba (.top-tabs/.top-tab) dentro da mesma Central,
