@@ -161,8 +161,11 @@
     const campaignBreakdown=[];
     const byCampaign=new Map();
     list.forEach(rule=>{
-      const realizado=realizadoFn(rule.indicator_code);
-      const goal=goalFn(rule.indicator_code);
+      // rule é passada como 2º argumento pra quem chama poder usar o
+      // período PRÓPRIO da regra (rule.period_start/period_end) ao
+      // calcular o realizado -- nunca assumir mês corrente (P1-1).
+      const realizado=realizadoFn(rule.indicator_code,rule);
+      const goal=goalFn(rule.indicator_code,rule);
       const pctVal=goal?pct(realizado,goal.target_value):null;
       const tier=findBonusTier(rule.tier_rules,pctVal);
       if(!tier)return; // sem meta aplicável ou fora de qualquer faixa -- nunca inventa valor
