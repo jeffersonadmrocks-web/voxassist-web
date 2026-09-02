@@ -110,7 +110,11 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
 :root{
   --cc-bg:#f0f2f5;--cc-surface:#fff;--cc-surface-2:#f6f7f9;--cc-border:#e3e6eb;
   --cc-ink:#212b38;--cc-ink-dim:#647080;--cc-ink-faint:#8f99a6;
-  --cc-navy:#0c3457;--cc-navy-deep:#0e3f68;--cc-accent:#2f6bab;--cc-accent-hover:#24567e;--cc-accent-soft:#e9eff6;
+  /* Achado do usuário em 2026-09-02: comparando com a imagem de
+     referência aprovada, o azul estava "lavado" demais (--cc-accent
+     antigo #2f6bab) -- referência usa um azul mais vibrante/saturado
+     nos botões primários e nas abas ativas. */
+  --cc-navy:#0c3457;--cc-navy-deep:#0e3f68;--cc-accent:#1a5fd6;--cc-accent-hover:#1550b8;--cc-accent-soft:#e8f0fe;
   --cc-selected-bg:#dee7f1;
   --cc-ok-bg:#e3f5ea;--cc-ok-ink:#177a3d;
   --cc-warn-bg:#fdf1d4;--cc-warn-ink:#8a5f00;
@@ -135,7 +139,13 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
 .vx-cc-top-actions .vx-cc-settings-btn{border-color:transparent;background:transparent}
 .vx-cc-top-actions .vx-cc-settings-btn:hover{background:var(--cc-surface)}
 .vx-cc-settings-btn{display:flex;align-items:center;gap:8px;text-align:left}
-.vx-cc-settings-btn-ic{font-size:15px;flex:none}
+/* Achado do usuário em 2026-09-02: na referência aprovada cada botão
+   (Monitor/Usuários/Configurações) tem o ícone dentro de um quadrado
+   com cor própria (azul/roxo/neutro), não um emoji solto ao lado do
+   texto. */
+.vx-cc-settings-btn-ic{font-size:14px;flex:none;width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;background:var(--cc-info-bg);color:var(--cc-accent)}
+#chatHubUsers .vx-cc-settings-btn-ic{background:#f1e9fb;color:#7c4fd6}
+#chatHubSettings .vx-cc-settings-btn-ic{background:var(--cc-neutral-bg);color:var(--cc-ink-dim)}
 .vx-cc-settings-btn-txt{display:flex;flex-direction:column;gap:1px;line-height:1.2}
 .vx-cc-settings-btn-txt b{font-size:11.5px;color:var(--cc-ink)}
 .vx-cc-settings-btn-txt small{font-size:9.5px;color:var(--cc-ink-faint);font-weight:600}
@@ -153,7 +163,10 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
    Atendimento é uma aba (.top-tabs/.top-tab) dentro da mesma Central,
    não uma tela separada. */
 .vx-cc-tabbar{display:flex;gap:6px;flex:none;max-width:1760px;margin:0 auto;width:100%;padding:0 14px}
-.vx-cc-tab{border:1px solid var(--cc-border);background:var(--cc-surface);color:var(--cc-ink-dim);font-size:12px;font-weight:700;padding:7px 13px;border-radius:9px;cursor:pointer;font-family:inherit}
+/* Achado do usuário em 2026-09-02: na referência aprovada as abas
+   Central de Conversas/Robô de Atendimento são PÍLULA (totalmente
+   arredondadas), não um retângulo com canto levemente arredondado. */
+.vx-cc-tab{border:1px solid var(--cc-border);background:var(--cc-surface);color:var(--cc-ink-dim);font-size:12px;font-weight:700;padding:8px 16px;border-radius:999px;cursor:pointer;font-family:inherit}
 .vx-cc-tab:hover{background:var(--cc-accent-soft);color:var(--cc-accent)}
 .vx-cc-tab.active{background:var(--cc-accent);color:#fff;border-color:var(--cc-accent)}
 
@@ -163,7 +176,7 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
 .vx-cc-pane-head{padding:13px 13px 9px;border-bottom:1px solid var(--cc-border);flex:none}
 .vx-cc-pane-head-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .vx-cc-pane-head-row h2,.vx-cc-pane-head h2{margin:0;font-size:12.5px;font-weight:800;color:var(--cc-navy);text-transform:uppercase;letter-spacing:.06em}
-.vx-cc-new-btn{border:0;background:var(--cc-accent);color:#fff;font-size:11px;font-weight:800;padding:7px 12px;border-radius:8px;cursor:pointer}
+.vx-cc-new-btn{border:0;background:var(--cc-accent);color:#fff;font-size:11px;font-weight:800;padding:7px 14px;border-radius:999px;cursor:pointer}
 .vx-cc-new-btn:hover{background:var(--cc-accent-hover)}
 .vx-cc-new-btn-primary{padding:8px 16px;font-size:11.5px;box-shadow:0 2px 6px rgba(22,92,200,.25)}
 .vx-cc-search{position:relative}
