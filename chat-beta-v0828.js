@@ -592,7 +592,7 @@
      QR/conexão/sessão, envio/recebimento, tratamento LID/remote_jid,
      mensagens reais, ausência automática. Nunca mostra remote_jid/
      sender_lid como se fosse telefone -- só customer_phone. */
-  const CONV_SELECT='id,customer_phone,customer_name,status,last_message_preview,last_message_at,unread_count,assigned_user_id,client_id,current_store_id,connection_id,service_order_id,next_callback_at,next_callback_reason,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name),stores!chat_conversations_store_id_fkey(name),chat_conversation_tags(tag_id)';
+  const CONV_SELECT='id,customer_phone,customer_name,status,last_message_preview,last_message_at,unread_count,assigned_user_id,client_id,current_store_id,connection_id,service_order_id,next_callback_at,next_callback_reason,remote_jid,sender_lid,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name),stores!chat_conversations_store_id_fkey(name),chat_conversation_tags(tag_id)';
   let hubState={list:[],filter:'TODAS',search:'',storeFilter:'',connectionFilter:'',selectedId:null,currentTransferHistory:[],activeTab:'CENTRAL'};
   let conversaAtualId=null;
   let conversaPollTimer=null;
@@ -818,6 +818,7 @@
         <button id="chatHubBack" class="vx-cc-back">← Voltar</button>
         <div class="vx-cc-title-block"><h1>Central de Conversas</h1><p>Chat VoxAssist · desktop, 3 colunas</p></div>
         ${businessHoursBadge()}
+        ${isGestor()?'<button id="chatHubMonitor" class="vx-cc-settings-btn" type="button" title="Monitor de atividades -- visão do gestor sobre a operação">📊 Monitor</button><button id="chatHubUsers" class="vx-cc-settings-btn" type="button" title="Usuários -- WhatsApp interno">👤 Usuários</button>':''}
         <button id="chatHubSettings" class="vx-cc-settings-btn" type="button" title="Configurações → Conexões (adicionar, remover, reconectar números)">⚙ Configurações</button>
       </div>
       <div class="vx-cc-board">
@@ -846,6 +847,8 @@
     </div>`;
     document.getElementById('chatHubBack').onclick=()=>{stopConversaPoll();stopListPoll();goBack()};
     document.getElementById('chatHubSettings').onclick=()=>{stopConversaPoll();stopListPoll();openConexoesScreen()};
+    document.getElementById('chatHubMonitor')?.addEventListener('click',()=>{stopConversaPoll();stopListPoll();if(typeof window.render==='function')window.render('chat-monitor')});
+    document.getElementById('chatHubUsers')?.addEventListener('click',()=>{stopConversaPoll();stopListPoll();if(typeof window.render==='function')window.render('chat-internal-whatsapp')});
     wireChatTabBar();
     document.getElementById('chatNewConv').onclick=openNovaConversaModal;
     document.getElementById('chatSearch').oninput=e=>{hubState.search=e.target.value;renderConvList();renderSearchDropdown()};
@@ -861,6 +864,11 @@
     renderConvList();
     if(hubState.selectedId)selectConversa(hubState.selectedId,true);
   }
+
+  // Usado pelo Monitor de atividades (runtime/chat-monitor-v1.js) e
+  // por qualquer outra tela que precise abrir uma conversa real da
+  // Central a partir de fora deste arquivo.
+  window.vxOpenChatConversation=id=>{hubState.activeTab='CENTRAL';selectConversa(id)};
 
   async function selectConversa(id,skipListRerender){
     stopConversaPoll();
@@ -901,6 +909,7 @@
             </div>
           </div>
           ${isFinalizada?'<button type="button" class="vx-cc-th-btn" id="vxCtxReopen">Reabrir</button>':'<button type="button" class="vx-cc-th-btn vx-cc-th-btn-danger" id="vxCtxClose">Encerrar</button>'}
+          ${isGestor()?`<div class="vx-cc-transfer-wrap"><button type="button" class="vx-cc-th-btn" id="vxCtxLinkUserBtn" ${(conv?.remote_jid||conv?.sender_lid)?'':'disabled title="Esta conversa ainda não tem identidade técnica capturada."'}>🔗 Vincular usuário</button><div class="vx-cc-transfer-pop" id="vxCtxLinkUserPop" hidden>${cache.attendants.length?cache.attendants.map(a=>`<button type="button" class="vx-cc-transfer-opt" data-link-user="${E(a.id)}">${E(a.full_name)}</button>`).join(''):'<div class="vx-cc-transfer-empty">Nenhum usuário ativo.</div>'}</div></div>`:''}
         </div>
       </div>
       <div class="vx-cc-thread-toolbar">
@@ -989,6 +998,19 @@
       scheduleCallback(conv.id,new Date(when).toISOString(),reason);
     };
     document.getElementById('vxCallbackClear')?.addEventListener('click',()=>clearCallback(conv.id));
+    document.getElementById('vxCtxLinkUserBtn')?.addEventListener('click',e=>{
+      e.stopPropagation();
+      const p=document.getElementById('vxCtxLinkUserPop');
+      p.hidden=!p.hidden;
+    });
+    document.querySelectorAll('[data-link-user]').forEach(btn=>btn.onclick=async()=>{
+      const target=cache.attendants.find(a=>String(a.id)===String(btn.dataset.linkUser));
+      try{
+        await api('rpc/link_internal_whatsapp',{method:'POST',body:JSON.stringify({p_user_id:btn.dataset.linkUser,p_raw_jid:conv.sender_lid||conv.remote_jid,p_phone:conv.customer_phone||null})});
+        toast?.(`Identidade vinculada a ${target?.full_name||'usuário'}. Ative "Reconhecimento" e "Desviar do robô" na ficha dele(a), em Usuários, pra rotear automaticamente.`);
+        document.getElementById('vxCtxLinkUserPop').hidden=true;
+      }catch(err){toast?.('Não foi possível vincular: '+err.message,'err')}
+    });
     hubState.currentTransferHistory=await api(`chat_conversation_events?conversation_id=eq.${id}&action=eq.TRANSFER&select=*&order=created_at.desc`).catch(()=>[]);
     renderContexto(conv);
     conversaAtualId=id;

@@ -1,0 +1,39 @@
+/* Usuários / WhatsApp interno (Central de Conversas, Fase 6) --
+   reaproveita as variáveis --cc-* já definidas em chat-beta-v0828.css. */
+.vx-iw-wrap *{box-sizing:border-box;font-family:'Inter','Segoe UI',Arial,sans-serif}
+.vx-iw-wrap{max-width:820px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-direction:column;gap:16px}
+.vx-iw-head{display:flex;align-items:center;gap:14px}
+.vx-iw-back{border:1px solid var(--cc-border);background:var(--cc-surface);color:var(--cc-ink-dim);font-weight:700;font-size:12.5px;padding:8px 12px;border-radius:8px;cursor:pointer}
+.vx-iw-back:hover{background:var(--cc-accent-soft);color:var(--cc-accent)}
+.vx-iw-head-title h1{margin:0;font-size:19px;color:var(--cc-navy)}
+.vx-iw-head-title p{margin:2px 0 0;font-size:12.5px;color:var(--cc-ink-faint)}
+
+.vx-iw-card{background:var(--cc-surface);border:1px solid var(--cc-border);border-radius:12px;padding:16px 18px;box-shadow:var(--cc-shadow)}
+.vx-iw-card h3{margin:0 0 10px;font-size:15px;color:var(--cc-navy)}
+.vx-iw-card h4{margin:14px 0 8px;font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--cc-ink-faint);border-top:1px dashed var(--cc-border);padding-top:12px}
+.vx-iw-empty{color:var(--cc-ink-faint);font-size:12px;font-style:italic;padding:6px 0}
+
+.vx-iw-table{width:100%;border-collapse:collapse}
+.vx-iw-table th{text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--cc-ink-faint);padding:6px 8px;border-bottom:1px solid var(--cc-border)}
+.vx-iw-table td{padding:8px;border-bottom:1px solid var(--cc-border);font-size:12.5px;color:var(--cc-ink)}
+.vx-iw-table tbody tr[data-user]{cursor:pointer}
+.vx-iw-table tbody tr[data-user]:hover{background:var(--cc-surface-2)}
+.vx-iw-table tbody tr.active{background:var(--cc-selected-bg)}
+
+.vx-iw-basic{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--cc-ink-dim);margin-bottom:6px}
+.vx-iw-basic b{color:var(--cc-ink)}
+
+.vx-iw-badge{display:inline-block;font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.vx-iw-badge-ok{background:var(--cc-ok-bg);color:var(--cc-ok-ink)}
+.vx-iw-badge-warn{background:var(--cc-warn-bg);color:var(--cc-warn-ink)}
+.vx-iw-badge-none{background:var(--cc-neutral-bg);color:var(--cc-neutral-ink)}
+
+.vx-iw-card label{display:block;font-size:11.5px;font-weight:700;color:var(--cc-ink-dim);margin-bottom:10px}
+.vx-iw-toggle{display:flex;align-items:center;gap:7px;font-weight:600}
+.vx-iw-toggle input{width:auto}
+.vx-iw-card label input[type=text],.vx-iw-card label select{display:block;width:100%;margin-top:4px;border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink);border-radius:7px;padding:7px 9px;font-size:12.5px;font-family:inherit;font-weight:400}
+.vx-iw-actions{display:flex;gap:8px;margin-top:4px}
+.vx-iw-save-btn{border:0;background:var(--cc-accent);color:#fff;font-weight:700;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer}
+.vx-iw-save-btn:hover{background:var(--cc-accent-hover)}
+.vx-iw-unlink-btn{border:1px solid var(--cc-err-bg);background:var(--cc-err-bg);color:var(--cc-err-ink);font-weight:700;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer}
+.vx-iw-unlink-btn:hover{background:var(--cc-err-ink);color:#fff}
