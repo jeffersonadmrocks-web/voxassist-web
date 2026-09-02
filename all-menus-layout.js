@@ -44,6 +44,14 @@
     if(t==='testes-operacional') return renderOperational('testes','Testes de Funções');
     if(t==='usuarios-operacional') return renderOperational('usuarios','Usuários / Segurança');
     if(t==='dashboard') return baseRender('dashboard');
+    // Card "PRODUTIVIDADE" evoluiu pra "PRODUTIVIDADE / METAS" (Fase 8):
+    // ponto central único de produtividade/metas/bonificação/campanhas,
+    // não mais um atalho pro Dashboard. O antigo card "CASOS / TAREFAS"
+    // era um atalho redundante pra Atividades (já no menu lateral) --
+    // a posição liberada virou "BONIFICAÇÃO / CAMPANHAS", mesma tela,
+    // só abrindo direto na aba Bonificação (deep link).
+    if(t==='produtividade-metas') return window.render('produtividade-metas');
+    if(t==='produtividade-metas-bonificacao') return window.render('produtividade-metas:bonificacao');
     if(STRUCTURE_ONLY_TARGETS[t])return renderStructureOnly(t,...STRUCTURE_ONLY_TARGETS[t]);
     toast('Função registrada para evolução/homologação da V0.8.12.');
   }
@@ -119,11 +127,11 @@
   function relatorios(){home('Relatórios','Operação • Financeiro • Produtividade • Auditoria',
     card('▥','RELATÓRIOS DE O.S.','Entradas, saídas, prontos, ativos e filtros combináveis.','pesquisa-os','blue')+
     card('$','FINANCEIRO','Caixa, recebimentos, formas de pagamento e grupos.','financeiro-operacional','green')+
-    card('★','PRODUTIVIDADE','Indicadores por técnico, atendente, equipe e período.','dashboard','purple')+
+    card('★','PRODUTIVIDADE / METAS','Indicadores, metas, desempenho e bonificação por loja, equipe e funcionário.','produtividade-metas','purple')+
     card('▦','ESTOQUE','Saldo, movimentações, técnico e pendências fiscais.','estoque-operacional','orange')+
     card('♟','CLIENTES / EQUIPAMENTOS','Histórico, reincidência, titularidade e Cliente 360.','clientes','cyan')+
     card('☑','TESTES / HOMOLOGAÇÃO','Cobertura por módulo, falhas, retestes e validações.','testes-operacional','teal')+
-    card('⚑','CASOS / TAREFAS','Atividades, atrasos e casos de atenção.','agenda-operacional','red')+
+    card('⚑','BONIFICAÇÃO / CAMPANHAS','Regras de bonificação, campanhas e configuração administrativa.','produtividade-metas-bonificacao','red')+
     card('⇩','EXPORTAÇÃO PDF / EXCEL','Geração e exportação de relatórios gerenciais.','relatorios-export','brown')+
     card('◷','AUDITORIA','Ações de usuários, alterações e eventos do sistema.','usuarios-operacional','gray')
   )}
