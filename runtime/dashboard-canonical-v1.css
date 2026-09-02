@@ -147,8 +147,15 @@ button.vx-c-icon-row:disabled{cursor:default;opacity:1}
 .vx-c-fin-grid small.ok{color:var(--vx-ok)}
 .vx-c-fin-grid small.err{color:var(--vx-risk)}
 
-/* ---------- Minha Agenda -- 5 dias ---------- */
+/* ---------- Minha Agenda / Agenda dos Técnicos -- 5 dias ---------- */
 .vx-c-agenda5-card{background:var(--vx-surface);border:1px solid var(--vx-border);border-radius:14px;padding:14px 16px}
+/* Achado do usuário em 2026-09-02: pra GESTOR/ATENDENTE o card vira
+   "Agenda dos Técnicos", com navegação entre técnicos. */
+.vx-c-agenda5-tech-nav{display:flex;align-items:center;gap:8px;margin:-4px 0 12px}
+.vx-c-agenda5-tech-nav button{border:1px solid var(--vx-border);background:var(--vx-surface);color:var(--vx-muted);width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:14px;line-height:1}
+.vx-c-agenda5-tech-nav button:hover:not(:disabled){background:var(--vx-info-bg);color:var(--vx-info)}
+.vx-c-agenda5-tech-nav button:disabled{opacity:.4;cursor:default}
+.vx-c-agenda5-tech-nav select{flex:1;border:1px solid var(--vx-border);background:var(--vx-surface);color:var(--vx-text);border-radius:7px;padding:6px 9px;font-size:12px;font-weight:700}
 .vx-c-agenda5-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
 .vx-c-agenda5-day{border:1px solid var(--vx-border);border-radius:11px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .vx-c-agenda5-day-head{display:flex;justify-content:space-between;align-items:center}

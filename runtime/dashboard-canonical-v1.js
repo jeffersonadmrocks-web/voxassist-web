@@ -302,28 +302,109 @@
     }
     const feed=history.slice(0,8);
 
-    // Minha Agenda -- próximos 5 dias, agrupado por dia/período, com
+    // Agenda -- próximos 5 dias, agrupado por dia/período, com
     // detecção de aparelhos repetidos (mesmo modelo, ou mesma região).
+    // Achado do usuário em 2026-09-02: o card se chamava "Minha
+    // Agenda" mas a consulta nunca filtrava por técnico nenhum --
+    // mostrava os compromissos de TODOS os técnicos misturados, pra
+    // qualquer perfil. Corrigido: TÉCNICO só vê a própria agenda de
+    // verdade agora; GESTOR/ATENDENTE viram "Agenda dos Técnicos", com
+    // navegação pra escolher um técnico (ou "Todos", mesmo
+    // comportamento de antes -- tudo misturado) sem precisar recarregar
+    // o Dashboard inteiro (buildAgendaDays/agendaCardHtml ficam
+    // acessíveis fora deste closure via window.__vxDashAgenda pra
+    // renderAgendaCardOnly() re-renderizar só o card).
     const weekdayShort=['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
-    const days=[0,1,2,3,4].map(off=>{
-      const d=new Date(today);d.setDate(d.getDate()+off);
-      const iso=isoDate(d);
-      const rows=agenda.filter(a=>a.appointment_date===iso);
-      const label=off===0?'Hoje':off===1?'Amanhã':`${weekdayShort[d.getDay()]} ${String(d.getDate()).padStart(2,'0')}`;
-      const byModel=new Map(),byRegion=new Map();
-      rows.forEach(a=>{
-        const eq=a.service_orders?.equipments;if(!eq)return;
-        const modelKey=[eq.product_type,eq.brand,eq.model].filter(Boolean).join('|');
-        if(modelKey)byModel.set(modelKey,(byModel.get(modelKey)||[]).concat(a));
-        const region=a.service_orders?.clients?.neighborhood||a.service_orders?.clients?.city;
-        if(region&&eq.product_type){const k=eq.product_type+'|'+region;byRegion.set(k,(byRegion.get(k)||[]).concat(a))}
+    function buildAgendaDays(techFilterId){
+      const filtered=techFilterId?agenda.filter(a=>String(a.technician_id)===String(techFilterId)):agenda;
+      return [0,1,2,3,4].map(off=>{
+        const d=new Date(today);d.setDate(d.getDate()+off);
+        const iso=isoDate(d);
+        const rows=filtered.filter(a=>a.appointment_date===iso);
+        const label=off===0?'Hoje':off===1?'Amanhã':`${weekdayShort[d.getDay()]} ${String(d.getDate()).padStart(2,'0')}`;
+        const byModel=new Map(),byRegion=new Map();
+        rows.forEach(a=>{
+          const eq=a.service_orders?.equipments;if(!eq)return;
+          const modelKey=[eq.product_type,eq.brand,eq.model].filter(Boolean).join('|');
+          if(modelKey)byModel.set(modelKey,(byModel.get(modelKey)||[]).concat(a));
+          const region=a.service_orders?.clients?.neighborhood||a.service_orders?.clients?.city;
+          if(region&&eq.product_type){const k=eq.product_type+'|'+region;byRegion.set(k,(byRegion.get(k)||[]).concat(a))}
+        });
+        let dupWarning='';
+        const modelDup=[...byModel.entries()].find(([,v])=>v.length>1);
+        if(modelDup){const eq=modelDup[1][0].service_orders.equipments;dupWarning=`${modelDup[1].length} ${plural(eq.product_type)} do mesmo modelo`}
+        else{const regionDup=[...byRegion.entries()].find(([,v])=>v.length>1);if(regionDup){const [type]=regionDup[0].split('|');dupWarning=`${regionDup[1].length} ${plural(type)} na mesma região`}}
+        return {label,iso,rows,count:rows.length,dupWarning};
       });
-      let dupWarning='';
-      const modelDup=[...byModel.entries()].find(([,v])=>v.length>1);
-      if(modelDup){const eq=modelDup[1][0].service_orders.equipments;dupWarning=`${modelDup[1].length} ${plural(eq.product_type)} do mesmo modelo`}
-      else{const regionDup=[...byRegion.entries()].find(([,v])=>v.length>1);if(regionDup){const [type]=regionDup[0].split('|');dupWarning=`${regionDup[1].length} ${plural(type)} na mesma região`}}
-      return {label,iso,rows,count:rows.length,dupWarning};
-    });
+    }
+    // GESTOR/ATENDENTE começam em "Todos os técnicos" (sem filtro,
+    // mesmo comportamento de sempre); TÉCNICO é sempre e só a própria
+    // agenda, sem seletor -- nunca outro usuário. Navegação entre
+    // técnicos usa a mesma lista "techs" já usada na Produtividade
+    // (RLS já escopa por empresa -- ver profiles_select_company;
+    // não existe hoje nenhuma restrição adicional por loja pra
+    // ATENDENTE em lugar nenhum deste arquivo, então não inventei uma
+    // aqui -- reportado no fechamento).
+    let agendaSelectedTechId=role()==='TECNICO'?me():null;
+    function apptCard(a){
+      const eq=a.service_orders?.equipments||{};
+      const loc=a.service_orders?.clients?.neighborhood||a.service_orders?.clients?.city||'';
+      return `<div class="vx-c-appt"><b>${E([eq.product_type,eq.brand,eq.model].filter(Boolean).join(' · ')||'Equipamento')}</b><span>${E(loc)}${loc&&a.service_orders?.reported_defect?' · ':''}${E(a.service_orders?.reported_defect||'')}</span></div>`;
+    }
+    function agendaSectionHtml(techFilterId){
+      const isTecnico=role()==='TECNICO';
+      const currentDays=buildAgendaDays(techFilterId);
+      const idx=techFilterId?techs.findIndex(t=>String(t.id)===String(techFilterId)):-1;
+      const title=isTecnico?'Minha Agenda':'Agenda dos Técnicos';
+      const grid=`<div class="vx-c-agenda5-grid">${currentDays.map(d=>{
+        const manha=d.rows.filter(a=>norm(a.period)!=='TARDE'), tarde=d.rows.filter(a=>norm(a.period)==='TARDE');
+        return `<div class="vx-c-agenda5-day"><div class="vx-c-agenda5-day-head"><strong>${E(d.label)}</strong><span>${d.count}</span></div>
+          ${manha.length?`<div class="vx-c-agenda5-period"><small>MANHÃ</small>${manha.map(apptCard).join('')}</div>`:''}
+          ${tarde.length?`<div class="vx-c-agenda5-period"><small>TARDE</small>${tarde.map(apptCard).join('')}</div>`:''}
+          ${!d.count?'<p class="vx-c-empty">Sem compromissos.</p>':''}
+          ${d.dupWarning?`<div class="vx-c-agenda5-warn">⚠ ${E(d.dupWarning)}</div>`:''}
+        </div>`;
+      }).join('')}</div>`;
+      const techNav=isTecnico?'':`<div class="vx-c-agenda5-tech-nav">
+        <button type="button" id="vxAgendaTechPrev" ${idx<=0?'disabled':''} title="Técnico anterior">‹</button>
+        <select id="vxAgendaTechSelect">
+          <option value="" ${!techFilterId?'selected':''}>Todos os técnicos</option>
+          ${techs.map(t=>`<option value="${E(t.id)}" ${String(t.id)===String(techFilterId)?'selected':''}>${E(t.full_name)}</option>`).join('')}
+        </select>
+        <button type="button" id="vxAgendaTechNext" ${idx>=0&&idx>=techs.length-1?'disabled':''} title="Próximo técnico">›</button>
+      </div>`;
+      return `<section class="vx-c-agenda5-card" id="vxAgendaCard">
+        <div class="vx-c-title"><h3>◷ ${title} — Próximos 5 dias</h3><a href="#" id="vxAgendaFull">Ver agenda completa</a></div>
+        ${techNav}
+        ${grid}
+      </section>`;
+    }
+    function wireAgendaCard(){
+      document.getElementById('vxAgendaFull').onclick=(ev)=>{
+        ev.preventDefault();
+        window.__vxAgendaTechFilter=agendaSelectedTechId||null;
+        if(typeof window.render==='function')window.render('agenda');
+      };
+      document.getElementById('vxAgendaTechSelect')?.addEventListener('change',e=>{agendaSelectedTechId=e.target.value||null;renderAgendaCardOnly()});
+      document.getElementById('vxAgendaTechPrev')?.addEventListener('click',()=>{
+        const idx=techs.findIndex(t=>String(t.id)===String(agendaSelectedTechId));
+        if(idx>0){agendaSelectedTechId=techs[idx-1].id;renderAgendaCardOnly()}
+      });
+      document.getElementById('vxAgendaTechNext')?.addEventListener('click',()=>{
+        const idx=techs.findIndex(t=>String(t.id)===String(agendaSelectedTechId));
+        if(idx===-1){if(techs.length){agendaSelectedTechId=techs[0].id;renderAgendaCardOnly()}return}
+        if(idx<techs.length-1){agendaSelectedTechId=techs[idx+1].id;renderAgendaCardOnly()}
+      });
+    }
+    // "Trocar técnico atualiza somente o conteúdo do card" -- pedido
+    // do usuário em 2026-09-02: nunca recarrega o Dashboard inteiro,
+    // só troca o <section> da agenda.
+    function renderAgendaCardOnly(){
+      const card=document.getElementById('vxAgendaCard');
+      if(!card)return;
+      card.outerHTML=agendaSectionHtml(agendaSelectedTechId);
+      wireAgendaCard();
+    }
 
     const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,...gvDrills,...prodDrills};
     const partsDrills={partsAll,partsPendentes,partsCompra,partsEntrega,partsAtrasadas,partsRecebidasHoje};
@@ -432,22 +513,7 @@
         </section>
       </div>
 
-      <section class="vx-c-agenda5-card"><div class="vx-c-title"><h3>◷ Minha Agenda — Próximos 5 dias</h3><a href="#" id="vxAgendaFull">Ver agenda completa</a></div>
-        <div class="vx-c-agenda5-grid">${days.map(d=>{
-          const manha=d.rows.filter(a=>norm(a.period)!=='TARDE'), tarde=d.rows.filter(a=>norm(a.period)==='TARDE');
-          function apptCard(a){
-            const eq=a.service_orders?.equipments||{};
-            const loc=a.service_orders?.clients?.neighborhood||a.service_orders?.clients?.city||'';
-            return `<div class="vx-c-appt"><b>${E([eq.product_type,eq.brand].filter(Boolean).join(' · ')||'Equipamento')}</b><span>${E(loc)}${loc&&a.service_orders?.reported_defect?' · ':''}${E(a.service_orders?.reported_defect||'')}</span></div>`;
-          }
-          return `<div class="vx-c-agenda5-day"><div class="vx-c-agenda5-day-head"><strong>${E(d.label)}</strong><span>${d.count}</span></div>
-            ${manha.length?`<div class="vx-c-agenda5-period"><small>MANHÃ</small>${manha.map(apptCard).join('')}</div>`:''}
-            ${tarde.length?`<div class="vx-c-agenda5-period"><small>TARDE</small>${tarde.map(apptCard).join('')}</div>`:''}
-            ${!d.count?'<p class="vx-c-empty">Sem compromissos.</p>':''}
-            ${d.dupWarning?`<div class="vx-c-agenda5-warn">⚠ ${E(d.dupWarning)}</div>`:''}
-          </div>`;
-        }).join('')}</div>
-      </section>
+      ${agendaSectionHtml(agendaSelectedTechId)}
 
       ${discovery()}
     </div>`;
@@ -461,7 +527,7 @@
       if(drills[k])modal(title,drills[k]);
     });
     document.getElementById('vxFeedAll').onclick=(ev)=>{ev.preventDefault();feedModal('Feed em Tempo Real',history,feedText)};
-    document.getElementById('vxAgendaFull').onclick=(ev)=>{ev.preventDefault();if(typeof window.render==='function')window.render('agenda')};
+    wireAgendaCard();
   };
 
   window.VoxAssistRuntime=window.VoxAssistRuntime||{};
