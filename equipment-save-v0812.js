@@ -113,6 +113,19 @@
     const btn=q('#vxSaveBudget');
     if(btn){btn.disabled=true;btn.textContent='SALVANDO...';}
     try{
+      // Achado do usuário em 2026-09-02: currency-format-v0812.js
+      // transforma estes campos de type="number" pra type="text" e
+      // mostra "R$ 0,00" formatado enquanto o usuário edita --
+      // desformatar de volta pra número puro só acontecia no evento
+      // "submit" de um <form> (este botão não está dentro de um
+      // <form>) ou no clique do OUTRO botão "SALVAR" do cabeçalho
+      // (os-save-currency-fix-v0812.js, nunca cobriu este botão). O
+      // valor formatado ("R$ 0,00") ia direto pro Postgres, que
+      // rejeita com "invalid input syntax for type numeric" -- a raiz
+      // real por trás do erro genérico relatado. Mesma correção já
+      // usada em os-save-currency-fix-v0812.js, só que aplicada aqui
+      // também.
+      window.vxNormalizeCurrencyFields?.(panel);
       const orderBody=collect(panel,'order');
       const financialBody=collect(panel,'financial');
       if(Object.keys(orderBody).length){
