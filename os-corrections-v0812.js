@@ -44,6 +44,21 @@
     const service=labelField('TIPO DE ATENDIMENTO');
     if(local)local.classList.add('vx-summary-aligned-field');
     if(service)service.classList.add('vx-summary-aligned-field');
+    // Achado do usuário em 2026-09-02: o divisor "Atendimento" era um
+    // ::before posicionado com top negativo -- mesmo escopado pelo
+    // label certo, continuava sobrepondo a linha anterior do grid (a
+    // margem do campo não faz a track do grid crescer do jeito que um
+    // ::before absoluto pressupõe). Trocado por um elemento de verdade,
+    // inserido como filho do grid (mesma técnica já comprovada em
+    // ensureOrderType(), logo acima) -- span de linha inteira,
+    // participa do fluxo normal do grid, não tem como sobrepor nada.
+    if(service&&service.parentElement&&!q('[data-vx-attendance-divider]',service.parentElement)){
+      const divider=document.createElement('div');
+      divider.className='vx-field vx-attendance-divider';
+      divider.dataset.vxAttendanceDivider='1';
+      divider.textContent='Atendimento';
+      service.parentElement.insertBefore(divider,service);
+    }
   }
 
   function partRows(parts,actions=true){

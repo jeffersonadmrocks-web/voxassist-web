@@ -1,5 +1,23 @@
 /* VoxAssist Web V0.8.12 — ajustes visuais da OS */
-.vx-summary-aligned-field{align-self:start!important;margin:0!important}
+/* Achado do usuário em 2026-09-02: o divisor "Atendimento" (antes em
+   os-detail-v0812.css, via #vx-field:nth-child(8)/(9)) ficava colado
+   em cima de "ESTADO DO APARELHO"/"ACESSÓRIOS", sobrepondo o texto.
+   Causa raiz dupla: (1) ensureOrderType() insere um campo novo ("TIPO
+   DE ORDEM DE SERVIÇO *") no meio do grid, empurrando todo campo
+   seguinte uma posição -- :nth-child(8)/(9) parou de apontar pros
+   campos certos; (2) MESMO depois de escopar por label (não posição),
+   o divisor continuava um ::before com top negativo, que não respeita
+   a altura real da track do grid (margin no item não garante que a
+   track cresça do jeito que um ::before absoluto pressupõe) -- ainda
+   sobrepunha a linha anterior. Corrigido de vez: alinhamento por
+   CLASSE (alignEquipmentFields() localiza os campos pelo texto do
+   label, nunca por posição) E o divisor agora é um elemento de
+   verdade inserido no grid (mesma técnica de ensureOrderType(),
+   participa do fluxo normal, fisicamente não tem como sobrepor nada). */
+.vx-summary-aligned-field{align-self:start!important;margin:0!important;position:relative}
+.vx-summary-aligned-field::after{content:'⌄';position:absolute;right:9px;bottom:5px;font-size:15px;color:#111;pointer-events:none}
+.vx-summary-aligned-field input{background:#fff;padding-right:28px}
+.vx-attendance-divider{grid-column:1/-1;margin-top:8px;padding-top:8px;border-top:1px solid #d9e1e8;color:#111;font-size:14px;font-weight:700}
 .vx-order-type-summary{align-self:start!important}
 .vx-order-type-summary select{min-height:31px}
 .vx-summary-parts{margin-top:10px;padding-top:9px;border-top:1px solid #c8d2dc}

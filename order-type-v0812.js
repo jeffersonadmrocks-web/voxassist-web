@@ -69,13 +69,19 @@
           badge.textContent='TIPO: '+orderType;
         }
 
-        /* Mantém a informação também no resumo de campos. */
-        const service=[...document.querySelectorAll('.vx-field label')].find(x=>x.textContent.trim()==='TIPO DE ATENDIMENTO')?.closest('.vx-field');
-        if(service && !document.querySelector('[data-vx-order-type]')){
-          const field=document.createElement('div');field.className='vx-field';field.dataset.vxOrderType='1';
-          field.innerHTML=`<label>TIPO DE ORDEM DE SERVIÇO</label><input class="vx-control" readonly value="${esc(orderType)}">`;
-          service.parentElement.insertBefore(field,service);
-        }
+        /* Achado do usuário em 2026-09-02: este campo readonly extra
+           duplicava a mesma informação já mostrada no selo "TIPO:"
+           acima (linhas 58-70) E no seletor editável de verdade
+           injetado por os-corrections-v0812.js (ensureOrderType) --
+           duas caixas mostrando "GARANTIA"/etc. lado a lado. Pior:
+           cada um desses dois arquivos inseria seu próprio campo bem
+           antes de "TIPO DE ATENDIMENTO", sem um saber do outro --
+           empurrando esse e os campos seguintes uma posição a mais a
+           cada um, o que desalinhava o divisor "Atendimento" (CSS por
+           posição em os-detail-v0812.css) pra cima de "ESTADO DO
+           APARELHO". Removido -- a informação continua disponível no
+           selo do cabeçalho (sempre visível) e no seletor editável
+           (única fonte de edição de verdade).*/
       }catch{}
       return r;
     };
