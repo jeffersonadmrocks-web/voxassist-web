@@ -24,6 +24,14 @@
 
   function role(){return state.profile?.role||'GESTOR'}
   function isGestor(){return role()==='GESTOR'}
+  // Achado do usuário em 2026-09-02: o menu lateral da Central de
+  // Conversas só aparecia pra GESTOR -- um usuário ATENDENTE (papel
+  // que toda a tela foi desenhada pra usar: "Minhas", "Assumir",
+  // fila compartilhada) nunca via a entrada de menu nenhuma, mesmo
+  // constando na lista de atendentes do próprio Chat. RLS de
+  // chat_conversations já permite GESTOR e ATENDENTE por igual --
+  // só faltava o menu não escondê-la.
+  function canUseChat(){return isGestor()||role()==='ATENDENTE'}
 
   /* ---------- horário de atendimento ----------
      Mesma regra do backend (chat-inbound-webhook, via
@@ -49,7 +57,7 @@
     const menu=document.querySelector('.desktop-menu');
     if(!menu)return;
     const existing=menu.querySelector('[data-chat-beta-entry]');
-    if(!isGestor()){ if(existing)existing.remove(); return; }
+    if(!canUseChat()){ if(existing)existing.remove(); return; }
     if(existing)return;
     const btn=document.createElement('button');
     btn.type='button';
@@ -763,6 +771,19 @@
     return withoutCountryCode;
   }
   function isPhoneCandidate(raw){return !!normalizePhoneLocal(raw)}
+  // Achado do usuário em 2026-09-02: "+ Nova" gravava qualquer sequência
+  // de dígitos digitada como customer_phone (só tirava caracteres não
+  // numéricos, sem validar DDD nem completar o 55) -- um número digitado
+  // sem o código do país virava um JID quebrado
+  // ("27997586169@s.whatsapp.net", sem o 55), a mensagem "enviava" sem
+  // erro nenhum na tela mas nunca chegava de verdade no destino real.
+  // Mesma validação de normalizePhoneLocal, mas devolvendo o número
+  // COMPLETO com 55 (o que realmente precisa ir pro banco/JID) --
+  // idêntico ao normalizePhone do backend (messagingService.ts:12-18).
+  function normalizePhoneFull(raw){
+    const local=normalizePhoneLocal(raw);
+    return local?`55${local}`:null;
+  }
   let searchDropdownWired=false;
   function ensureSearchDropdownOutsideClickHandler(){
     if(searchDropdownWired)return;
@@ -812,10 +833,13 @@
      injetada no topo do #app depois de cada render -- parece uma aba,
      navega como aba, sem duplicar lógica de roteamento nenhuma. */
   function chatTabBar(active){
-    if(!isGestor())return'';
+    if(!canUseChat())return'';
+    // Robô de Atendimento é configuração (chat-bot-config-v1.js já
+    // bloqueia quem não é GESTOR) -- a aba não aparece pra ATENDENTE,
+    // mas a Central continua acessível normalmente pra ele.
     return `<div class="vx-cc-tabbar">
       <button type="button" class="vx-cc-tab ${active==='CENTRAL'?'active':''}" data-chat-tab="CENTRAL">Central de Conversas</button>
-      <button type="button" class="vx-cc-tab ${active==='ROBO'?'active':''}" data-chat-tab="ROBO">🤖 Robô de Atendimento</button>
+      ${isGestor()?`<button type="button" class="vx-cc-tab ${active==='ROBO'?'active':''}" data-chat-tab="ROBO">🤖 Robô de Atendimento</button>`:''}
     </div>`;
   }
   function wireChatTabBar(){
@@ -1091,8 +1115,21 @@
     const responsavelNome=conv.profiles?.full_name||null;
     const st=CONV_STATUS_LABEL[conv.status]||{text:conv.status,cls:'neutral'};
     const deletedEvents=(hubState.currentMessages||[]).filter(m=>m.deleted_at).map(m=>({time:new Date(m.created_at).toLocaleString('pt-BR'),text:`Mensagem apagada no WhatsApp (${m.direction==='OUTBOUND'?'enviada':'recebida'})`}));
+    // Achado do usuário em 2026-09-02: não havia NENHUMA forma de
+    // corrigir nome/telefone de um contato não vinculado -- nem o que
+    // veio errado de "+ Nova" (sem o 55), nem o que chegou por mensagem
+    // real sem nome. Vincular a um cliente do CRM é outra ação (abaixo,
+    // já existia); isto aqui só corrige os campos DA PRÓPRIA conversa
+    // (customer_name/customer_phone), sem criar nem alterar nenhum
+    // cliente.
     const clientCard=clienteNome?`<div class="vx-cc-ctx-card"><h3>Cliente</h3><div class="vx-cc-ctx-client-name">${E(clienteNome)}</div><div class="vx-cc-ctx-client-line">📞 ${E(conv.customer_phone||'—')}</div></div>`
-      :`<div class="vx-cc-ctx-card"><h3>Cliente</h3><p class="vx-cc-ctx-unmatched-label">Contato não vinculado</p><input id="vxCtxClientSearch" class="vx-cc-ctx-search" placeholder="Buscar cliente por nome ou telefone…"><div id="vxCtxClientResults" class="vx-cc-ctx-client-results"></div></div>`;
+      :`<div class="vx-cc-ctx-card"><h3>Cliente</h3><p class="vx-cc-ctx-unmatched-label">Contato não vinculado</p>
+      <div class="vx-cc-ctx-edit-fields">
+        <label>Nome<input type="text" id="vxCtxEditName" value="${E(conv.customer_name||'')}" placeholder="Nome do contato" maxlength="120"></label>
+        <label>Telefone<input type="text" id="vxCtxEditPhone" value="${E(conv.customer_phone||'')}" placeholder="Com DDD, ex.: 27999998888" inputmode="numeric" maxlength="20"></label>
+        <button type="button" id="vxCtxEditSave" class="vx-cc-ctx-link-btn">Salvar nome/telefone</button>
+      </div>
+      <input id="vxCtxClientSearch" class="vx-cc-ctx-search" placeholder="Buscar cliente por nome ou telefone…"><div id="vxCtxClientResults" class="vx-cc-ctx-client-results"></div></div>`;
     const assignedTagIds=convTagIds(conv);
     const tagsCard=`<div class="vx-cc-ctx-card"><h3>Tags</h3><div class="vx-cc-ctx-tags">
       ${assignedTagIds.map(id=>cache.tags.find(t=>String(t.id)===id)).filter(Boolean).map(t=>tagPill(t,true)).join('')}
@@ -1129,6 +1166,21 @@
     document.getElementById('vxCtxTransferStore')?.addEventListener('click',()=>openTransferLojaModal(conv.id,conv.current_store_id));
     const searchInput=document.getElementById('vxCtxClientSearch');
     if(searchInput)searchInput.oninput=()=>renderClientResults(conv.id,searchInput.value);
+    document.getElementById('vxCtxEditSave')?.addEventListener('click',async()=>{
+      const nameVal=document.getElementById('vxCtxEditName').value.trim()||null;
+      const phoneRaw=document.getElementById('vxCtxEditPhone').value.trim();
+      const phoneVal=phoneRaw?normalizePhoneFull(phoneRaw):null;
+      if(phoneRaw&&!phoneVal){toast?.('Telefone inválido -- confira o DDD e a quantidade de dígitos.','err');return}
+      try{
+        await api(`chat_conversations?id=eq.${conv.id}`,{method:'PATCH',body:JSON.stringify({customer_name:nameVal,customer_phone:phoneVal})});
+        Object.assign(conv,{customer_name:nameVal,customer_phone:phoneVal});
+        const listRow=hubState.list.find(c=>String(c.id)===String(conv.id));
+        if(listRow)Object.assign(listRow,{customer_name:nameVal,customer_phone:phoneVal});
+        toast?.('Nome/telefone atualizados.');
+        renderContexto(conv);
+        renderConvList();
+      }catch(err){toast?.('Não foi possível salvar: '+err.message,'err')}
+    });
     ctx.querySelectorAll('[data-tag-remove]').forEach(btn=>{
       btn.onclick=()=>toggleConversationTag(conv.id,btn.dataset.tagRemove,false);
     });
@@ -1477,9 +1529,11 @@
     e.preventDefault();
     const f=new FormData(e.target);
     const connectionId=String(f.get('connectionId')||'');
-    const phone=String(f.get('phone')||'').replace(/\D/g,'');
+    const rawPhone=String(f.get('phone')||'');
+    const phone=normalizePhoneFull(rawPhone);
     const name=String(f.get('name')||'').trim()||null;
-    if(!connectionId||!phone)return;
+    if(!connectionId)return;
+    if(!phone){toast?.('Número inválido -- confira o DDD e a quantidade de dígitos (ex.: 27999998888, com ou sem o 55).','err');return}
     const btn=e.target.querySelector('button[type=submit]');
     btn.disabled=true;
     try{
