@@ -156,11 +156,12 @@
     const entreguesMes=monthTransitions('FINALIZADA',month0,monthEnd);
     const activeOpenedThisMonth=active.filter(o=>new Date(o.opened_at)>=month0).length;
 
-    // Gestão Visual -- faixas de idade (0/1-3/4-7/8+ dias), como na
-    // referência aprovada.
+    // Gestão Visual -- faixas de idade (1-7/8-15/16-30/31-90 dias),
+    // corrigido em 2026-09-01 a pedido do usuário (faixas antigas
+    // 0/1-3/4-7/8+ estavam erradas -- inclusive sobrepostas).
     function ageBuckets(rows){
       const b=[0,0,0,0];
-      rows.forEach(o=>{const a=age(o);if(a===0)b[0]++;else if(a<=3)b[1]++;else if(a<=7)b[2]++;else b[3]++});
+      rows.forEach(o=>{const a=age(o);if(a<=7)b[0]++;else if(a<=15)b[1]++;else if(a<=30)b[2]++;else b[3]++});
       const oldest=rows.reduce((m,o)=>Math.max(m,age(o)),0);
       return {b,oldest};
     }
@@ -219,7 +220,7 @@
     function taskRow(label,n){return `<div class="vx-c-task-row"><span class="vx-c-task-check">☐</span><span>${E(label)}</span><b>${n}</b></div>`}
     function iconRow(icon,label,n,tone){return `<div class="vx-c-icon-row"><span class="vx-c-icon-row-ic ${tone||''}">${icon}</span><span>${E(label)}</span><b>${n}</b></div>`}
     function gvPanel(title,g){
-      const labels=['0 a 3 dias','1 a 3 dias','4 a 7 dias','8+ dias'],tones=['b0','b1','b2','b3'];
+      const labels=['1 a 7 dias','8 a 15 dias','16 a 30 dias','31 a 90 dias'],tones=['b0','b1','b2','b3'];
       return `<div class="vx-c-gv-panel"><div class="vx-c-gv-head"><strong>${E(title)}</strong><span>Total: ${g.b.reduce((s,n)=>s+n,0)}</span></div>
         <div class="vx-c-gv-bar">${g.b.map((n,i)=>`<span class="vx-c-gv-seg ${tones[i]}" style="flex:${Math.max(n,0.001)}"></span>`).join('')}</div>
         <div class="vx-c-gv-legend">${g.b.map((n,i)=>`<div><small>${labels[i]}</small><b>${n}</b></div>`).join('')}</div>
