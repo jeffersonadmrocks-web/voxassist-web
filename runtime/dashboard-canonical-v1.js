@@ -144,6 +144,7 @@
       source('Ordens','service_orders?select=*,clients(name,neighborhood,city),equipments(product_type,brand,model),profiles!service_orders_technician_id_fkey(full_name)&order=opened_at.desc&limit=500',state?.orders||[]),
       source('Tarefas','tasks?select=*&order=due_at.asc.nullslast&limit=200',state?.tasks||[]),
       source('Casos de atenção','dashboard_cases?select=*&order=created_at.desc&limit=200',[]),
+      source('Destinatários de casos','dashboard_case_recipients?select=case_id,user_id,role',[]),
       source('Agenda 5 dias',`appointments?select=*,service_orders(os_number,reported_defect,client_id,clients(neighborhood,city),equipments(product_type,brand,model))&appointment_date=gte.${isoDate(today)}&appointment_date=lte.${isoDate(agendaEnd)}&order=appointment_date.asc,period.asc,start_time.asc&limit=300`,[]),
       source('Peças','parts_requests?select=*&order=created_at.desc&limit=200',[]),
       source('Financeiro','os_financial?select=*&limit=1000',[]),
@@ -161,7 +162,23 @@
     const readyOverdue7=ready.filter(o=>age(o)>7), readyOverdue3=ready.filter(o=>age(o)>3);
     const noTech=active.filter(o=>!o.technician_id), urgent=active.filter(o=>norm(o.priority).includes('URG'));
     const tasks=safe(by['Tarefas'].data).filter(t=>!['CONCLUIDO','CANCELADO'].includes(norm(t.status)));
-    const casesAll=safe(by['Casos de atenção'].data);
+    // Achado do usuário em 2026-09-02: caso de atenção precisa poder
+    // ser direcionado (uma ou mais pessoas, ou um grupo/papel) e só
+    // aparecer no Dashboard de quem foi selecionado -- antes todo caso
+    // aparecia pra empresa toda, sempre. Sem nenhum destinatário
+    // marcado continua visível pra empresa toda (não quebra casos
+    // antigos). GESTOR sempre vê tudo, igual ao resto do app.
+    const caseRecipients=safe(by['Destinatários de casos'].data);
+    const recipientsByCase=new Map();
+    caseRecipients.forEach(r=>{if(!recipientsByCase.has(r.case_id))recipientsByCase.set(r.case_id,[]);recipientsByCase.get(r.case_id).push(r)});
+    const myRole=role(),myId=me();
+    function caseVisibleToMe(c){
+      if(myRole==='GESTOR')return true;
+      const recipients=recipientsByCase.get(c.id);
+      if(!recipients||!recipients.length)return true;
+      return recipients.some(r=>(r.user_id&&String(r.user_id)===String(myId))||(r.role&&r.role===myRole));
+    }
+    const casesAll=safe(by['Casos de atenção'].data).filter(caseVisibleToMe);
     const casesAbertos=casesAll.filter(c=>!['RESOLVIDO','CANCELADO'].includes(norm(c.status)));
     // Card "Casos de Atenção": Novos/Em andamento/Resolvidos, escopados
     // aos últimos 30 dias -- confirmado pelo usuário em 2026-09-01 (a

@@ -23,17 +23,33 @@
   // dashboard_cases (busca em todo o repositório) -- essa era a única
   // entrada e estava quebrada, não existia forma nenhuma de criar um
   // caso de atenção de verdade. Popup novo, vinculado à OS aberta.
-  window.vxOpenCasoAtencaoModal=function(){
+  const CASO_ROLE_GROUPS=[['GESTOR','Gestores'],['ATENDENTE','Atendentes'],['TECNICO','Técnicos'],['FINANCEIRO','Financeiro'],['ESTOQUE','Estoque']];
+  window.vxOpenCasoAtencaoModal=async function(){
     const o=ctx?.o;if(!o)return;
     document.querySelector('#vxCasoAtencaoModal')?.remove();
     const bg=document.createElement('div');
     bg.id='vxCasoAtencaoModal';
     bg.className='vx-modal-bg';
+    // Achado do usuário em 2026-09-02: faltava escolher pra quem o
+    // caso vai -- hoje TODO caso aparece no Dashboard de TODO mundo da
+    // empresa (dashboard_cases nunca foi filtrado por destinatário).
+    // Deixa escolher um ou mais operadores específicos e/ou um grupo
+    // inteiro (papel, ex. Atendentes) -- grava em
+    // dashboard_case_recipients (migration 20260902050000). Sem
+    // nenhum destinatário marcado, comportamento de sempre: visível
+    // pra empresa toda.
+    const people=await api(`profiles?select=id,full_name,role&active=eq.true&order=full_name`).catch(()=>[]);
     bg.innerHTML=`<div class="vx-modal">
       <h3>Novo caso de atenção — OS ${val(o.os_number)}</h3>
       <div class="vx-field"><label>Título *</label><input id="vxCasoTitle" maxlength="140" placeholder="Ex.: Cliente insatisfeito com o prazo"></div>
       <div class="vx-field"><label>Descrição</label><textarea id="vxCasoMessage" maxlength="500" rows="3"></textarea></div>
       <div class="vx-field"><label>Prioridade</label><select id="vxCasoPriority"><option value="NORMAL">Normal</option><option value="ALTA">Alta</option><option value="URGENTE">Urgente</option></select></div>
+      <div class="vx-field"><label>Enviar para (opcional -- vazio = visível pra empresa toda)</label>
+        <select id="vxCasoRecipients" multiple size="6">
+          <optgroup label="Grupos">${CASO_ROLE_GROUPS.map(([v,l])=>`<option value="role:${v}">${val(l)}</option>`).join('')}</optgroup>
+          <optgroup label="Pessoas">${people.map(p=>`<option value="user:${val(p.id)}">${val(p.full_name)}</option>`).join('')}</optgroup>
+        </select>
+      </div>
       <div class="vx-modal-actions"><button type="button" data-cancel>Cancelar</button><button type="button" class="primary" data-save>Criar caso</button></div>
     </div>`;
     document.body.appendChild(bg);
@@ -44,17 +60,27 @@
       const title=bg.querySelector('#vxCasoTitle').value.trim();
       if(!title){toast?.('Informe um título pro caso.','err');return}
       const btn=bg.querySelector('[data-save]');btn.disabled=true;
+      const myId=state.session?.user?.id||state.profile?.id||null;
+      const companyId=state.profile?.active_company_id;
+      const recipients=[...bg.querySelectorAll('#vxCasoRecipients option:checked')].map(o=>o.value);
       try{
-        await api('dashboard_cases',{method:'POST',body:JSON.stringify({
+        const created=await api('dashboard_cases',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
           service_order_id:o.id,
           title,
           message:bg.querySelector('#vxCasoMessage').value.trim()||null,
           priority:bg.querySelector('#vxCasoPriority').value,
           status:'NOVO',
           source:'MANUAL',
-          created_by:state.session?.user?.id||state.profile?.id||null,
-          company_id:state.profile?.active_company_id,
+          created_by:myId,
+          company_id:companyId,
         })});
+        const caseId=created?.[0]?.id;
+        if(caseId&&recipients.length){
+          await api('dashboard_case_recipients',{method:'POST',body:JSON.stringify(recipients.map(r=>{
+            const [kind,value]=r.split(':');
+            return {case_id:caseId,company_id:companyId,user_id:kind==='user'?value:null,role:kind==='role'?value:null,created_by:myId};
+          }))}).catch(err=>toast?.('Caso criado, mas não foi possível salvar os destinatários: '+err.message,'err'));
+        }
         toast?.('Caso de atenção criado.');
         close();
       }catch(err){toast?.('Não foi possível criar o caso: '+(err.message||'erro desconhecido'),'err');btn.disabled=false}
