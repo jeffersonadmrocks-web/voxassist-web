@@ -8,12 +8,29 @@
 .vx-parts-box{border:1px solid #8e8e8e;margin:18px 4px 0;padding:14px 10px 10px;min-height:285px}.vx-parts-box legend{font-size:11px;font-weight:700;padding:0 5px}.vx-part-search{display:grid;grid-template-columns:1.1fr 1.1fr 1.1fr 94px;gap:8px;align-items:end}.vx-search-btn{height:36px;border:0;background:#176cd2;color:#fff;font-size:11px;font-weight:700;cursor:pointer}.vx-hidden-proxy{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
 .vx-attach-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:6px 2px 10px}.vx-attach-card{background:#eaf2fd;border:1px solid #c9d6e6;padding:11px;min-height:96px}.vx-attach-card b{display:block;font-size:10px;margin-bottom:8px}.vx-attach-card span{display:block;font-size:10px;margin-bottom:8px}.vx-attach-card .pending{color:#ff7900}.vx-attach-card .ok{color:#0a9347}.vx-attach-list{border:1px solid #ddd;min-height:400px;padding:6px}.vx-attach-row{display:flex;align-items:center;gap:8px;border-bottom:1px solid #eee;padding:7px;font-size:10px}.vx-attach-row small{margin-left:auto;color:#667}.vx-bottom-buttons{display:flex;gap:4px;margin-top:8px}.vx-blue-btn,.vx-green-btn,.vx-orange-btn{height:37px;border:0;color:#fff;padding:0 14px;font-size:11px;font-weight:700;cursor:pointer}.vx-blue-btn{background:#176cd2}.vx-green-btn{background:#078f46}.vx-orange-btn{background:#ed7900}
 .vx-fin-summary{display:flex;gap:28px;padding:4px 14px 14px;font-size:15px}.vx-fin-summary .green{color:#078f46}.vx-fin-summary .orange{color:#ed7900}.vx-payment-table{min-height:380px}.vx-payment-table tbody{min-height:340px}.vx-payment-table tr.selected{background:#dfeeff}.vx-os-actions-bottom{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-/* Atendimento destacado na tela principal da OS */
-#vx-os .vx-os-summary-grid>.vx-os-box:nth-child(2) .vx-field-grid.two>.vx-field:nth-child(8),#vx-os .vx-os-summary-grid>.vx-os-box:nth-child(2) .vx-field-grid.two>.vx-field:nth-child(9){margin-top:30px;position:relative}
-#vx-os .vx-os-summary-grid>.vx-os-box:nth-child(2) .vx-field-grid.two>.vx-field:nth-child(8)::before{content:'Atendimento';position:absolute;left:0;top:-31px;width:calc(200% + 16px);height:23px;line-height:23px;border-bottom:1px solid #d9e1e8;color:#111;font-size:14px;font-weight:700;text-transform:none}
-#vx-os .vx-os-summary-grid>.vx-os-box:nth-child(2) .vx-field-grid.two>.vx-field:nth-child(8)::after,#vx-os .vx-os-summary-grid>.vx-os-box:nth-child(2) .vx-field-grid.two>.vx-field:nth-child(9)::after{content:'⌄';position:absolute;right:9px;bottom:5px;font-size:15px;color:#111;pointer-events:none}
-#vx-os .vx-os-summary-grid>.vx-os-box:nth-child(2) .vx-field-grid.two>.vx-field:nth-child(8) input,#vx-os .vx-os-summary-grid>.vx-os-box:nth-child(2) .vx-field-grid.two>.vx-field:nth-child(9) input{background:#fff;padding-right:28px}
-#vx-os .vx-os-summary-grid>.vx-os-box:nth-child(2) .vx-field-grid.two>.vx-field:nth-child(10){grid-column:1/-1;margin-top:2px}
-#vx-os .vx-os-summary-grid>.vx-os-box:nth-child(2) .vx-field-grid.two>.vx-field:nth-child(10) textarea{min-height:58px;height:58px;background:#fff}
+/* Atendimento destacado na tela principal da OS.
+   Achado do usuário em 2026-09-02: era feito por posição (:nth-child)
+   -- ensureOrderType() (os-corrections-v0812.js) insere um campo novo
+   antes de "TIPO DE ATENDIMENTO", empurrando a posição de todo campo
+   seguinte, o que desalinhava esses seletores e fazia o divisor
+   "Atendimento" sobrepor "ESTADO DO APARELHO". Migrado pra
+   .vx-summary-aligned-field/.vx-attendance-section-start (por label,
+   ver os-corrections-v0812.css/js) -- nunca mais depende de quantos
+   campos existem antes no grid. Larguras/alturas de campo largo já
+   eram cobertas por .vx-field.wide (linha acima) -- só faltava o
+   realce extra da textarea, agora escopado à própria classe .wide. */
+#vx-os .vx-field-grid.two>.vx-field.wide{margin-top:2px}
+#vx-os .vx-field-grid.two>.vx-field.wide textarea{min-height:58px;height:58px;background:#fff}
 @media(max-width:1200px){.vx-os-head{align-items:flex-start}.vx-os-head-actions{flex-wrap:wrap}.vx-os-summary-grid{grid-template-columns:1fr}.vx-os-box{min-height:auto}.vx-form-3,.vx-form-3.budget,.vx-form-3.finance{grid-template-columns:1fr 1fr}.vx-attach-grid{grid-template-columns:1fr 1fr}}
-@media(max-width:760px){.vx-os-head{flex-direction:column}.vx-os-head-left,.vx-os-head-actions{width:100%;flex-wrap:wrap}.vx-field-grid,.vx-field-grid.two,.vx-form-2,.vx-form-3,.vx-form-3.budget,.vx-form-3.finance,.vx-event-grid,.vx-budget-values{grid-template-columns:1fr}.vx-field.span2{grid-column:auto}.vx-part-search{grid-template-columns:1fr}.vx-attach-grid{grid-template-columns:1fr}#vx-os .vx-os-summary-grid>.vx-os-box:nth-child(2) .vx-field-grid.two>.vx-field:nth-child(8)::before{width:100%}}
+@media(max-width:760px){.vx-os-head{flex-direction:column}.vx-os-head-left,.vx-os-head-actions{width:100%;flex-wrap:wrap}.vx-field-grid,.vx-field-grid.two,.vx-form-2,.vx-form-3,.vx-form-3.budget,.vx-form-3.finance,.vx-event-grid,.vx-budget-values{grid-template-columns:1fr}.vx-field.span2{grid-column:auto}.vx-part-search{grid-template-columns:1fr}.vx-attach-grid{grid-template-columns:1fr}}
+
+/* Achado do usuario em 2026-09-02: o select multiplo nativo do popup de Caso de Atencao (Enviar para) ficava apertado, dificil de ler, principalmente em telas menores -- trocado por lista de checkboxes agrupada. */
+.vx-caso-recipients{max-height:220px;overflow-y:auto;border:1px solid #cbd7e2;border-radius:6px;padding:8px 10px;background:#fafcfd}
+.vx-caso-recipients-group{margin-bottom:8px}
+.vx-caso-recipients-group:last-child{margin-bottom:0}
+.vx-caso-recipients-group b{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#5e7188;margin-bottom:4px}
+.vx-caso-recipient-item{display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:12.5px;color:#1a2733;cursor:pointer;border-radius:5px}
+.vx-caso-recipient-item:hover{background:#eef3f8}
+.vx-caso-recipient-item input{width:16px;height:16px;flex:none;margin:0}
+.vx-caso-recipients-empty{display:block;padding:4px;font-size:11.5px;color:#8a96a3;font-style:italic}
+@media(max-width:520px){.vx-caso-recipients{max-height:180px}}

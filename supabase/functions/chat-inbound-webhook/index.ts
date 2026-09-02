@@ -24,23 +24,135 @@ import {
   buildMessagePreview,
   decideAwayMessage,
   decideConversationTarget,
+  isWithinBusinessHours,
   nextStatusOnInboundMessage,
   resolveInboundIdentity,
 } from "../_shared/messagingService.ts";
+import {
+  collectRoutingDimensions,
+  decideTriageStep,
+  FlowStep,
+  matchRoutingRules,
+  resolveNextEligibleStep,
+  RoutingRule,
+  StepCondition,
+} from "../_shared/chatBotFlow.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GATEWAY_SERVICE_TOKEN = Deno.env.get("CHAT_GATEWAY_SERVICE_TOKEN");
 // Mesma URL/token já usados em chat-send-message pra falar com o
 // gateway -- reaproveitado aqui pra mandar a mensagem automática de
-// ausência, nenhum segredo novo.
+// ausência e as mensagens do Robô de Atendimento, nenhum segredo novo.
 const GATEWAY_URL = Deno.env.get("CHAT_GATEWAY_URL");
 
 type ConnectionRow = { id: string; company_id: string; status: string };
-type ConversationRow = { id: string; status: string; last_away_sent_at: string | null };
+type ConversationRow = { id: string; status: string; last_away_sent_at: string | null; unread_count: number | null };
+// deno-lint-ignore no-explicit-any
+type SupaAdmin = any;
 
 function json(body: Record<string, unknown>, status: number) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+// Despacha uma mensagem do robô (boas-vindas/pergunta/fora do
+// horário) pelo MESMO gateway já usado em chat-send-message e na
+// mensagem de ausência -- nenhum contrato novo. Grava a linha
+// OUTBOUND com origin='BOT' (Fase 2) só se o envio real foi
+// confirmado -- nunca finge que mandou. Devolve se deu certo, pro
+// chamador decidir o que fazer em seguida (nunca lança -- quem chama
+// já está dentro do try/catch best-effort do robô).
+async function sendBotMessage(
+  admin: SupaAdmin,
+  args: { companyId: string; conversationId: string; connectionId: string; remoteJid: string; text: string; origin?: "BOT" | "REALTIME" },
+): Promise<boolean> {
+  try {
+    const gatewayRes = await fetch(`${GATEWAY_URL}/connections/${args.connectionId}/send`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${GATEWAY_SERVICE_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ to: args.remoteJid, body: args.text }),
+    });
+    const gatewayData = await gatewayRes.json().catch(() => null);
+    if (!gatewayRes.ok || !gatewayData?.ok) {
+      console.error("[chat-inbound-webhook] robô: falha ao enviar mensagem:", gatewayData?.error ?? gatewayRes.status);
+      return false;
+    }
+    await admin.from("chat_messages").insert({
+      company_id: args.companyId,
+      conversation_id: args.conversationId,
+      connection_id: args.connectionId,
+      remote_jid: args.remoteJid,
+      from_me: true,
+      direction: "OUTBOUND",
+      body: args.text,
+      external_message_id: gatewayData.externalMessageId ?? null,
+      provider_message_id: gatewayData.externalMessageId ?? null,
+      origin: args.origin ?? "BOT",
+      status: "ENVIADA",
+    });
+    return true;
+  } catch (e) {
+    console.error("[chat-inbound-webhook] robô: erro ao enviar mensagem:", e instanceof Error ? e.message : e);
+    return false;
+  }
+}
+
+// Converte as linhas cruas do banco (snake_case) pro formato que
+// chatBotFlow.ts espera (camelCase) -- só um adaptador de I/O, a
+// lógica de verdade mora no módulo puro.
+// deno-lint-ignore no-explicit-any
+function mapSteps(rows: any[]): FlowStep[] {
+  return (rows ?? []).map((r) => ({
+    id: r.id,
+    stepKey: r.step_key,
+    stepOrder: r.step_order,
+    questionText: r.question_text,
+    answerType: r.answer_type,
+    options: Array.isArray(r.options) ? r.options : [],
+    routingDimension: r.routing_dimension,
+    active: r.active,
+  }));
+}
+// deno-lint-ignore no-explicit-any
+function mapConditions(rows: any[]): StepCondition[] {
+  return (rows ?? []).map((r) => ({ stepId: r.step_id, dependsOnStepId: r.depends_on_step_id, dependsOnValue: r.depends_on_value }));
+}
+// deno-lint-ignore no-explicit-any
+function mapRules(rows: any[]): RoutingRule[] {
+  return (rows ?? []).map((r) => ({
+    id: r.id,
+    storeId: r.store_id,
+    warrantyValue: r.warranty_value,
+    brandValue: r.brand_value,
+    targetAttendantId: r.target_attendant_id,
+    specificity: r.specificity,
+  }));
+}
+
+// Roteia a conversa pro atendente resolvido (regra ou padrão da
+// versão) -- faz exatamente o que "Assumir"/"Transferir loja" já
+// fazem manualmente hoje (PATCH em chat_conversations + evento em
+// chat_conversation_events), só que muda changed_by=null (foi o
+// robô, não uma pessoa) e action='BOT_ROTEOU'. Sem atendente
+// resolvido (nem regra nem padrão configurado), não força nada --
+// conversa fica como já ficaria sem robô nenhum: aberta, sem dono.
+async function routeConversationViaBot(
+  admin: SupaAdmin,
+  args: { companyId: string; conversationId: string; attendantId: string | null; storeId: string | null; matchedRuleId: string | null },
+) {
+  if (!args.attendantId) return;
+  await admin.from("chat_conversations").update({ assigned_user_id: args.attendantId, ...(args.storeId ? { current_store_id: args.storeId } : {}) }).eq(
+    "id",
+    args.conversationId,
+  );
+  await admin.from("chat_conversation_events").insert({
+    company_id: args.companyId,
+    conversation_id: args.conversationId,
+    action: "BOT_ROTEOU",
+    previous_data: {},
+    new_data: { assigned_user_id: args.attendantId, store_id: args.storeId, matched_rule_id: args.matchedRuleId },
+    changed_by: null,
+  });
 }
 
 Deno.serve(async (req) => {
@@ -72,7 +184,7 @@ Deno.serve(async (req) => {
 
     const { data: existingRows } = await admin
       .from("chat_conversations")
-      .select("id, status, last_away_sent_at")
+      .select("id, status, last_away_sent_at, unread_count")
       .eq("connection_id", connectionId)
       .eq("remote_jid", identity.remoteJid)
       .order("created_at", { ascending: false });
@@ -96,6 +208,14 @@ Deno.serve(async (req) => {
           // errado (LID) em mensagens anteriores a esta correção.
           customer_phone: identity.customerPhone,
           sender_lid: identity.senderLid,
+          // Achado real (correção visual, 2026-09-01): unread_count
+          // existia na tabela desde a fundação do Chat, mas nenhuma
+          // function nunca incrementava -- o filtro "Não lidas" do
+          // frontend nunca mostrava nada de verdade. Incrementa aqui
+          // (lido em existingRows, não via SQL bruto); reseta em
+          // chat-send-message (resposta) e ao abrir a conversa no
+          // frontend (leitura).
+          unread_count: Number(current?.unread_count ?? 0) + 1,
         })
         .eq("id", conversationId);
     } else {
@@ -110,6 +230,7 @@ Deno.serve(async (req) => {
           status: "ABERTA",
           last_message_at: new Date().toISOString(),
           last_message_preview: buildMessagePreview(text),
+          unread_count: 1,
         })
         .select("id")
         .single();
@@ -138,42 +259,178 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "message_insert_failed" }, 500);
     }
 
-    // Mensagem automática de ausência fora do horário de atendimento --
-    // nunca bloqueia nem falha a resposta principal (a mensagem do
-    // cliente já foi gravada com sucesso acima); melhor esforço, best
-    // effort. Não atualiza last_message_preview/last_message_at da
-    // conversa -- o que precisa aparecer pro atendente é a pergunta
-    // real do cliente, não o aviso automático.
+    // Mensagem automática de ausência fora do horário de atendimento
+    // (comportamento original, intocado) + Robô de Atendimento (Fase
+    // 5 -- só ativa QUALQUER coisa se a empresa tiver uma versão
+    // PUBLICADA; sem isso, este bloco inteiro se comporta exatamente
+    // como antes desta fase). Nunca bloqueia nem falha a resposta
+    // principal (a mensagem do cliente já foi gravada com sucesso
+    // acima) -- best effort, mesmo espírito de sempre.
     try {
-      const decision = decideAwayMessage(new Date(), lastAwaySentAt);
-      if (decision.shouldSend && connection.status === "CONECTADO" && GATEWAY_URL && GATEWAY_SERVICE_TOKEN) {
-        const gatewayRes = await fetch(`${GATEWAY_URL}/connections/${connectionId}/send`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${GATEWAY_SERVICE_TOKEN}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ to: identity.remoteJid, body: AWAY_MESSAGE_TEXT }),
+      const canSend = connection.status === "CONECTADO" && !!GATEWAY_URL && !!GATEWAY_SERVICE_TOKEN;
+      const { data: publishedFlow } = await admin
+        .from("chat_bot_flow_versions")
+        .select("id, welcome_message, invalid_message, retry_limit, always_human_toggle, after_hours_toggle, after_hours_message, default_attendant_id")
+        .eq("company_id", connection.company_id)
+        .eq("status", "PUBLICADA")
+        .maybeSingle();
+
+      const withinHours = isWithinBusinessHours(new Date());
+      const awayDecision = decideAwayMessage(new Date(), lastAwaySentAt);
+
+      if (awayDecision.shouldSend && canSend) {
+        // Fora do horário: usa a mensagem PRÓPRIA do fluxo publicado
+        // (se houver e estiver habilitada), senão o texto fixo de
+        // sempre -- comportamento de hoje intocado quando não há robô.
+        // Nunca inicia/continua a triagem fora do horário (mesma
+        // decisão pra CREATE e REUSE) -- só a mensagem de aviso.
+        const useFlowMessage = !!publishedFlow && publishedFlow.after_hours_toggle && !!publishedFlow.after_hours_message;
+        const text2 = useFlowMessage ? publishedFlow!.after_hours_message : AWAY_MESSAGE_TEXT;
+        // Sem fluxo publicado, grava origin='REALTIME' -- exatamente a
+        // mesma linha de sempre, comportamento visual intocado pra
+        // quem nunca configurou o robô.
+        const sent = await sendBotMessage(admin, {
+          companyId: connection.company_id,
+          conversationId,
+          connectionId,
+          remoteJid: identity.remoteJid,
+          text: text2,
+          origin: useFlowMessage ? "BOT" : "REALTIME",
         });
-        const gatewayData = await gatewayRes.json().catch(() => null);
-        if (gatewayRes.ok && gatewayData?.ok) {
-          await admin.from("chat_messages").insert({
-            company_id: connection.company_id,
-            conversation_id: conversationId,
-            connection_id: connectionId,
-            remote_jid: identity.remoteJid,
-            from_me: true,
-            direction: "OUTBOUND",
-            body: AWAY_MESSAGE_TEXT,
-            external_message_id: gatewayData.externalMessageId ?? null,
-            provider_message_id: gatewayData.externalMessageId ?? null,
-            origin: "REALTIME",
-            status: "ENVIADA",
-          });
+        if (sent) {
           await admin.from("chat_conversations").update({ last_away_sent_at: new Date().toISOString() }).eq("id", conversationId);
-        } else {
-          console.error("[chat-inbound-webhook] falha ao enviar mensagem de ausência:", gatewayData?.error ?? gatewayRes.status);
+        }
+      } else if (publishedFlow && withinHours && canSend) {
+        // Dentro do horário com fluxo publicado: ou INICIA a triagem
+        // (conversa nova, ou uma que ficou parada porque a primeira
+        // mensagem chegou fora do horário -- nunca inicia sozinho fora
+        // do horário, só quando reabre) ou CONTINUA a que já estava
+        // em andamento. As duas situações são unificadas aqui (não só
+        // no branch CREATE) -- senão uma conversa criada fora do
+        // horário nunca ganharia triagem nem depois que o expediente
+        // reabrisse.
+        const { data: botState } = await admin
+          .from("chat_conversation_bot_state")
+          .select("id, flow_version_id, current_step_id, status, answers, attempt_count")
+          .eq("conversation_id", conversationId)
+          .maybeSingle();
+        const { data: convRow } = await admin.from("chat_conversations").select("assigned_user_id").eq("id", conversationId).maybeSingle();
+        // O robô nunca fala por cima de um atendente real -- só age se
+        // ninguém ainda assumiu a conversa.
+        if (!convRow?.assigned_user_id && !botState) {
+          const { data: stepsRaw } = await admin.from("chat_bot_flow_steps").select("*").eq("flow_version_id", publishedFlow!.id);
+          const { data: conditionsRaw } = await admin.from("chat_bot_flow_step_conditions").select("*").in(
+            "step_id",
+            (stepsRaw ?? []).map((s: { id: string }) => s.id),
+          );
+          const steps = mapSteps(stepsRaw ?? []);
+          const conditions = mapConditions(conditionsRaw ?? []);
+          const firstStep = resolveNextEligibleStep(steps, {}, conditions);
+          if (publishedFlow!.welcome_message) {
+            await sendBotMessage(admin, { companyId: connection.company_id, conversationId, connectionId, remoteJid: identity.remoteJid, text: publishedFlow!.welcome_message });
+          }
+          if (firstStep) {
+            const questionSent = await sendBotMessage(admin, {
+              companyId: connection.company_id,
+              conversationId,
+              connectionId,
+              remoteJid: identity.remoteJid,
+              text: firstStep.questionText,
+            });
+            if (questionSent) {
+              await admin.from("chat_conversation_bot_state").insert({
+                company_id: connection.company_id,
+                conversation_id: conversationId,
+                flow_version_id: publishedFlow!.id,
+                current_step_id: firstStep.id,
+                status: "EM_ANDAMENTO",
+                answers: {},
+                attempt_count: 0,
+              });
+            }
+          }
+        } else if (!convRow?.assigned_user_id && botState && botState.status === "EM_ANDAMENTO") {
+          const { data: stepsRaw } = await admin.from("chat_bot_flow_steps").select("*").eq("flow_version_id", botState.flow_version_id);
+          const { data: conditionsRaw } = await admin.from("chat_bot_flow_step_conditions").select("*").in(
+            "step_id",
+            (stepsRaw ?? []).map((s: { id: string }) => s.id),
+          );
+          const { data: rulesRaw } = await admin.from("chat_bot_routing_rules").select("*").eq("flow_version_id", botState.flow_version_id);
+          const steps = mapSteps(stepsRaw ?? []);
+          const conditions = mapConditions(conditionsRaw ?? []);
+          const rules = mapRules(rulesRaw ?? []);
+          const currentStep = steps.find((s) => s.id === botState.current_step_id);
+          if (currentStep) {
+            const outcome = decideTriageStep({
+              step: currentStep,
+              rawText: text,
+              attemptCount: botState.attempt_count,
+              retryLimit: publishedFlow.retry_limit,
+              alwaysHumanEnabled: publishedFlow.always_human_toggle,
+            });
+            if (outcome.outcome === "BYPASS") {
+              await admin.from("chat_conversation_bot_state").update({ status: "BYPASS_HUMANO", completed_at: new Date().toISOString() }).eq(
+                "id",
+                botState.id,
+              );
+            } else if (outcome.outcome === "INVALID_RETRY") {
+              await admin.from("chat_conversation_bot_state").update({ attempt_count: outcome.attemptCount }).eq("id", botState.id);
+              if (canSend) {
+                await sendBotMessage(admin, {
+                  companyId: connection.company_id,
+                  conversationId,
+                  connectionId,
+                  remoteJid: identity.remoteJid,
+                  text: publishedFlow.invalid_message,
+                });
+              }
+            } else if (outcome.outcome === "RETRY_LIMIT_REACHED") {
+              await routeConversationViaBot(admin, {
+                companyId: connection.company_id,
+                conversationId,
+                attendantId: publishedFlow.default_attendant_id,
+                storeId: null,
+                matchedRuleId: null,
+              });
+              await admin.from("chat_conversation_bot_state").update({ status: "LIMITE_TENTATIVAS", completed_at: new Date().toISOString() }).eq(
+                "id",
+                botState.id,
+              );
+            } else {
+              const newAnswers = { ...(botState.answers ?? {}), [currentStep.stepKey]: outcome.normalizedValue };
+              const next = resolveNextEligibleStep(steps, newAnswers, conditions);
+              if (next) {
+                await admin.from("chat_conversation_bot_state").update({ answers: newAnswers, current_step_id: next.id, attempt_count: 0 }).eq(
+                  "id",
+                  botState.id,
+                );
+                if (canSend) {
+                  await sendBotMessage(admin, { companyId: connection.company_id, conversationId, connectionId, remoteJid: identity.remoteJid, text: next.questionText });
+                }
+              } else {
+                const collected = collectRoutingDimensions(steps, newAnswers);
+                const matchedRule = matchRoutingRules(rules, collected);
+                const resolvedAttendantId = matchedRule?.targetAttendantId ?? publishedFlow.default_attendant_id;
+                await routeConversationViaBot(admin, {
+                  companyId: connection.company_id,
+                  conversationId,
+                  attendantId: resolvedAttendantId,
+                  storeId: collected.store,
+                  matchedRuleId: matchedRule?.id ?? null,
+                });
+                await admin.from("chat_conversation_bot_state").update({
+                  answers: newAnswers,
+                  current_step_id: null,
+                  status: "CONCLUIDO",
+                  completed_at: new Date().toISOString(),
+                }).eq("id", botState.id);
+              }
+            }
+          }
         }
       }
     } catch (e) {
-      console.error("[chat-inbound-webhook] erro ao processar mensagem de ausência:", e instanceof Error ? e.message : e);
+      console.error("[chat-inbound-webhook] erro ao processar ausência/robô de atendimento:", e instanceof Error ? e.message : e);
     }
 
     return json({ ok: true, conversationId }, 200);

@@ -16,7 +16,78 @@
 
   window.showVxOsSection=function(id){if(!ctx)return;ctx.activeTab=id;document.querySelectorAll('.vx-os-panel').forEach(p=>p.classList.toggle('hidden',p.id!==`vx-${id}`));document.querySelectorAll('.vx-os-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.section===id));if(id==='orcamento')ensureAnalysisDate();};
 
-  function header(o){return `<div class="vx-os-head"><div class="vx-os-head-left"><div class="vx-os-number">${val(o.os_number)}</div><button class="vx-status-btn" onclick="manualStatus()">${val(fmtStatus(o.status))} ▼</button><button class="vx-back" onclick="render('os')">← VOLTAR</button></div><div class="vx-os-head-actions"><button class="vx-action attention" onclick="render('agenda')">CASO DE ATENÇÃO</button><button class="vx-action parts" onclick="showVxOsSection('orcamento');setTimeout(()=>document.querySelector('#vxPartDescription')?.focus(),50)">SOLICITAR PEÇA</button><button class="vx-action" onclick="showVxOsSection('orcamento')">GERAR PARECER ▼</button><button class="vx-action" onclick="printOs()">GERAR PDF</button><button class="vx-action" onclick="window.print()">IMPRIMIR ▼</button></div></div>`}
+  // Achado do usuário em 2026-09-02: o botão "CASO DE ATENÇÃO" no
+  // cabeçalho da OS chamava render('agenda') -- não tinha relação
+  // nenhuma com criar um caso de atenção, nem com esta OS
+  // especificamente. Nenhum lugar do app hoje faz INSERT em
+  // dashboard_cases (busca em todo o repositório) -- essa era a única
+  // entrada e estava quebrada, não existia forma nenhuma de criar um
+  // caso de atenção de verdade. Popup novo, vinculado à OS aberta.
+  const CASO_ROLE_GROUPS=[['GESTOR','Gestores'],['ATENDENTE','Atendentes'],['TECNICO','Técnicos'],['FINANCEIRO','Financeiro'],['ESTOQUE','Estoque']];
+  window.vxOpenCasoAtencaoModal=async function(){
+    const o=ctx?.o;if(!o)return;
+    document.querySelector('#vxCasoAtencaoModal')?.remove();
+    const bg=document.createElement('div');
+    bg.id='vxCasoAtencaoModal';
+    bg.className='vx-modal-bg';
+    // Achado do usuário em 2026-09-02: faltava escolher pra quem o
+    // caso vai -- hoje TODO caso aparece no Dashboard de TODO mundo da
+    // empresa (dashboard_cases nunca foi filtrado por destinatário).
+    // Deixa escolher um ou mais operadores específicos e/ou um grupo
+    // inteiro (papel, ex. Atendentes) -- grava em
+    // dashboard_case_recipients (migration 20260902050000). Sem
+    // nenhum destinatário marcado, comportamento de sempre: visível
+    // pra empresa toda.
+    const people=await api(`profiles?select=id,full_name,role&active=eq.true&order=full_name`).catch(()=>[]);
+    bg.innerHTML=`<div class="vx-modal">
+      <h3>Novo caso de atenção — OS ${val(o.os_number)}</h3>
+      <div class="vx-field"><label>Título *</label><input id="vxCasoTitle" maxlength="140" placeholder="Ex.: Cliente insatisfeito com o prazo"></div>
+      <div class="vx-field"><label>Descrição</label><textarea id="vxCasoMessage" maxlength="500" rows="3"></textarea></div>
+      <div class="vx-field"><label>Prioridade</label><select id="vxCasoPriority"><option value="NORMAL">Normal</option><option value="ALTA">Alta</option><option value="URGENTE">Urgente</option></select></div>
+      <div class="vx-field"><label>Enviar para (opcional -- vazio = visível pra empresa toda)</label>
+        <div class="vx-caso-recipients" id="vxCasoRecipients">
+          <div class="vx-caso-recipients-group"><b>Grupos</b>${CASO_ROLE_GROUPS.map(([v,l])=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="role:${v}">${val(l)}</label>`).join('')}</div>
+          <div class="vx-caso-recipients-group"><b>Pessoas</b>${people.length?people.map(p=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="user:${val(p.id)}">${val(p.full_name)}</label>`).join(''):'<span class="vx-caso-recipients-empty">Nenhum usuário ativo.</span>'}</div>
+        </div>
+      </div>
+      <div class="vx-modal-actions"><button type="button" data-cancel>Cancelar</button><button type="button" class="primary" data-save>Criar caso</button></div>
+    </div>`;
+    document.body.appendChild(bg);
+    const close=()=>bg.remove();
+    bg.querySelector('[data-cancel]').onclick=close;
+    bg.addEventListener('click',e=>{if(e.target===bg)close()});
+    bg.querySelector('[data-save]').onclick=async()=>{
+      const title=bg.querySelector('#vxCasoTitle').value.trim();
+      if(!title){toast?.('Informe um título pro caso.','err');return}
+      const btn=bg.querySelector('[data-save]');btn.disabled=true;
+      const myId=state.session?.user?.id||state.profile?.id||null;
+      const companyId=state.profile?.active_company_id;
+      const recipients=[...bg.querySelectorAll('#vxCasoRecipients input:checked')].map(el=>el.value);
+      try{
+        const created=await api('dashboard_cases',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
+          service_order_id:o.id,
+          title,
+          message:bg.querySelector('#vxCasoMessage').value.trim()||null,
+          priority:bg.querySelector('#vxCasoPriority').value,
+          status:'NOVO',
+          source:'MANUAL',
+          created_by:myId,
+          company_id:companyId,
+        })});
+        const caseId=created?.[0]?.id;
+        if(caseId&&recipients.length){
+          await api('dashboard_case_recipients',{method:'POST',body:JSON.stringify(recipients.map(r=>{
+            const [kind,value]=r.split(':');
+            return {case_id:caseId,company_id:companyId,user_id:kind==='user'?value:null,role:kind==='role'?value:null,created_by:myId};
+          }))}).catch(err=>toast?.('Caso criado, mas não foi possível salvar os destinatários: '+err.message,'err'));
+        }
+        toast?.('Caso de atenção criado.');
+        close();
+      }catch(err){toast?.('Não foi possível criar o caso: '+(err.message||'erro desconhecido'),'err');btn.disabled=false}
+    };
+  };
+
+  function header(o){return `<div class="vx-os-head"><div class="vx-os-head-left"><div class="vx-os-number">${val(o.os_number)}</div><button class="vx-status-btn" onclick="manualStatus()">${val(fmtStatus(o.status))} ▼</button><button class="vx-back" onclick="render('os')">← VOLTAR</button></div><div class="vx-os-head-actions"><button class="vx-action attention" onclick="vxOpenCasoAtencaoModal()">CASO DE ATENÇÃO</button><button class="vx-action parts" onclick="showVxOsSection('orcamento');setTimeout(()=>document.querySelector('#vxPartDescription')?.focus(),50)">SOLICITAR PEÇA</button><button class="vx-action" onclick="showVxOsSection('orcamento')">GERAR PARECER ▼</button><button class="vx-action" onclick="printOs()">GERAR PDF</button><button class="vx-action" onclick="window.print()">IMPRIMIR ▼</button></div></div>`}
   function tabs(){return `<div class="vx-os-tabs">${TABS.map(([k,l])=>`<button data-section="${k}" class="${ctx.activeTab===k?'active':''}" onclick="showVxOsSection('${k}')">${l}</button>`).join('')}</div>`}
 
   function osPanel(){const {o,c,e,hist,parts,fin}=ctx;const partsTotal=parts.reduce((s,x)=>s+num(x.quantity)*num(x.unit_value),0),labor=num(fin.labor_value),disc=num(fin.discount_value),total=partsTotal+labor-disc;const analysisDate=fin.analysis_date?fmtDate(fin.analysis_date):eventDate(hist,['AGUARDANDO APROVACAO']);return `<section id="vx-os" class="vx-os-panel ${ctx.activeTab==='os'?'':'hidden'}"><div class="vx-os-summary-grid">

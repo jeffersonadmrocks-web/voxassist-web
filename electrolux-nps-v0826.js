@@ -1,10 +1,12 @@
-/* VoxAssist V0.8.13 — NPS Electrolux (Atividades → NPS Electrolux).
-   NÃO edita all-menus-layout.js. Injeta um card a mais na grid do hub
-   Atividades (mesmo padrão .module-action-card, ancorado no card nativo
-   "agenda-operacional" pra não vazar pra outros hubs) e, ao clicar,
-   substitui #app pela própria tela. "Voltar" chama window.render('agenda')
-   de novo, voltando pro hub Atividades. Carência de 6h desde concluded_at
-   antes de um caso virar elegível pra contato (ver isEligibleForContact em
+/* VoxAssist V0.8.13 — NPS Electrolux (Electrolux → NPS Electrolux).
+   Achado do usuário em 2026-09-02: o NPS é uma função nativa da
+   operação Electrolux, então o único ponto de entrada é o card "NPS
+   ELECTROLUX" dentro da tela Electrolux (electrolux-reports-v0813.js),
+   que chama window.vxOpenNpsScreen() abaixo -- substitui #app pela
+   própria tela real (mesma sempre foi, nada de novo aqui). "Voltar"
+   chama window.render('electrolux'), de volta pro módulo Electrolux.
+   Carência de 6h desde concluded_at antes de um caso virar elegível
+   pra contato (ver isEligibleForContact em
    supabase/functions/_shared/npsClassification.ts — a promoção em si roda
    no sync-electrolux-nps, este arquivo só lê/mostra o estado já resolvido).
    Nunca responde pelo cliente, nunca infere resposta, nunca envia nada
@@ -34,49 +36,37 @@
     CLIENTE_NAO_DESEJA_CONTATO:'Cliente não deseja receber contato',
     CASO_DE_ATENCAO:'Caso de atenção',
     FINALIZADO:'Finalizado',
+    RESPONDIDO:'Respondido (Electrolux)',
   };
   const FILIAL_LABEL={VITORIA:'Vitória',SERRA:'Serra'};
   // Contatado mas ainda sem desfecho — cobre primeiro contato, lembrete e o
   // estado manual "aguardando resposta" propriamente dito.
   const CONTACTED_SITUACOES=['PRIMEIRO_CONTATO_ENVIADO','LEMBRETE_ENVIADO','AGUARDANDO_RESPOSTA'];
+  // Elegível ou ainda em carência -- nunca foi contatado.
+  const PENDING_SITUACOES=['AGUARDANDO_ENCERRAMENTO','AGUARDANDO_PRAZO_NPS','AGUARDANDO_CONTATO'];
   function isAttention(c){return c.classification==='ATENCAO'||c.situacao==='CASO_DE_ATENCAO'}
+  // Achado do usuário em 2026-09-02: a API real da Electrolux
+  // (_shared/electrolux.ts, GET /api/dashboard/service-orders) não
+  // devolve nota/status/data de resposta de NPS -- confirmado com o
+  // usuário que isso só existe no PAINEL VISUAL da própria Electrolux,
+  // sem rota de API por trás. Não existe reconciliação automática
+  // possível hoje -- RESPONDIDO só é alcançado por registro manual de
+  // quem viu o resultado lá (ver #npsMarkResponded), nunca por sync.
+  function isResponded(c){return c.situacao==='RESPONDIDO'}
 
-  /* ---------- entrada na tela real de Atividades ----------
-     A tela "Atividades" do menu NÃO é o hub de cards atividades() de
-     all-menus-layout.js — esse hub é código morto: field-agenda-v0813.js
-     e depois field-agenda-complete-v0813.js reenvolvem window.render e
-     interceptam view==='agenda' direto, sem nunca delegar pro hub. Quem
-     realmente aparece é renderAgenda() (field-agenda-complete-v0813.js),
-     a tela "Agenda Externa". Âncora correta: .vx-agenda-controls (a
-     barra de botões "Agenda/Lista/Mapa/Feriado/Jornada" no topo dessa
-     tela), confirmado lendo renderAgenda() diretamente — não suposição.
-     Corrige um bug real: o card nunca apareceu em produção porque
-     ancorava num hub inalcançável. */
-  function ensureEntryCard(){
-    const controls=document.querySelector('.vx-agenda-controls');
-    if(!controls||controls.querySelector('[data-nps-entry]'))return;
-    const btn=document.createElement('button');
-    btn.type='button';
-    btn.dataset.npsEntry='1';
-    btn.textContent='NPS Electrolux';
-    btn.onclick=openNpsScreen;
-    controls.appendChild(btn);
-  }
-  // ensureEntryCard() já é auto-protegida (só age quando .vx-agenda-controls
-  // existe, ou seja, só na tela de Agenda) — nunca precisou de uma flag
-  // externa pra saber "estou na tela do NPS". Achado real: a flag
-  // npsScreenActive travava em true pra sempre sempre que o usuário saía
-  // da tela do NPS por qualquer caminho que não fosse o botão "Voltar"
-  // (trocar de aba, trocar de empresa) — o botão nunca mais reaparecia
-  // depois disso, mesmo voltando pra Agenda de verdade.
-  const observer=new MutationObserver(ensureEntryCard);
-  // Ancora em document.body, não #app: shell() (app.js) faz
-  // document.body.innerHTML=... em login/logout/troca de empresa, o que
-  // recria #app como um nó novo — um observer travado na referência
-  // antiga do #app fica órfão (nunca mais dispara) depois disso. Achado
-  // real: era exatamente por isso que o botão "sumia" depois de um
-  // tempo — o body em si nunca é substituído, só observá-lo direto.
-  observer.observe(document.body,{childList:true,subtree:true});
+  /* ---------- entrada na tela real do NPS ----------
+     Achado do usuário em 2026-09-02: o NPS Electrolux é uma função
+     nativa da operação Electrolux e não deve ter nenhum ponto de
+     entrada fora do módulo Electrolux. O botão "NPS Electrolux" que
+     esta função injetava na barra de controles da Agenda Externa
+     (.vx-agenda-controls, ver renderAgenda() em
+     field-agenda-complete-v0813.js) era exatamente esse acesso
+     duplicado/fora de lugar -- removido. O único ponto de entrada agora
+     é o card "NPS ELECTROLUX" dentro da tela Electrolux
+     (electrolux-reports-v0813.js), que chama window.vxOpenNpsScreen()
+     abaixo -- mesma tela real, mesmos dados, mesma lógica, só mudou
+     de onde se chega até ela. */
+  window.vxOpenNpsScreen=()=>openNpsScreen();
 
   /* ---------- dados ---------- */
   let cache={cases:[],contactsToday:[],profileNames:{},filter:{filial:'',situacao:'',classification:'',search:'',technicianId:'',responsibleId:'',dateFrom:'',dateTo:''}};
@@ -151,7 +141,10 @@
       document.getElementById('npsBackErr').onclick=goBack;
     }
   }
-  function goBack(){window.render('agenda')}
+  // Voltava pra 'agenda' de quando o único ponto de entrada era o botão
+  // na Agenda Externa -- agora que a entrada é sempre pelo módulo
+  // Electrolux (card "NPS ELECTROLUX"), "Voltar" volta pra lá.
+  function goBack(){window.render('electrolux')}
 
   /* ---------- indicadores ---------- */
   function indicators(){
@@ -162,25 +155,23 @@
     const contatadosHoje=new Set(cache.contactsToday.map(ct=>ct.nps_case_id)).size;
     const aguardandoResposta=cs.filter(c=>CONTACTED_SITUACOES.includes(c.situacao)).length;
     const casosAtencao=cs.filter(isAttention).length;
-    return{aguardando6h,elegiveisAgora,altaOportunidade,contatadosHoje,aguardandoResposta,casosAtencao};
+    const respondidos=cs.filter(isResponded).length;
+    return{aguardando6h,elegiveisAgora,altaOportunidade,contatadosHoje,aguardandoResposta,casosAtencao,respondidos};
   }
 
   /* ---------- filtro/listagem/ordenação ----------
-     Fila de NPS: elegíveis agora primeiro (Alta antes de Média), depois
-     quem já foi contatado, depois quem ainda aguarda as 6h, depois
-     desfechos manuais — dentro do mesmo grupo, quem ficou elegível há mais
-     tempo primeiro (concluded_at ascendente). Casos de atenção nunca
-     entram nessa fila — vão pra tabela separada (seção 5 do pedido). */
+     Achado do usuário em 2026-09-02: a tela precisa separar claramente
+     Elegíveis/Pendentes | Enviados/Aguardando resposta | Respondidos --
+     antes disso tudo ficava numa "Fila de NPS" só, misturado por
+     prioridade. Casos de atenção continuam numa tabela própria (nunca
+     mudou). "Outros desfechos" cobre os finais manuais que não são nem
+     fila nem resposta de verdade (cliente confirmou verbalmente, não
+     recebeu, não quis contato, finalizado sem resposta) -- nada some
+     de vista, só sai da fila ativa. */
   const CLASS_RANK={ALTA:0,MEDIA:1};
-  function queueTier(c){
-    if(c.situacao==='AGUARDANDO_CONTATO')return 0;
-    if(CONTACTED_SITUACOES.includes(c.situacao))return 1;
-    if(['AGUARDANDO_ENCERRAMENTO','AGUARDANDO_PRAZO_NPS'].includes(c.situacao))return 2;
-    return 3;
-  }
-  function sortQueue(list){
+  function sortPending(list){
     return [...list].sort((a,b)=>{
-      const ta=queueTier(a),tb=queueTier(b);
+      const ta=a.situacao==='AGUARDANDO_CONTATO'?0:1,tb=b.situacao==='AGUARDANDO_CONTATO'?0:1;
       if(ta!==tb)return ta-tb;
       if(ta===0){
         const ra=CLASS_RANK[a.classification]??2,rb=CLASS_RANK[b.classification]??2;
@@ -189,6 +180,20 @@
       const da=a.concluded_at?new Date(a.concluded_at).getTime():Infinity;
       const db=b.concluded_at?new Date(b.concluded_at).getTime():Infinity;
       return da-db;
+    });
+  }
+  function byConcludedAsc(list){
+    return [...list].sort((a,b)=>{
+      const da=a.concluded_at?new Date(a.concluded_at).getTime():Infinity;
+      const db=b.concluded_at?new Date(b.concluded_at).getTime():Infinity;
+      return da-db;
+    });
+  }
+  function byRespondedDesc(list){
+    return [...list].sort((a,b)=>{
+      const da=a.responded_at?new Date(a.responded_at).getTime():0;
+      const db=b.responded_at?new Date(b.responded_at).getTime():0;
+      return db-da;
     });
   }
   function filteredCases(){
@@ -209,8 +214,16 @@
       }
       return true;
     });
+    const nonAttention=base.filter(c=>!isAttention(c));
+    const pending=nonAttention.filter(c=>PENDING_SITUACOES.includes(c.situacao));
+    const sent=nonAttention.filter(c=>CONTACTED_SITUACOES.includes(c.situacao));
+    const responded=nonAttention.filter(isResponded);
+    const other=nonAttention.filter(c=>!PENDING_SITUACOES.includes(c.situacao)&&!CONTACTED_SITUACOES.includes(c.situacao)&&!isResponded(c));
     return{
-      queue:sortQueue(base.filter(c=>!isAttention(c))),
+      pending:sortPending(pending),
+      sent:byConcludedAsc(sent),
+      responded:byRespondedDesc(responded),
+      other:byConcludedAsc(other),
       attention:base.filter(isAttention),
     };
   }
@@ -229,6 +242,7 @@
       <td>${E(SIT_LABEL[c.situacao]||c.situacao)}</td>
       <td>${c.concluded_at?new Date(c.concluded_at).toLocaleDateString('pt-BR'):'—'}</td>
       <td>${Number(c.visit_count||1)}</td>
+      <td>${c.nps_score!=null?E(c.nps_score):'—'}</td>
       <td><button data-open-case="${E(c.id)}">Abrir</button></td>
     </tr>`;
   }
@@ -244,7 +258,7 @@
 
   function tableHead(){
     return `<thead><tr>
-      <th>Cliente</th><th>OS Electrolux</th><th>Filial</th><th>Técnico</th><th>Responsável</th><th>Classificação</th><th>Situação</th><th>Elegível em</th><th>Visitas</th><th></th>
+      <th>Cliente</th><th>OS Electrolux</th><th>Filial</th><th>Técnico</th><th>Responsável</th><th>Classificação</th><th>Situação</th><th>Elegível em</th><th>Visitas</th><th>Nota</th><th></th>
     </tr></thead>`;
   }
 
@@ -252,7 +266,7 @@
     const app=document.querySelector('#app');
     if(!app)return;
     const ind=indicators();
-    const{queue,attention}=filteredCases();
+    const{pending,sent,responded,other,attention}=filteredCases();
     app.innerHTML=`<div class="vx-nps">
       <div class="vx-nps-head">
         <div><button id="npsBack">← Voltar</button><h2>NPS Electrolux</h2><small>Acompanhamento da pesquisa de satisfação Electrolux</small></div>
@@ -264,6 +278,7 @@
         <div class="vx-nps-ind"><span>Contatados hoje</span><b>${ind.contatadosHoje}</b></div>
         <div class="vx-nps-ind"><span>Aguardando resposta</span><b>${ind.aguardandoResposta}</b></div>
         <div class="vx-nps-ind vx-nps-ind-warn"><span>Casos de atenção</span><b>${ind.casosAtencao}</b></div>
+        <div class="vx-nps-ind vx-nps-ind-ok"><span>Respondidos</span><b>${ind.respondidos}</b></div>
       </div>
       <div class="vx-nps-filters">
         <input id="npsSearch" placeholder="Buscar cliente ou OS Electrolux…" value="${E(cache.filter.search)}">
@@ -274,10 +289,16 @@
         <select id="npsSituacao"><option value="">Situação: todas</option>${Object.entries(SIT_LABEL).map(([k,l])=>`<option value="${k}" ${cache.filter.situacao===k?'selected':''}>${l}</option>`).join('')}</select>
         <label class="vx-nps-period">Período<input type="date" id="npsDateFrom" value="${E(cache.filter.dateFrom)}"> a <input type="date" id="npsDateTo" value="${E(cache.filter.dateTo)}"></label>
       </div>
-      <h3 class="vx-nps-section-title">Fila de NPS</h3>
-      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${queue.map(row).join('')||'<tr><td colspan="10">Nenhum caso na fila com esse filtro.</td></tr>'}</tbody></table></div>
+      <h3 class="vx-nps-section-title">Elegíveis / Pendentes</h3>
+      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${pending.map(row).join('')||'<tr><td colspan="11">Nenhum caso pendente com esse filtro.</td></tr>'}</tbody></table></div>
+      <h3 class="vx-nps-section-title">Enviados / Aguardando resposta</h3>
+      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${sent.map(row).join('')||'<tr><td colspan="11">Nenhum caso enviado com esse filtro.</td></tr>'}</tbody></table></div>
+      <h3 class="vx-nps-section-title vx-nps-section-ok">Respondidos</h3>
+      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${responded.map(row).join('')||'<tr><td colspan="11">Nenhum caso respondido com esse filtro.</td></tr>'}</tbody></table></div>
       <h3 class="vx-nps-section-title vx-nps-section-warn">Casos de atenção</h3>
-      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${attention.map(row).join('')||'<tr><td colspan="10">Nenhum caso de atenção com esse filtro.</td></tr>'}</tbody></table></div>
+      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${attention.map(row).join('')||'<tr><td colspan="11">Nenhum caso de atenção com esse filtro.</td></tr>'}</tbody></table></div>
+      <h3 class="vx-nps-section-title">Outros desfechos</h3>
+      <div class="vx-nps-table-wrap"><table class="vx-nps-table">${tableHead()}<tbody>${other.map(row).join('')||'<tr><td colspan="11">Nenhum outro desfecho com esse filtro.</td></tr>'}</tbody></table></div>
     </div>`;
 
     document.getElementById('npsBack').onclick=goBack;
@@ -334,19 +355,34 @@
       </div>
       ${recente?'<div class="vx-nps-alert">⚠ Contato recente (menos de 24h) registrado para este caso.</div>':''}
       ${aguardandoElegibilidade?`<div class="vx-nps-alert">⏳ Ainda em carência — elegível para contato a partir de ${eligibleAt?eligibleAt.toLocaleString('pt-BR'):'—'}.</div>`:''}
+      ${isResponded(c)?`<div class="vx-nps-alert vx-nps-alert-ok">✔ Respondido -- nota ${E(c.nps_score)}${c.technician_nps_score!=null?` (técnico: ${E(c.technician_nps_score)})`:''} em ${c.responded_at?new Date(c.responded_at).toLocaleString('pt-BR'):'—'}.${c.response_comment?` "${E(c.response_comment)}"`:''}</div>`:''}
       <div class="vx-nps-actions">
-        <button id="npsSendFirst" ${!canWrite()||primeiro||aguardandoElegibilidade?'disabled':''}>Enviar primeiro contato</button>
-        <button id="npsSendReminder" ${!canWrite()||!primeiro||(lembrete&&!isGestor())?'disabled':''}>${lembrete?'Autorizar novo lembrete (gestor)':'Enviar lembrete'}</button>
+        <button id="npsSendFirst" ${!canWrite()||primeiro||aguardandoElegibilidade||isResponded(c)?'disabled':''}>Enviar primeiro contato</button>
+        <button id="npsSendReminder" ${!canWrite()||!primeiro||(lembrete&&!isGestor())||isResponded(c)?'disabled':''}>${lembrete?'Autorizar novo lembrete (gestor)':'Enviar lembrete'}</button>
         <a href="${ELX_SURVEY_LINK}" target="_blank" rel="noopener" class="vx-nps-secondary-link">Enviar separadamente (Electrolux)</a>
       </div>
       <div class="vx-nps-actions">
-        <button id="npsConfirmResponse" ${!canWrite()?'disabled':''}>Cliente confirmou que respondeu</button>
-        <button id="npsNotReceived" ${!canWrite()?'disabled':''}>Cliente não recebeu</button>
-        <button id="npsNoContact" ${!canWrite()?'disabled':''}>Cliente não deseja contato</button>
+        <button id="npsConfirmResponse" ${!canWrite()||isResponded(c)?'disabled':''}>Cliente confirmou que respondeu</button>
+        <button id="npsNotReceived" ${!canWrite()||isResponded(c)?'disabled':''}>Cliente não recebeu</button>
+        <button id="npsNoContact" ${!canWrite()||isResponded(c)?'disabled':''}>Cliente não deseja contato</button>
       </div>
       <div class="vx-nps-actions">
-        <button id="npsAttention" ${!canWrite()?'disabled':''}>Marcar caso de atenção</button>
-        <button id="npsFinalize" ${!canWrite()?'disabled':''}>Finalizar</button>
+        <button id="npsAttention" ${!canWrite()||isResponded(c)?'disabled':''}>Marcar caso de atenção</button>
+        <button id="npsFinalize" ${!canWrite()||isResponded(c)?'disabled':''}>Finalizar</button>
+      </div>
+      <div class="vx-nps-actions">
+        <button id="npsMarkResponded" ${!canWrite()||isResponded(c)?'disabled':''}>Marcar como respondido (Electrolux)</button>
+      </div>
+      <div id="npsRespondedForm" class="vx-nps-responded-form" hidden>
+        <p class="vx-nps-hint">Copie exatamente o que aparece no painel da Electrolux -- não existe hoje uma forma automática de trazer esse dado (a API integrada não devolve NPS).</p>
+        <label>Nota (0-10)<input type="number" id="npsRespScore" min="0" max="10" step="1"></label>
+        <label>Nota do técnico (0-10, opcional)<input type="number" id="npsRespTechScore" min="0" max="10" step="1"></label>
+        <label>Data da resposta<input type="datetime-local" id="npsRespDate"></label>
+        <label>Comentário (opcional)<textarea id="npsRespComment" rows="2"></textarea></label>
+        <div class="vx-modal-actions">
+          <button data-cancel-responded>Cancelar</button>
+          <button id="npsRespConfirm" class="vx-nps-primary">Confirmar resposta</button>
+        </div>
       </div>
       <h4>Histórico de contatos</h4>
       <div class="vx-nps-history">${contacts.map(ct=>`<div class="vx-nps-hist-row"><b>${E(ct.contact_type==='PRIMEIRO_CONTATO'?'Primeiro contato':'Lembrete')}</b><span>${new Date(ct.sent_at).toLocaleString('pt-BR')}</span><small>${E(ct.observacao||'')}</small></div>`).join('')||'<small>Nenhum contato registrado ainda.</small>'}</div>
@@ -390,6 +426,35 @@
     bg.querySelector('#npsFinalize').onclick=async()=>{
       const motivo=prompt('Motivo do encerramento (opcional):')||null;
       await patchCase(c,{situacao:'FINALIZADO',closed_reason:motivo},'FINALIZADO');
+      bg.remove();renderNpsScreen();
+    };
+
+    const respondedForm=bg.querySelector('#npsRespondedForm');
+    bg.querySelector('#npsMarkResponded').onclick=()=>{
+      if(!canWrite()||isResponded(c))return;
+      respondedForm.hidden=false;
+      const now=new Date();
+      now.setMinutes(now.getMinutes()-now.getTimezoneOffset());
+      bg.querySelector('#npsRespDate').value=now.toISOString().slice(0,16);
+      bg.querySelector('#npsRespScore').focus();
+    };
+    bg.querySelector('[data-cancel-responded]').onclick=()=>{respondedForm.hidden=true};
+    bg.querySelector('#npsRespConfirm').onclick=async()=>{
+      const scoreRaw=bg.querySelector('#npsRespScore').value;
+      const techScoreRaw=bg.querySelector('#npsRespTechScore').value;
+      const dateRaw=bg.querySelector('#npsRespDate').value;
+      const comment=bg.querySelector('#npsRespComment').value.trim()||null;
+      const score=scoreRaw===''?null:Number(scoreRaw);
+      const techScore=techScoreRaw===''?null:Number(techScoreRaw);
+      if(score===null||!Number.isInteger(score)||score<0||score>10){toast?.('Informe a nota (0 a 10) exatamente como aparece no painel da Electrolux.','err');return}
+      if(techScoreRaw!==''&&(!Number.isInteger(techScore)||techScore<0||techScore>10)){toast?.('Nota do técnico precisa ser um número de 0 a 10.','err');return}
+      if(!dateRaw){toast?.('Informe a data da resposta.','err');return}
+      const respondedAt=new Date(dateRaw).toISOString();
+      await patchCase(c,{
+        situacao:'RESPONDIDO',nps_score:score,technician_nps_score:techScore,
+        response_comment:comment,responded_at:respondedAt,
+      },'RESPONDIDO');
+      toast?.('Resposta registrada -- caso retirado da fila de pendência.');
       bg.remove();renderNpsScreen();
     };
   }
