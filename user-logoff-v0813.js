@@ -22,7 +22,16 @@
     const header=document.querySelector('header');if(!header)return;
     let btn=header.querySelector('#logout');
     if(!btn){btn=document.createElement('button');btn.id='logout';btn.type='button';btn.className='secondary';btn.textContent='Sair';btn.style.marginLeft='10px';btn.style.flex='0 0 auto';(header.querySelector('.user')||header).appendChild(btn)}
-    btn.style.display='';btn.title='Encerrar sessão do usuário';
+    // Achado do usuário em 2026-09-02: desktop-layout-patch.js cria este
+    // botão com classe sr-only (técnica de acessibilidade via
+    // position/clip com !important, não display:none -- ver .sr-only em
+    // desktop-layout.css). Só resetar btn.style.display não desfazia
+    // isso -- !important na classe vence estilo inline não-important, o
+    // botão continuava clipado em 1x1px, tecnicamente no DOM mas
+    // invisível. Precisa remover a classe pra a regra parar de valer.
+    btn.classList.remove('sr-only');
+    btn.style.display='';btn.style.marginLeft='10px';btn.style.flex='0 0 auto';
+    btn.title='Encerrar sessão do usuário';
     if(!btn.dataset.vxBound){btn.dataset.vxBound='1';btn.addEventListener('click',doLogout)}
   }
 
