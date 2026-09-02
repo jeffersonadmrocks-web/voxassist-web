@@ -466,7 +466,13 @@
       return `<button type="button" class="module-action-card ${g.color}" data-group="${g.key}"><span class="icon">${g.icon}</span><span><strong>${esc(g.label)}</strong><small>${esc(g.desc)}</small></span><b class="vx-elx-group-count">${n}</b></button>`;
     }).join('');
     const outrosCount=filtered.length-GROUPS.reduce((acc,g)=>acc+filtered.filter(so=>groupFor(so.status)===g.key).length,0);
-    const outrosCard=outrosCount>0?`<button type="button" class="module-action-card gray" data-group="outros"><span class="icon">⚑</span><span><strong>OUTROS STATUS</strong><small>Situações da SAE ainda não mapeadas nos grupos acima.</small></span><b class="vx-elx-group-count">${outrosCount}</b></button>`:'';
+    // Achado do usuário em 2026-09-02: "Outros Status" era condicional
+    // (só aparecia com contagem > 0), diferente dos outros 8 grupos
+    // (sempre visíveis, mesmo em 0) -- depois de unificar com "Outros
+    // Atendimentos" (removido do GROUPS acima), isso fazia parecer que
+    // os DOIS cards tinham sumido sempre que a contagem zerava.
+    // Agora sempre visível, igual aos demais 8.
+    const outrosCard=`<button type="button" class="module-action-card gray" data-group="outros"><span class="icon">⚑</span><span><strong>OUTROS STATUS</strong><small>Situações da SAE ainda não mapeadas nos grupos acima.</small></span><b class="vx-elx-group-count">${outrosCount}</b></button>`;
 
     app.innerHTML=`<div class="module-home">
       <div class="module-home-head">
