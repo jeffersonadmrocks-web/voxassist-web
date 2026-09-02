@@ -172,9 +172,13 @@ create policy "bonus_campaigns_insert_gestor" on public.bonus_campaigns for INSE
     and (store_id is null or user_has_store_access(store_id))
     and created_by = auth.uid()
   );
+-- Mesmo achado da revisão de 2026-09-01 em goal_targets: fechar
+-- campanha exige acesso à loja dela especificamente (store_id NULL =
+-- campanha de empresa, liberado pra qualquer GESTOR; store_id
+-- preenchido exige user_has_store_access daquela loja).
 create policy "bonus_campaigns_close_gestor" on public.bonus_campaigns for UPDATE to authenticated
-  using (company_id = current_company_id() and current_company_role() = 'GESTOR')
-  with check (company_id = current_company_id() and current_company_role() = 'GESTOR');
+  using (company_id = current_company_id() and current_company_role() = 'GESTOR' and (store_id is null or user_has_store_access(store_id)))
+  with check (company_id = current_company_id() and current_company_role() = 'GESTOR' and (store_id is null or user_has_store_access(store_id)));
 
 alter table public.bonus_rules enable row level security;
 -- Mesma regra de visibilidade de goal_targets (Fase 2): loja é
@@ -198,13 +202,17 @@ create policy "bonus_rules_insert_gestor" on public.bonus_rules for INSERT to au
     and (store_id is null or user_has_store_access(store_id))
     and created_by = auth.uid()
   );
+-- Mesmo achado da revisão de 2026-09-01 em goal_targets: fechar
+-- regra exige acesso à loja dela especificamente (store_id NULL =
+-- regra de empresa, liberado pra qualquer GESTOR; store_id
+-- preenchido exige user_has_store_access daquela loja).
 create policy "bonus_rules_close_gestor" on public.bonus_rules for UPDATE to authenticated
-  using (company_id = current_company_id() and current_company_role() = 'GESTOR')
-  with check (company_id = current_company_id() and current_company_role() = 'GESTOR');
+  using (company_id = current_company_id() and current_company_role() = 'GESTOR' and (store_id is null or user_has_store_access(store_id)))
+  with check (company_id = current_company_id() and current_company_role() = 'GESTOR' and (store_id is null or user_has_store_access(store_id)));
 
 -- Sem policy de DELETE em nenhuma das duas tabelas.
 
 comment on table public.bonus_campaigns is
   'Agrupamento temporário de bonus_rules (campaign_id) -- não é uma segunda arquitetura de bonificação, só uma vigência própria pra um conjunto de regras. Versionada como goal_targets: sem UPDATE retroativo.';
 comment on table public.bonus_rules is
-  'Regra de bonificação configurável (indicador, peso, faixas de atingimento em tier_rules, público elegível). store_id nullable (regra pode valer pra empresa toda); goal_targets.store_id é sempre obrigatório porque meta é física por loja. Versionada: sem UPDATE retroativo.';
+  'Regra de bonificação configurável (indicador, peso, faixas de atingimento em tier_rules, público elegível). store_id nullable = regra vale pra empresa toda (escopo da REGRA, confirmado sem mudança na revisão de 2026-09-01) -- não confundir com o NULL de user_store_access.store_id (escopo de ACESSO de um usuário, introduzido na mesma revisão). goal_targets.store_id é sempre obrigatório porque meta é física por loja. Versionada: sem UPDATE retroativo.';

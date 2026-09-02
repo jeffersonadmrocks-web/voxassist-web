@@ -125,10 +125,13 @@ create policy "goal_targets_insert_gestor" on public.goal_targets for INSERT to 
   );
 
 -- UPDATE só serve pra fechar vigência (o trigger acima trava o resto)
--- -- ainda assim restrito a GESTOR, nunca a quem só visualiza.
+-- -- restrito a GESTOR COM acesso àquela loja especificamente (não
+-- basta ser GESTOR da empresa -- achado na revisão de 2026-09-01: sem
+-- checar user_has_store_access aqui, um GESTOR vinculado só à Serra
+-- conseguiria fechar a vigência de uma meta da Vitória).
 create policy "goal_targets_close_gestor" on public.goal_targets for UPDATE to authenticated
-  using (company_id = current_company_id() and current_company_role() = 'GESTOR')
-  with check (company_id = current_company_id() and current_company_role() = 'GESTOR');
+  using (company_id = current_company_id() and current_company_role() = 'GESTOR' and user_has_store_access(store_id))
+  with check (company_id = current_company_id() and current_company_role() = 'GESTOR' and user_has_store_access(store_id));
 
 -- Sem policy de DELETE -- meta vigente nunca é apagada, só fechada.
 
