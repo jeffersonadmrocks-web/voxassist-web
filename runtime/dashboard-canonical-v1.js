@@ -91,7 +91,10 @@
       // já restringe cada linha ao que esta pessoa pode ver -- o filtro
       // abaixo só decide qual dessas linhas já visíveis é A DELA.
       source('Metas',`goal_targets?select=*&status=eq.ATIVA&valid_to=is.null`,[]),
-      source('Regras de bonificação',`bonus_rules?select=*&status=eq.ATIVA&valid_to=is.null`,[])
+      source('Regras de bonificação',`bonus_rules?select=*&status=eq.ATIVA&valid_to=is.null`,[]),
+      // Correção pós-auditoria P1-2: precisa da própria campanha (não só
+      // da regra) pra confirmar vigência antes de somar bônus de campanha.
+      source('Campanhas',`bonus_campaigns?select=*&status=eq.ATIVA&valid_to=is.null`,[])
     ]);
     const by=Object.fromEntries(results.map(r=>[r.label,r]));
     const orders=scope(safe(by['Ordens'].data)), active=orders.filter(isOpen);
@@ -119,15 +122,38 @@
     // da loja, filtradas manualmente por técnico, senão uma meta de
     // EQUIPE/LOJA nunca bateria com o realizado de outra pessoa.
     const allOrders=safe(by['Ordens'].data);
-    function realizadoIndicador(code,userId){
-      const rows=allOrders.filter(o=>!userId||o.technician_id===userId);
+    const myId=me(), myRole=role(), myStoreId=state?.profile?.store_id;
+    // Atribuição real por papel (correção pós-auditoria P1-5):
+    // technician_id pra TECNICO, attendant_id pra ATENDENTE -- pra
+    // qualquer outro papel (GESTOR/ESTOQUE/FINANCEIRO) não existe campo
+    // real de atribuição de OS hoje. realizadoIndicador devolve null
+    // (NÃO CALCULÁVEL) nesse caso, nunca 0 nem herda technician_id.
+    const myAttrField=window.vxProductivityCalc?.attributionFieldForRole(myRole);
+    // periodStart/periodEnd: usa o período PRÓPRIO da meta/regra sendo
+    // avaliada pra VALOR_RECEBIDO -- nunca assume mês corrente pra todo
+    // mundo (correção pós-auditoria P1-1). Sem período informado, cai no
+    // mês corrente (retrato solto, não vinculado a meta/regra nenhuma).
+    function realizadoIndicador(code,userId,{periodStart,periodEnd}={}){
+      if(userId&&!myAttrField)return null;
+      const field=myAttrField||'technician_id';
+      const rows=allOrders.filter(o=>!userId||o[field]===userId);
       if(code==='OS_ATRIBUIDAS')return rows.filter(isOpen).length;
       if(code==='OS_FINALIZADAS')return rows.filter(o=>['PRONTO PARA ENTREGA','FINALIZADA'].includes(norm(o.status))).length;
-      if(code==='APROVEITAMENTO_PCT'){const a=realizadoIndicador('OS_ATRIBUIDAS',userId),f=realizadoIndicador('OS_FINALIZADAS',userId),t=a+f;return t?Math.round((f/t)*10000)/100:0}
-      if(code==='VALOR_RECEBIDO'){const ids=new Set(rows.map(o=>String(o.id)));return validPayments.filter(p=>ids.has(String(p.service_order_id))&&new Date(p.paid_at)>=month0).reduce((s,p)=>s+Number(p.amount||0),0)}
+      if(code==='APROVEITAMENTO_PCT'){const a=realizadoIndicador('OS_ATRIBUIDAS',userId)||0,f=realizadoIndicador('OS_FINALIZADAS',userId)||0,t=a+f;return t?Math.round((f/t)*10000)/100:0}
+      if(code==='VALOR_RECEBIDO'){
+        const ids=new Set(rows.map(o=>String(o.id)));
+        const from=periodStart?new Date(periodStart+'T00:00:00'):month0;
+        const to=periodEnd?new Date(periodEnd+'T23:59:59'):null;
+        return validPayments.filter(p=>{
+          if(!ids.has(String(p.service_order_id)))return false;
+          const paidAt=new Date(p.paid_at);
+          if(paidAt<from)return false;
+          if(to&&paidAt>to)return false;
+          return true;
+        }).reduce((s,p)=>s+Number(p.amount||0),0);
+      }
       return 0;
     }
-    const myId=me(), myRole=role(), myStoreId=state?.profile?.store_id;
     function applicableTo(rows,{scopeField,roleField,userField}){
       return safe(rows).filter(g=>{
         if(String(g.store_id)!==String(myStoreId)&&g.store_id)return false;
@@ -136,23 +162,39 @@
         return g[scopeField]==='LOJA';
       });
     }
-    const myGoalCandidates=applicableTo(by['Metas']?.data,{scopeField:'scope_type',roleField:'scope_role',userField:'scope_user_id'}).filter(g=>g.indicator_code==='OS_FINALIZADAS');
-    const myGoal=window.vxProductivityCalc?.resolveApplicableGoal(myGoalCandidates)||myGoalCandidates[0]||null;
+    // Meta futura/encerrada nunca conta como "aplicável agora", mesmo
+    // com status=ATIVA/valid_to=null (correção pós-auditoria P1-1).
+    function resolveVigenteGoal(indicatorCode,refDate){
+      const candidates=applicableTo(by['Metas']?.data,{scopeField:'scope_type',roleField:'scope_role',userField:'scope_user_id'}).filter(g=>g.indicator_code===indicatorCode);
+      const vigentes=window.vxProductivityCalc?candidates.filter(g=>window.vxProductivityCalc.isWithinPeriod(g,refDate||new Date())):candidates;
+      return window.vxProductivityCalc?.resolveApplicableGoal(vigentes)||vigentes[0]||null;
+    }
+    const myGoal=resolveVigenteGoal('OS_FINALIZADAS');
     const myGoalRealizado=realizadoIndicador('OS_FINALIZADAS',myId);
-    const myGoalPct=myGoal&&window.vxProductivityCalc?window.vxProductivityCalc.pct(myGoalRealizado,myGoal.target_value):null;
+    const myGoalPct=(myGoalRealizado!=null&&myGoal&&window.vxProductivityCalc)?window.vxProductivityCalc.pct(myGoalRealizado,myGoal.target_value):null;
+    // Bonificação de campanha é ADITIVA à regra padrão, nunca substitui
+    // (correção pós-auditoria P1-2) -- computeBonusBreakdown devolve a
+    // composição rastreável, nunca um total opaco só.
     const myRules=applicableTo(by['Regras de bonificação']?.data,{scopeField:'eligible_scope_type',roleField:'eligible_role',userField:'eligible_user_id'});
-    let myBonusEstimate=null;
-    if(myRules.length&&window.vxProductivityCalc){
-      let total=0,any=false;
-      myRules.forEach(r=>{
-        const realizado=realizadoIndicador(r.indicator_code,myId);
-        const goalCandidates=applicableTo(by['Metas']?.data,{scopeField:'scope_type',roleField:'scope_role',userField:'scope_user_id'}).filter(g=>g.indicator_code===r.indicator_code);
-        const goal=window.vxProductivityCalc.resolveApplicableGoal(goalCandidates);
-        const pctVal=goal?window.vxProductivityCalc.pct(realizado,goal.target_value):null;
-        const tier=window.vxProductivityCalc.findBonusTier(r.tier_rules,pctVal);
-        if(tier){any=true;const base=r.indicator_code==='VALOR_RECEBIDO'?realizado:realizadoIndicador('VALOR_RECEBIDO',myId);total+=window.vxProductivityCalc.computeBonusAmount(tier,r.weight,base)}
+    let myBonusBreakdown=null;
+    if(myId&&myAttrField&&myRules.length&&window.vxProductivityCalc){
+      const campaignsById=new Map(safe(by['Campanhas']?.data).map(c=>[String(c.id),c]));
+      const breakdown=window.vxProductivityCalc.computeBonusBreakdown({
+        rules:myRules,
+        campaignsById,
+        refDate:new Date(),
+        realizadoFn:(code,rule)=>realizadoIndicador(code,myId,{periodStart:rule?.period_start,periodEnd:rule?.period_end}),
+        goalFn:(code,rule)=>resolveVigenteGoal(code,rule?.period_start),
       });
-      if(any)myBonusEstimate=total;
+      if(breakdown.hasAny)myBonusBreakdown=breakdown;
+    }
+    const myBonusEstimate=myBonusBreakdown?myBonusBreakdown.grandTotal:null;
+    function bonusSummaryLine(breakdown){
+      if(!breakdown)return'';
+      const parts=[];
+      if(breakdown.defaultAmount>0)parts.push(`Padrão ${M(breakdown.defaultAmount)}`);
+      breakdown.campaignBreakdown.forEach(c=>{if(c.amount>0)parts.push(`Campanha ${E(c.campaign?.name||'—')} ${M(c.amount)}`)});
+      return parts.join(' + ');
     }
     const drills={active,analysis,approval,repair,ready,overdue:[...overdueAnalysis,...overdueApproval,...overdueRepair],noTech,urgent};
     const stores=safe(by['Lojas'].data);
@@ -167,7 +209,7 @@
       <div class="vx-c-grid"><section><div class="vx-c-title"><h3>Radar de Gestão</h3><small>falhas e oportunidades acionáveis</small></div>${item('OS acima do prazo',`${overdueAnalysis.length} análise • ${overdueApproval.length} aprovação • ${overdueRepair.length} conserto`,String(overdueAnalysis.length+overdueApproval.length+overdueRepair.length))}${item('OS sem técnico definido','Risco de fila sem responsável',String(noTech.length))}${item('OS urgentes','Prioridades declaradas na operação',String(urgent.length))}${item('Aparelhos prontos','Oportunidade de contato para retirada',String(ready.length))}<div class="vx-c-actions"><button data-drill="overdue">Ver atrasos</button><button data-drill="noTech">Ver sem técnico</button><button data-drill="urgent">Ver urgentes</button></div></section>
       <section><div class="vx-c-title"><h3>Hoje</h3><small>trabalho e compromissos</small></div>${item('Agenda',apps.length+' compromisso'+(apps.length===1?'':'s'))}${item('Tarefas pendentes',tasks.length+' atividade'+(tasks.length===1?'':'s'))}${item('Casos de atenção',cases.length+' caso'+(cases.length===1?'':'s'))}${item('Pedidos de peças',parts.length+' pendente'+(parts.length===1?'':'s'))}</section></div>
       <div class="vx-c-grid"><section><div class="vx-c-title"><h3>Resumo Financeiro</h3><small>somente pagamentos registrados</small></div><div class="vx-c-fin"><div><span>Recebido hoje</span><b>${M(receivedToday)}</b></div><div><span>Recebido no mês</span><b>${M(receivedMonth)}</b></div><div><span>Valor em prontos</span><b>${M(readyValue)}</b></div></div></section>
-      <section><div class="vx-c-title"><h3>Metas e Bonificação</h3><a href="#" id="vxMetasVerDetalhes">Ver detalhes</a></div>${myGoal||myBonusEstimate!=null?`<div class="vx-c-fin"><div><span>OS Finalizadas (Mês)</span><b>${myGoalRealizado}${myGoal?' / '+myGoal.target_value:''}</b>${myGoalPct!=null?`<small>${myGoalPct}% ${myGoalPct>=100?'':'-- faltam '+(myGoal.target_value-myGoalRealizado)}</small>`:''}</div><div><span>Bonificação estimada</span><b>${myBonusEstimate!=null?M(myBonusEstimate):'—'}</b></div></div>`:'<div class="vx-c-empty">Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</div>'}</section></div>
+      <section><div class="vx-c-title"><h3>Metas e Bonificação</h3><a href="#" id="vxMetasVerDetalhes">Ver detalhes</a></div>${myGoal||myBonusEstimate!=null?`<div class="vx-c-fin"><div><span>OS Finalizadas${myGoal?` (${myGoal.period_start}—${myGoal.period_end})`:' (Mês)'}</span><b>${myGoalRealizado==null?'Não calculável':`${myGoalRealizado}${myGoal?' / '+myGoal.target_value:''}`}</b>${myGoalPct!=null?`<small>${myGoalPct}% ${myGoalPct>=100?'':'-- faltam '+(myGoal.target_value-myGoalRealizado)}</small>`:''}</div><div><span>Bonificação estimada</span><b>${myBonusEstimate!=null?M(myBonusEstimate):'—'}</b>${myBonusBreakdown&&myBonusBreakdown.campaignBreakdown.length?`<small>${E(bonusSummaryLine(myBonusBreakdown))}</small>`:''}</div></div>`:'<div class="vx-c-empty">Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</div>'}</section></div>
       ${role()==='GESTOR'?`<div class="vx-c-grid vx-c-grid-1"><section><div class="vx-c-title"><h3>Produtividade</h3><small>prontos × entregues, por loja/grupo/técnico</small></div><div class="vx-c-prod-grid">${prodSubBlock('ready','APARELHOS PRONTOS',stores,techs,groups)}${prodSubBlock('delivered','APARELHOS ENTREGUES',stores,techs,groups)}</div></section></div>`:''}
       ${discovery()}
     </div>`;
