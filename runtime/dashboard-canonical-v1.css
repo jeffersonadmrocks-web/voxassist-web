@@ -11,6 +11,14 @@
   --vx-navy-hero:#123f66;--vx-navy-hero-deep:#0a2c4a;
   --vx-bg:#eef1f6;--vx-surface:#fff;--vx-border:#dde3ec;
   --vx-text:#0f2740;--vx-muted:#63758a;
+  /* Achado do usuário em 2026-09-02 (pacote fila/robô/presença,
+     refinamento SOMENTE visual): "excesso de cinza, branco e
+     azul-claro, com pouco contraste" persistia mesmo após o ajuste
+     anterior (6edf327) -- só tokens, nenhum dado/estrutura/regra
+     tocado. Borda um pouco mais definida + sombra de repouso nos
+     cards dão profundidade sem escurecer a tela. */
+  --vx-border-strong:#c3ccd9;
+  --vx-card-shadow:0 1px 3px rgba(8,40,68,.06),0 1px 2px rgba(8,40,68,.04);
   --vx-warn:#b8590a;--vx-warn-bg:#fdf0e3;
   --vx-risk:#a3231f;--vx-risk-bg:#fbeaea;
   --vx-ok:#1f7a3d;--vx-ok-bg:#e6f4ea;
@@ -29,7 +37,7 @@
 .vx-c-hero p{margin:4px 0 0;color:#b7cbe0;font-size:11px}
 .vx-c-hero-date{font-size:11px;color:#cfe0f0;text-transform:capitalize;white-space:nowrap;background:rgba(255,255,255,.08);padding:6px 12px;border-radius:999px}
 
-.vx-c-title{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:8px}
+.vx-c-title{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--vx-border);gap:8px}
 .vx-c-title h3{margin:0;color:var(--vx-navy);font-size:12.5px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;display:flex;align-items:center;gap:6px}
 .vx-c-title a{font-size:10.5px;color:var(--vx-info);font-weight:700;text-decoration:none;white-space:nowrap}
 .vx-c-title a:hover{text-decoration:underline}
@@ -38,7 +46,7 @@
 
 /* ---------- KPI row (7 cards) ---------- */
 .vx-c-kpirow{display:grid;grid-template-columns:repeat(7,1fr);gap:9px}
-.vx-c-kpi{border:1px solid var(--vx-border);background:var(--vx-surface);border-radius:11px;padding:11px 10px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:3px;min-width:0}
+.vx-c-kpi{border:1px solid var(--vx-border-strong);background:var(--vx-surface);border-radius:11px;padding:11px 10px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:3px;min-width:0;box-shadow:var(--vx-card-shadow)}
 .vx-c-kpi:hover{box-shadow:0 6px 14px rgba(8,40,68,.1)}
 .vx-c-kpi-icon{font-size:13px}
 .vx-c-kpi-label{font-size:9.5px;font-weight:800;color:var(--vx-muted);text-transform:uppercase;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -48,7 +56,7 @@
 /* ---------- generic 2/3-col grid ---------- */
 .vx-c-grid-2{display:grid;grid-template-columns:1.3fr 1fr;gap:12px}
 .vx-c-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.vx-c-grid-2>section,.vx-c-grid-3>section{background:var(--vx-surface);border:1px solid var(--vx-border);border-top:3px solid var(--vx-border);border-radius:14px;padding:14px 16px}
+.vx-c-grid-2>section,.vx-c-grid-3>section{background:var(--vx-surface);border:1px solid var(--vx-border-strong);border-top:3px solid var(--vx-border);border-radius:14px;padding:14px 16px;box-shadow:var(--vx-card-shadow)}
 /* Achado do usuário em 2026-09-02: "do meio pra baixo tudo volta a
    ficar muito branco/cinza e semelhante" -- pequeno tratamento de
    cabeçalho (tarja de cor + ícone, já digitado no título em
@@ -79,7 +87,7 @@
 .vx-c-opp-row b{font-weight:800;color:var(--vx-navy)}
 
 /* ---------- Gestão Visual (barras de aging) ---------- */
-.vx-c-gv-card{background:var(--vx-surface);border:1px solid var(--vx-border);border-radius:14px;padding:14px 16px}
+.vx-c-gv-card{background:var(--vx-surface);border:1px solid var(--vx-border-strong);border-radius:14px;padding:14px 16px;box-shadow:var(--vx-card-shadow)}
 .vx-c-gv-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .vx-c-gv-panel{border:1px solid var(--vx-border);border-radius:11px;padding:11px}
 .vx-c-gv-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
@@ -148,7 +156,7 @@ button.vx-c-icon-row:disabled{cursor:default;opacity:1}
 .vx-c-fin-grid small.err{color:var(--vx-risk)}
 
 /* ---------- Minha Agenda / Agenda dos Técnicos -- 5 dias ---------- */
-.vx-c-agenda5-card{background:var(--vx-surface);border:1px solid var(--vx-border);border-radius:14px;padding:14px 16px}
+.vx-c-agenda5-card{background:var(--vx-surface);border:1px solid var(--vx-border-strong);border-radius:14px;padding:14px 16px;box-shadow:var(--vx-card-shadow)}
 /* Achado do usuário em 2026-09-02: pra GESTOR/ATENDENTE o card vira
    "Agenda dos Técnicos", com navegação entre técnicos. */
 .vx-c-agenda5-tech-nav{display:flex;align-items:center;gap:8px;margin:-4px 0 12px}

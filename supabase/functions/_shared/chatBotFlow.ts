@@ -24,12 +24,18 @@ export type StepCondition = {
   dependsOnValue: string;
 };
 
+// Achado do usuário em 2026-09-02 (pacote fila/robô/presença):
+// destino de uma regra de roteamento deixou de ser um atendente
+// individual e passou a ser uma FILA DE ATENDIMENTO (chat_queues) --
+// permite trocar quem está na fila sem republicar o robô, e todo
+// integrante autorizado enxerga a conversa enquanto não atribuída
+// (ver RLS em chat_conversations, migration chat_queues).
 export type RoutingRule = {
   id: string;
   storeId: string | null;
   warrantyValue: string | null;
   brandValue: string | null;
-  targetAttendantId: string;
+  targetQueueId: string;
   specificity: number;
 };
 

@@ -26,14 +26,24 @@
   const OPEN_STATUSES=['ABERTA','EM_ATENDIMENTO','AGUARDANDO_CLIENTE'];
 
   let mon={loaded:false,conversations:[],transferEvents:[],botStates:[],failedMessages:[],attendants:[],connections:[],presence:[],sla:null,period:'HOJE',selectedAttendantId:null,metricAttendantFilter:''};
-  // Achado do usuário em 2026-09-02: "online" é calculado no cliente a
-  // partir do último heartbeat (presence-heartbeat-v1.js, a cada 30s) --
-  // 2 min de folga cobre uma perda de ping sem piscar o indicador à toa.
-  const ONLINE_THRESHOLD_MS=120000;
-  function isOnline(userId){
+  // Achado do usuário em 2026-09-02 (pacote fila/robô/presença):
+  // presença binária (online/offline por 2min) não bastava -- agora 3
+  // estados com limiares próprios: ONLINE (<10min de heartbeat),
+  // AUSENTE (10-20min), OFFLINE (>20min OU logout explícito mais
+  // recente que o último heartbeat -- ver user-logoff-v0813.js).
+  // Qualquer heartbeat novo volta pra ONLINE na hora (presence-
+  // heartbeat-v1.js zera logged_out_at a cada ping).
+  const PRESENCE_ONLINE_MIN=10,PRESENCE_AUSENTE_MIN=20;
+  function presenceStatus(userId){
     const p=mon.presence.find(x=>String(x.user_id)===String(userId));
-    return !!p&&(Date.now()-new Date(p.last_seen_at).getTime())<ONLINE_THRESHOLD_MS;
+    if(!p)return'OFFLINE';
+    if(p.logged_out_at&&new Date(p.logged_out_at).getTime()>=new Date(p.last_seen_at).getTime())return'OFFLINE';
+    const mins=(Date.now()-new Date(p.last_seen_at).getTime())/60000;
+    if(mins<PRESENCE_ONLINE_MIN)return'ONLINE';
+    if(mins<PRESENCE_AUSENTE_MIN)return'AUSENTE';
+    return'OFFLINE';
   }
+  const PRESENCE_LABEL={ONLINE:'Online',AUSENTE:'Ausente',OFFLINE:'Offline'};
 
   function periodCutoff(){
     const d=new Date();
@@ -52,7 +62,7 @@
       api('profiles?select=id,full_name,role&active=eq.true&role=in.(GESTOR,ATENDENTE)&order=full_name').catch(()=>[]),
       api('chat_connections?select=id,name,status').catch(()=>[]),
       api('chat_sla_settings?select=*&limit=1').catch(()=>[]),
-      api('user_presence?select=user_id,last_seen_at').catch(()=>[]),
+      api('user_presence?select=user_id,last_seen_at,logged_out_at').catch(()=>[]),
     ]);
     mon={loaded:true,conversations:conversations||[],transferEvents:transferEvents||[],botStates:botStates||[],failedMessages:failedMessages||[],attendants:attendants||[],connections:connections||[],presence:presence||[],sla:(sla&&sla[0])||null,period:mon.period,selectedAttendantId:mon.selectedAttendantId,metricAttendantFilter:mon.metricAttendantFilter};
   }
@@ -166,13 +176,17 @@
       ['Em aberto',m.abertas.length,()=>convModal('Em aberto',m.abertas)],
       ['Encerradas',m.encerradas.length,()=>convModal('Encerradas',m.encerradas)],
       ['Não atribuídas',m.naoAtribuidas.length,()=>convModal('Não atribuídas',m.naoAtribuidas)],
-      [`SLA vencido (≥${slaAttentionLimit()}min)`,m.slaVencido.length,()=>convModal('SLA vencido',m.slaVencido)],
-      ['Retornos vencidos',m.retornosVencidos.length,()=>convModal('Retornos vencidos',m.retornosVencidos)],
+      [`SLA vencido (≥${slaAttentionLimit()}min)`,m.slaVencido.length,()=>convModal('SLA vencido',m.slaVencido),true],
+      ['Retornos vencidos',m.retornosVencidos.length,()=>convModal('Retornos vencidos',m.retornosVencidos),true],
       ['Transferências',m.transferidas.length,()=>transferModal(m.transferidas)],
       ['Caíram no fallback do robô',m.fallback.length,null],
-      ['Falhas de envio',m.falhas.length,()=>failedModal(m.falhas)],
+      ['Falhas de envio',m.falhas.length,()=>failedModal(m.falhas),true],
     ];
-    return `<div class="vx-mon-metrics">${cards.map((c,i)=>`<button type="button" class="vx-mon-kpi" data-kpi="${i}" ${c[2]?'':'disabled'}><span>${E(c[0])}</span><b>${c[1]}</b></button>`).join('')}</div>`;
+    // Achado do usuário em 2026-09-02 (referência visual aprovada):
+    // hierarquia dos KPIs -- os que sinalizam problema (marcados acima)
+    // ganham destaque quando têm contagem > 0, mesmos números de
+    // sempre, só apresentação diferente.
+    return `<div class="vx-mon-metrics">${cards.map((c,i)=>`<button type="button" class="vx-mon-kpi ${c[3]&&c[1]>0?'vx-mon-kpi-warn':''}" data-kpi="${i}" ${c[2]?'':'disabled'}><span>${E(c[0])}</span><b>${c[1]}</b></button>`).join('')}</div>`;
   }
   function slaCard(){
     const s=mon.sla||{};
@@ -209,7 +223,7 @@
     return `<div class="vx-mon-card">
       <h3>Atendentes</h3>
       <table class="vx-mon-table"><thead><tr><th></th><th>Atendente</th><th>Em aberto</th><th>Encerradas</th><th>Total</th></tr></thead>
-      <tbody>${rows.length?rows.map(r=>`<tr data-attendant="${E(r.a.id)}" class="${String(mon.selectedAttendantId)===String(r.a.id)?'active':''}"><td><span class="vx-mon-presence-dot ${isOnline(r.a.id)?'online':'offline'}" title="${isOnline(r.a.id)?'Online':'Offline'}"></span></td><td>${E(r.a.full_name)}</td><td>${r.open.length}</td><td>${r.closed.length}</td><td>${r.total.length}</td></tr>`).join(''):'<tr><td colspan="5" class="vx-mon-empty">Nenhum atendente ativo.</td></tr>'}</tbody></table>
+      <tbody>${rows.length?rows.map(r=>{const st=presenceStatus(r.a.id);return `<tr data-attendant="${E(r.a.id)}" class="${String(mon.selectedAttendantId)===String(r.a.id)?'active':''}"><td><span class="vx-mon-presence-dot ${st.toLowerCase()}" title="${PRESENCE_LABEL[st]}"></span></td><td>${E(r.a.full_name)}</td><td>${r.open.length}</td><td>${r.closed.length}</td><td>${r.total.length}</td></tr>`;}).join(''):'<tr><td colspan="5" class="vx-mon-empty">Nenhum atendente ativo.</td></tr>'}</tbody></table>
     </div>`;
   }
   function attendantDetailCard(){

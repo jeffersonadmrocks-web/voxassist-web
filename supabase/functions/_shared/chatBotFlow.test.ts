@@ -180,31 +180,31 @@ Deno.test("collectRoutingDimensions - dimensão sem resposta ainda fica null", (
 });
 
 function rule(overrides: Partial<RoutingRule>): RoutingRule {
-  return { id: "r1", storeId: null, warrantyValue: null, brandValue: null, targetAttendantId: "u1", specificity: 1, ...overrides };
+  return { id: "r1", storeId: null, warrantyValue: null, brandValue: null, targetQueueId: "u1", specificity: 1, ...overrides };
 }
 
 Deno.test("matchRoutingRules - regra mais específica vence (loja+garantia+marca > loja+garantia > loja)", () => {
   const rules: RoutingRule[] = [
-    rule({ id: "geral-serra", storeId: "store-serra", specificity: 1, targetAttendantId: "fila-serra" }),
-    rule({ id: "serra-garantia", storeId: "store-serra", warrantyValue: "EM GARANTIA", specificity: 2, targetAttendantId: "bruno" }),
-    rule({ id: "serra-garantia-electrolux", storeId: "store-serra", warrantyValue: "EM GARANTIA", brandValue: "ELECTROLUX", specificity: 3, targetAttendantId: "ana" }),
+    rule({ id: "geral-serra", storeId: "store-serra", specificity: 1, targetQueueId: "fila-serra" }),
+    rule({ id: "serra-garantia", storeId: "store-serra", warrantyValue: "EM GARANTIA", specificity: 2, targetQueueId: "bruno" }),
+    rule({ id: "serra-garantia-electrolux", storeId: "store-serra", warrantyValue: "EM GARANTIA", brandValue: "ELECTROLUX", specificity: 3, targetQueueId: "ana" }),
   ];
   const matched = matchRoutingRules(rules, { store: "store-serra", warranty: "Em garantia", brand: "Electrolux" });
-  assertEquals(matched?.targetAttendantId, "ana");
+  assertEquals(matched?.targetQueueId, "ana");
 });
 Deno.test("matchRoutingRules - marca diferente cai pra regra menos específica que ainda bate", () => {
   const rules: RoutingRule[] = [
-    rule({ id: "geral-serra", storeId: "store-serra", specificity: 1, targetAttendantId: "fila-serra" }),
-    rule({ id: "serra-garantia", storeId: "store-serra", warrantyValue: "EM GARANTIA", specificity: 2, targetAttendantId: "bruno" }),
-    rule({ id: "serra-garantia-electrolux", storeId: "store-serra", warrantyValue: "EM GARANTIA", brandValue: "ELECTROLUX", specificity: 3, targetAttendantId: "ana" }),
+    rule({ id: "geral-serra", storeId: "store-serra", specificity: 1, targetQueueId: "fila-serra" }),
+    rule({ id: "serra-garantia", storeId: "store-serra", warrantyValue: "EM GARANTIA", specificity: 2, targetQueueId: "bruno" }),
+    rule({ id: "serra-garantia-electrolux", storeId: "store-serra", warrantyValue: "EM GARANTIA", brandValue: "ELECTROLUX", specificity: 3, targetQueueId: "ana" }),
   ];
   const matched = matchRoutingRules(rules, { store: "store-serra", warranty: "Em garantia", brand: "LG" });
-  assertEquals(matched?.targetAttendantId, "bruno");
+  assertEquals(matched?.targetQueueId, "bruno");
 });
 Deno.test("matchRoutingRules - normaliza maiúsculo/minúsculo/espaço antes de comparar", () => {
-  const rules: RoutingRule[] = [rule({ storeId: "store-serra", brandValue: "  electrolux  ", specificity: 2, targetAttendantId: "ana" })];
+  const rules: RoutingRule[] = [rule({ storeId: "store-serra", brandValue: "  electrolux  ", specificity: 2, targetQueueId: "ana" })];
   const matched = matchRoutingRules(rules, { store: "store-serra", warranty: null, brand: "ELECTROLUX" });
-  assertEquals(matched?.targetAttendantId, "ana");
+  assertEquals(matched?.targetQueueId, "ana");
 });
 Deno.test("matchRoutingRules - nenhuma regra bate devolve null (chamador usa o atendente padrão)", () => {
   const rules: RoutingRule[] = [rule({ storeId: "store-vitoria", specificity: 1 })];

@@ -124,33 +124,34 @@ function mapRules(rows: any[]): RoutingRule[] {
     storeId: r.store_id,
     warrantyValue: r.warranty_value,
     brandValue: r.brand_value,
-    targetAttendantId: r.target_attendant_id,
+    targetQueueId: r.target_queue_id,
     specificity: r.specificity,
   }));
 }
 
-// Roteia a conversa pro atendente resolvido (regra ou padrão da
-// versão) -- faz exatamente o que "Assumir"/"Transferir loja" já
-// fazem manualmente hoje (PATCH em chat_conversations + evento em
-// chat_conversation_events), só que muda changed_by=null (foi o
-// robô, não uma pessoa) e action='BOT_ROTEOU'. Sem atendente
-// resolvido (nem regra nem padrão configurado), não força nada --
-// conversa fica como já ficaria sem robô nenhum: aberta, sem dono.
+// Achado do usuário em 2026-09-02 (pacote fila/robô/presença): uma
+// regra batida roteia pra uma FILA (current_queue_id, sem dono --
+// qualquer integrante autorizado assume), nunca mais direto pra um
+// atendente. Sem regra batendo, cai no atendente padrão da versão
+// (default_attendant_id) -- esse continua sendo um atendente
+// individual mesmo, não fila (não fazia parte do pedido). Exatamente
+// um dos dois é setado, nunca os dois -- BOT_ROTEOU registra qual.
 async function routeConversationViaBot(
   admin: SupaAdmin,
-  args: { companyId: string; conversationId: string; attendantId: string | null; storeId: string | null; matchedRuleId: string | null },
+  args: { companyId: string; conversationId: string; attendantId: string | null; queueId: string | null; storeId: string | null; matchedRuleId: string | null },
 ) {
-  if (!args.attendantId) return;
-  await admin.from("chat_conversations").update({ assigned_user_id: args.attendantId, ...(args.storeId ? { current_store_id: args.storeId } : {}) }).eq(
-    "id",
-    args.conversationId,
-  );
+  if (!args.attendantId && !args.queueId) return;
+  await admin.from("chat_conversations").update({
+    assigned_user_id: args.attendantId,
+    current_queue_id: args.queueId,
+    ...(args.storeId ? { current_store_id: args.storeId } : {}),
+  }).eq("id", args.conversationId);
   await admin.from("chat_conversation_events").insert({
     company_id: args.companyId,
     conversation_id: args.conversationId,
     action: "BOT_ROTEOU",
     previous_data: {},
-    new_data: { assigned_user_id: args.attendantId, store_id: args.storeId, matched_rule_id: args.matchedRuleId },
+    new_data: { assigned_user_id: args.attendantId, queue_id: args.queueId, store_id: args.storeId, matched_rule_id: args.matchedRuleId },
     changed_by: null,
   });
 }
@@ -172,10 +173,32 @@ Deno.serve(async (req) => {
     const senderLid = typeof body?.senderLid === "string" && body.senderLid ? body.senderLid : null;
     const text = typeof body?.body === "string" ? body.body : "";
     const externalMessageId = typeof body?.externalMessageId === "string" && body.externalMessageId ? body.externalMessageId : null;
-    if (!connectionId) return json({ ok: false, error: "missing_connection_id" }, 400);
+    if (!connectionId) {
+      // Achado do usuário em 2026-09-02 (pacote P0): nenhum dos dois
+      // 400 abaixo logava nada, então uma rejeição real nunca deixava
+      // rastro pra diagnosticar. Loga só as CHAVES recebidas (nunca
+      // valores -- podem conter telefone/nome) pra revelar se o gateway
+      // está mandando um contrato diferente do esperado.
+      console.error("[chat-inbound-webhook] 400 missing_connection_id -- chaves recebidas:", Object.keys(body ?? {}).join(","));
+      return json({ ok: false, error: "missing_connection_id" }, 400);
+    }
 
     const identity = resolveInboundIdentity({ remoteJid, senderPn, senderLid });
-    if (!identity) return json({ ok: false, error: "invalid_sender" }, 400);
+    if (!identity) {
+      // Loga a FORMA do remoteJid (presença, tamanho, domínio depois do
+      // @) sem expor os dígitos -- suficiente pra distinguir "campo
+      // ausente/nome errado" de "domínio inesperado (grupo, formato
+      // novo)" de "dígitos fora do padrão esperado", sem vazar
+      // identificador completo em log.
+      const domain = remoteJid.includes("@") ? remoteJid.split("@")[1] : (remoteJid ? "(sem @)" : "(vazio)");
+      console.error(
+        "[chat-inbound-webhook] 400 invalid_sender -- remoteJid presente:", !!remoteJid,
+        "domínio:", domain, "tamanho:", remoteJid.length,
+        "senderPn presente:", !!senderPn, "senderLid presente:", !!senderLid,
+        "chaves recebidas:", Object.keys(body ?? {}).join(","),
+      );
+      return json({ ok: false, error: "invalid_sender" }, 400);
+    }
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -218,6 +241,37 @@ Deno.serve(async (req) => {
           unread_count: Number(current?.unread_count ?? 0) + 1,
         })
         .eq("id", conversationId);
+    } else if (target.action === "REOPEN") {
+      // Achado do usuário em 2026-09-02 (pacote fila/robô/presença):
+      // cliente escreveu de novo numa conversa que já tinha sido
+      // ENCERRADA -- reabre a MESMA conversa (preserva histórico
+      // completo, nunca fragmenta em uma linha nova) e devolve pro
+      // fluxo ativo: status ABERTA, sem responsável (reentra elegível
+      // pro roteamento normal -- robô/fila compartilhada -- em vez de
+      // ficar presa a quem atendeu da última vez).
+      conversationId = target.conversationId;
+      const current = (existingRows ?? []).find((c) => c.id === conversationId);
+      lastAwaySentAt = null; // período fechado anterior não é mais relevante -- conversa está reabrindo agora
+      await admin
+        .from("chat_conversations")
+        .update({
+          status: "ABERTA",
+          assigned_user_id: null,
+          last_message_at: new Date().toISOString(),
+          last_message_preview: buildMessagePreview(text),
+          customer_phone: identity.customerPhone,
+          sender_lid: identity.senderLid,
+          unread_count: 1,
+        })
+        .eq("id", conversationId);
+      await admin.from("chat_conversation_events").insert({
+        company_id: connection.company_id,
+        conversation_id: conversationId,
+        action: "REABERTA_POR_MENSAGEM_CLIENTE",
+        previous_data: { status: current?.status ?? "FINALIZADA" },
+        new_data: { status: "ABERTA" },
+        changed_by: null,
+      });
     } else {
       const { data: created, error } = await admin
         .from("chat_conversations")
@@ -385,10 +439,15 @@ Deno.serve(async (req) => {
                 });
               }
             } else if (outcome.outcome === "RETRY_LIMIT_REACHED") {
+              // Limite de tentativas -- sem regra a considerar (cliente
+              // não terminou de responder), sempre cai no atendente
+              // padrão (nunca numa fila -- ninguém coletou loja/garantia/
+              // marca suficiente pra bater uma regra).
               await routeConversationViaBot(admin, {
                 companyId: connection.company_id,
                 conversationId,
                 attendantId: publishedFlow.default_attendant_id,
+                queueId: null,
                 storeId: null,
                 matchedRuleId: null,
               });
@@ -410,11 +469,15 @@ Deno.serve(async (req) => {
               } else {
                 const collected = collectRoutingDimensions(steps, newAnswers);
                 const matchedRule = matchRoutingRules(rules, collected);
-                const resolvedAttendantId = matchedRule?.targetAttendantId ?? publishedFlow.default_attendant_id;
+                // Regra batida -> vai pra fila (sem dono, qualquer
+                // integrante autorizado assume). Nenhuma regra bate ->
+                // atendente padrão da versão (continua individual,
+                // fora do escopo desta correção). Nunca os dois juntos.
                 await routeConversationViaBot(admin, {
                   companyId: connection.company_id,
                   conversationId,
-                  attendantId: resolvedAttendantId,
+                  attendantId: matchedRule ? null : publishedFlow.default_attendant_id,
+                  queueId: matchedRule?.targetQueueId ?? null,
                   storeId: collected.store,
                   matchedRuleId: matchedRule?.id ?? null,
                 });

@@ -23,16 +23,22 @@
   const ROUTING_DIM_LABEL={STORE:'Loja',WARRANTY:'Garantia',BRAND:'Marca','':'Nenhuma (só informativo)'};
   const WARRANTY_DEFAULTS=['FORA DE GARANTIA','GARANTIA','SEGURADORA','REINGRESSO','OUTROS'];
 
-  let bf={loaded:false,versions:[],draft:null,published:null,steps:[],conditions:[],rules:[],stores:[],profiles:[],auditEvents:[]};
+  let bf={loaded:false,versions:[],draft:null,published:null,steps:[],conditions:[],rules:[],stores:[],profiles:[],auditEvents:[],queues:[],queueMembers:[]};
 
   async function callRpc(name,params){return api(`rpc/${name}`,{method:'POST',body:JSON.stringify(params)})}
 
   async function loadAll(){
-    const [versions,stores,profiles,auditEvents]=await Promise.all([
+    const [versions,stores,profiles,auditEvents,queues,queueMembers]=await Promise.all([
       api('chat_bot_flow_versions?select=*&order=created_at.desc').catch(()=>[]),
       api('stores?select=id,name&active=eq.true&order=name').catch(()=>[]),
       api('profiles?select=id,full_name,role&active=eq.true&order=full_name').catch(()=>[]),
       api('chat_bot_flow_audit_events?select=*,changed_by_profile:profiles!chat_bot_flow_audit_events_changed_by_fkey(full_name)&order=created_at.desc&limit=100').catch(()=>[]),
+      // Achado do usuário em 2026-09-02 (pacote fila/robô/presença):
+      // destino das regras deixou de ser um atendente individual e
+      // virou uma fila de atendimento (chat_queues) -- integrantes
+      // trocam livremente (chat_queue_members) sem republicar o robô.
+      api('chat_queues?select=*&order=name').catch(()=>[]),
+      api('chat_queue_members?select=queue_id,user_id,profiles(full_name)').catch(()=>[]),
     ]);
     const draft=(versions||[]).find(v=>v.status==='RASCUNHO')||null;
     const published=(versions||[]).find(v=>v.status==='PUBLICADA')||null;
@@ -41,14 +47,45 @@
     if(editing){
       const [stepsRaw,rulesRaw]=await Promise.all([
         api(`chat_bot_flow_steps?flow_version_id=eq.${editing.id}&select=*&order=step_order.asc`).catch(()=>[]),
-        api(`chat_bot_routing_rules?flow_version_id=eq.${editing.id}&select=*,target:profiles!chat_bot_routing_rules_target_attendant_id_fkey(full_name),store:stores(name)&order=specificity.desc`).catch(()=>[]),
+        api(`chat_bot_routing_rules?flow_version_id=eq.${editing.id}&select=*,target:chat_queues!chat_bot_routing_rules_target_queue_id_fkey(name),store:stores(name)&order=specificity.desc`).catch(()=>[]),
       ]);
       steps=stepsRaw||[];
       const stepIds=steps.map(s=>s.id);
       conditions=stepIds.length?await api(`chat_bot_flow_step_conditions?step_id=in.(${stepIds.join(',')})&select=*`).catch(()=>[]):[];
       rules=rulesRaw||[];
     }
-    bf={loaded:true,versions:versions||[],draft,published,steps,conditions,rules,stores:stores||[],profiles:profiles||[],auditEvents:auditEvents||[]};
+    bf={loaded:true,versions:versions||[],draft,published,steps,conditions,rules,stores:stores||[],profiles:profiles||[],auditEvents:auditEvents||[],queues:queues||[],queueMembers:queueMembers||[]};
+  }
+
+  // ---------- CRUD de filas de atendimento ----------
+  function membersOfQueue(queueId){return bf.queueMembers.filter(m=>String(m.queue_id)===String(queueId))}
+  async function createQueue(name){
+    const trimmed=String(name||'').trim();
+    if(!trimmed){toast?.('Dê um nome pra fila (ex.: Garantia Vitória).','err');return}
+    try{
+      await api('chat_queues',{method:'POST',body:JSON.stringify({company_id:state.profile.active_company_id,name:trimmed})});
+      toast?.('Fila criada.');
+      await loadAll();renderScreen();
+    }catch(err){toast?.('Não foi possível criar a fila: '+err.message,'err')}
+  }
+  async function removeQueue(id){
+    const inUse=bf.rules.some(r=>String(r.target_queue_id)===String(id));
+    if(inUse){toast?.('Esta fila está em uso por uma regra de roteamento -- remova a regra antes.','err');return}
+    if(!confirm('Remover esta fila? Os integrantes perdem o acesso às conversas dela.'))return;
+    try{
+      await api(`chat_queues?id=eq.${id}`,{method:'DELETE'});
+      await loadAll();renderScreen();
+    }catch(err){toast?.('Não foi possível remover a fila: '+err.message,'err')}
+  }
+  async function toggleQueueMember(queueId,userId,shouldBeMember){
+    try{
+      if(shouldBeMember){
+        await api('chat_queue_members',{method:'POST',body:JSON.stringify({queue_id:queueId,user_id:userId})});
+      }else{
+        await api(`chat_queue_members?queue_id=eq.${queueId}&user_id=eq.${userId}`,{method:'DELETE'});
+      }
+      await loadAll();renderScreen();
+    }catch(err){toast?.('Não foi possível atualizar a fila: '+err.message,'err')}
   }
 
   function backToConversas(){
@@ -166,11 +203,11 @@
     const storeId=String(f.get('storeId')||'')||null;
     const warrantyValue=String(f.get('warrantyValue')||'').trim()||null;
     const brandValue=String(f.get('brandValue')||'').trim()||null;
-    const targetAttendantId=String(f.get('targetAttendantId')||'');
-    if(!targetAttendantId){toast?.('Escolha o atendente de destino.','err');return}
+    const targetQueueId=String(f.get('targetQueueId')||'');
+    if(!targetQueueId){toast?.('Escolha a fila de destino.','err');return}
     if(!storeId&&!warrantyValue&&!brandValue){toast?.('Escolha pelo menos uma dimensão (loja, garantia ou marca) -- uma regra sem nenhuma seria igual ao atendente padrão.','err');return}
     try{
-      await api('chat_bot_routing_rules',{method:'POST',body:JSON.stringify({flow_version_id:bf.draft.id,store_id:storeId,warranty_value:warrantyValue,brand_value:brandValue,target_attendant_id:targetAttendantId})});
+      await api('chat_bot_routing_rules',{method:'POST',body:JSON.stringify({flow_version_id:bf.draft.id,store_id:storeId,warranty_value:warrantyValue,brand_value:brandValue,target_queue_id:targetQueueId})});
       e.target.reset();
       await loadAll();renderScreen();
     }catch(err){toast?.('Não foi possível criar a regra: '+err.message,'err')}
@@ -294,22 +331,45 @@
     </div>`;
   }
 
-  function routingRulesCard(){
-    if(!bf.draft&&!bf.published)return'';
+  // Achado do usuário em 2026-09-02: "Filas/Equipes separadas do fluxo
+  // do robô, permitindo trocar integrantes sem republicar o robô" --
+  // gerenciada aqui, fora do rascunho/publicação (uma fila existe
+  // independente de qual versão do robô está ativa).
+  function queuesCard(){
     const attendants=bf.profiles.filter(p=>['GESTOR','ATENDENTE'].includes(norm(p.role)));
     return `<div class="vx-bf-card">
+      <h3>Filas de atendimento</h3>
+      <p class="vx-bf-sub">Equipes nomeadas (ex.: "Garantia Vitória") que recebem conversas roteadas pelo robô. Qualquer integrante autorizado vê e pode assumir uma conversa da fila enquanto ninguém mais assumiu -- trocar integrantes aqui não exige publicar o robô de novo.</p>
+      <form id="vxBfQueueForm" class="vx-bf-rule-form">
+        <input type="text" name="name" placeholder="Nome da fila (ex.: Garantia Vitória)" required>
+        <button type="submit" class="primary">+ Nova fila</button>
+      </form>
+      <div class="vx-bf-queue-list">${bf.queues.length?bf.queues.map(q=>{
+        const members=membersOfQueue(q.id);
+        const memberIds=new Set(members.map(m=>String(m.user_id)));
+        return `<div class="vx-bf-queue-row" data-queue="${E(q.id)}">
+          <div class="vx-bf-queue-head"><b>${E(q.name)}</b><span class="vx-bf-specificity-badge">${members.length} integrante${members.length===1?'':'s'}</span><button type="button" data-remove-queue="${E(q.id)}" title="Remover fila">✕</button></div>
+          <div class="vx-bf-queue-members">${attendants.map(p=>`<label class="vx-bf-toggle"><input type="checkbox" data-queue-member="${E(q.id)}" data-user="${E(p.id)}" ${memberIds.has(String(p.id))?'checked':''}> ${E(p.full_name)}</label>`).join('')||'<small>Nenhum GESTOR/ATENDENTE cadastrado.</small>'}</div>
+        </div>`;
+      }).join(''):'<p class="vx-bf-empty">Nenhuma fila criada ainda.</p>'}</div>
+    </div>`;
+  }
+
+  function routingRulesCard(){
+    if(!bf.draft&&!bf.published)return'';
+    return `<div class="vx-bf-card">
       <h3>Regras de roteamento</h3>
-      <p class="vx-bf-sub">Combina loja + garantia + marca pra decidir automaticamente qual atendente recebe a conversa. Prioridade AUTOMÁTICA por especificidade -- a regra com mais dimensões preenchidas sempre vence, sem precisar reordenar nada.</p>
-      <table class="vx-bf-table"><thead><tr><th>Loja</th><th>Garantia</th><th>Marca</th><th>Especificidade</th><th>Atendente</th>${bf.draft?'<th></th>':''}</tr></thead>
-      <tbody>${bf.rules.length?bf.rules.map(r=>`<tr><td>${E(r.store?.name||'Qualquer')}</td><td>${E(r.warranty_value||'Qualquer')}</td><td>${E(r.brand_value||'Qualquer')}</td><td><span class="vx-bf-specificity-badge">${r.specificity}</span></td><td>${E(r.target?.full_name||'—')}</td>${bf.draft?`<td><button type="button" data-remove-rule="${E(r.id)}">✕</button></td>`:''}</tr>`).join(''):`<tr><td colspan="${bf.draft?6:5}" class="vx-bf-empty">Nenhuma regra ainda.</td></tr>`}</tbody></table>
-      ${bf.draft?`<form id="vxBfRuleForm" class="vx-bf-rule-form">
+      <p class="vx-bf-sub">Combina loja + garantia + marca pra decidir automaticamente qual FILA recebe a conversa -- qualquer integrante autorizado da fila pode assumir. Prioridade AUTOMÁTICA por especificidade -- a regra com mais dimensões preenchidas sempre vence, sem precisar reordenar nada.</p>
+      <table class="vx-bf-table"><thead><tr><th>Loja</th><th>Garantia</th><th>Marca</th><th>Especificidade</th><th>Fila</th>${bf.draft?'<th></th>':''}</tr></thead>
+      <tbody>${bf.rules.length?bf.rules.map(r=>`<tr><td>${E(r.store?.name||'Qualquer')}</td><td>${E(r.warranty_value||'Qualquer')}</td><td>${E(r.brand_value||'Qualquer')}</td><td><span class="vx-bf-specificity-badge">${r.specificity}</span></td><td>${E(r.target?.name||'—')}</td>${bf.draft?`<td><button type="button" data-remove-rule="${E(r.id)}">✕</button></td>`:''}</tr>`).join(''):`<tr><td colspan="${bf.draft?6:5}" class="vx-bf-empty">Nenhuma regra ainda.</td></tr>`}</tbody></table>
+      ${bf.draft?(bf.queues.length?`<form id="vxBfRuleForm" class="vx-bf-rule-form">
         <select name="storeId"><option value="">Qualquer loja</option>${bf.stores.map(s=>`<option value="${E(s.id)}">${E(s.name)}</option>`).join('')}</select>
         <input type="text" name="warrantyValue" placeholder="Garantia (ex.: GARANTIA) -- vazio = qualquer" list="vxBfWarrantyOptions">
         <datalist id="vxBfWarrantyOptions">${WARRANTY_DEFAULTS.map(v=>`<option value="${v}">`).join('')}</datalist>
         <input type="text" name="brandValue" placeholder="Marca -- vazio = qualquer">
-        <select name="targetAttendantId" required><option value="">Atendente de destino…</option>${attendants.map(p=>`<option value="${E(p.id)}">${E(p.full_name)}</option>`).join('')}</select>
+        <select name="targetQueueId" required><option value="">Fila de destino…</option>${bf.queues.map(q=>`<option value="${E(q.id)}">${E(q.name)}</option>`).join('')}</select>
         <button type="submit" class="primary">+ Nova regra</button>
-      </form>`:''}
+      </form>`:`<p class="vx-bf-empty">Crie ao menos uma fila de atendimento (acima) antes de adicionar uma regra.</p>`):''}
       <div class="vx-bf-tester">
         <div class="vx-bf-version-history-label">Testar uma combinação</div>
         <select id="vxBfTestStore"><option value="">Loja…</option>${bf.stores.map(s=>`<option value="${E(s.id)}">${E(s.name)}</option>`).join('')}</select>
@@ -378,7 +438,7 @@
       }else{
         const storeStep=steps.find(s=>s.routing_dimension==='STORE'),warrantyStep=steps.find(s=>s.routing_dimension==='WARRANTY'),brandStep=steps.find(s=>s.routing_dimension==='BRAND');
         const matched=testRoutingCombo(storeStep?simState.answers[storeStep.step_key]||null:null,warrantyStep?simState.answers[warrantyStep.step_key]||'':'',brandStep?simState.answers[brandStep.step_key]||'':'');
-        const destino=matched?(matched.target?.full_name||'atendente'):(v.default_attendant_id?(bf.profiles.find(p=>p.id===v.default_attendant_id)?.full_name||'atendente padrão'):'nenhum atendente padrão configurado');
+        const destino=matched?`fila ${matched.target?.name||'removida'}`:(v.default_attendant_id?(bf.profiles.find(p=>p.id===v.default_attendant_id)?.full_name||'atendente padrão'):'nenhum atendente padrão configurado');
         html+=`<div class="vx-bf-sim-summary"><b>Resumo da triagem</b>${simState.history.map(h=>`<div>${E(h.question)}: <b>${E(h.answerLabel)}</b></div>`).join('')}<div class="vx-bf-sim-summary-dest">Encaminhado para: <b>${E(destino)}</b>${matched?` <small>(regra com especificidade ${matched.specificity})</small>`:''}</div></div>`;
       }
     }
@@ -471,9 +531,13 @@
       ${simulatorCard()}
       ${generalSettingsCard()}
       ${versionsCard()}
+      ${queuesCard()}
       ${routingRulesCard()}
     </div>`;
     document.getElementById('vxBfBack').onclick=backToConversas;
+    document.getElementById('vxBfQueueForm')?.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.target);createQueue(f.get('name'));});
+    document.querySelectorAll('[data-remove-queue]').forEach(btn=>btn.addEventListener('click',()=>removeQueue(btn.dataset.removeQueue)));
+    document.querySelectorAll('[data-queue-member]').forEach(chk=>chk.addEventListener('change',()=>toggleQueueMember(chk.dataset.queueMember,chk.dataset.user,chk.checked)));
     document.getElementById('vxBfWelcomeSave')?.addEventListener('click',()=>patchDraft({welcome_message:document.getElementById('vxBfWelcome').value}).then(()=>toast?.('Mensagem salva.')));
     document.getElementById('vxBfAddStep')?.addEventListener('click',addStep);
     document.getElementById('vxBfGeneralSave')?.addEventListener('click',()=>patchDraft({
@@ -498,7 +562,20 @@
       const brand=document.getElementById('vxBfTestBrand').value;
       const matched=testRoutingCombo(storeId,warranty,brand);
       const box=document.getElementById('vxBfTestResult');
-      box.textContent=matched?`Vai pra ${matched.target?.full_name||'atendente'} (regra com especificidade ${matched.specificity}).`:`Nenhuma regra bate -- usaria o atendente padrão (${bf.draft?.default_attendant_id||bf.published?.default_attendant_id?bf.profiles.find(p=>p.id===(bf.draft||bf.published).default_attendant_id)?.full_name:'nenhum configurado'}).`;
+      // Achado do usuário em 2026-09-02: "Testar uma combinação" precisa
+      // informar regra vencedora, fila destino E integrantes
+      // disponíveis (não só o nome da fila) -- só assim dá pra
+      // conferir se a fila certa tem gente de verdade nela antes de
+      // publicar.
+      if(matched){
+        const queueName=matched.target?.name||'fila removida';
+        const members=membersOfQueue(matched.target_queue_id).map(m=>m.profiles?.full_name).filter(Boolean);
+        box.innerHTML=`Regra vencedora: especificidade <b>${matched.specificity}</b>.<br>Fila destino: <b>${E(queueName)}</b>.<br>Integrantes disponíveis: ${members.length?members.map(E).join(', '):'<span class="vx-bf-sim-summary-empty">nenhum integrante nesta fila ainda -- ninguém vai ver a conversa até adicionar alguém.</span>'}`;
+      }else{
+        const v=bf.draft||bf.published;
+        const defaultName=v?.default_attendant_id?bf.profiles.find(p=>p.id===v.default_attendant_id)?.full_name:null;
+        box.textContent=`Nenhuma regra bate -- usaria o atendente padrão (${defaultName||'nenhum configurado'}).`;
+      }
     });
     document.getElementById('vxBfSimReset')?.addEventListener('click',resetSimulation);
     wireStepRows();

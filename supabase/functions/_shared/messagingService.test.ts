@@ -84,9 +84,17 @@ Deno.test("decideConversationTarget - conversa aberta existente -> REUSE", () =>
   assertEquals(r, { action: "REUSE", conversationId: "c1" });
 });
 
-Deno.test("decideConversationTarget - só existe conversa FINALIZADA -> CREATE (reabrir gera conversa nova, não reaproveita a fechada)", () => {
+Deno.test("decideConversationTarget - só existe conversa FINALIZADA -> REOPEN da mesma conversa (preserva histórico, achado do usuário 2026-09-02)", () => {
   const r = decideConversationTarget([{ id: "c1", status: "FINALIZADA" }]);
-  assertEquals(r, { action: "CREATE" });
+  assertEquals(r, { action: "REOPEN", conversationId: "c1" });
+});
+
+Deno.test("decideConversationTarget - várias FINALIZADA -> REOPEN da mais recente (primeira da lista, ordenada desc)", () => {
+  const r = decideConversationTarget([
+    { id: "mais-recente", status: "FINALIZADA" },
+    { id: "mais-antiga", status: "FINALIZADA" },
+  ]);
+  assertEquals(r, { action: "REOPEN", conversationId: "mais-recente" });
 });
 
 Deno.test("decideConversationTarget - mistura de finalizadas e uma aberta -> reaproveita a aberta", () => {
