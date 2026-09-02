@@ -25,7 +25,15 @@
   const isGestor=()=>norm(state?.profile?.role)==='GESTOR';
   const OPEN_STATUSES=['ABERTA','EM_ATENDIMENTO','AGUARDANDO_CLIENTE'];
 
-  let mon={loaded:false,conversations:[],transferEvents:[],botStates:[],failedMessages:[],attendants:[],connections:[],sla:null,period:'HOJE',selectedAttendantId:null};
+  let mon={loaded:false,conversations:[],transferEvents:[],botStates:[],failedMessages:[],attendants:[],connections:[],presence:[],sla:null,period:'HOJE',selectedAttendantId:null,metricAttendantFilter:''};
+  // Achado do usuário em 2026-09-02: "online" é calculado no cliente a
+  // partir do último heartbeat (presence-heartbeat-v1.js, a cada 30s) --
+  // 2 min de folga cobre uma perda de ping sem piscar o indicador à toa.
+  const ONLINE_THRESHOLD_MS=120000;
+  function isOnline(userId){
+    const p=mon.presence.find(x=>String(x.user_id)===String(userId));
+    return !!p&&(Date.now()-new Date(p.last_seen_at).getTime())<ONLINE_THRESHOLD_MS;
+  }
 
   function periodCutoff(){
     const d=new Date();
@@ -36,7 +44,7 @@
   function inPeriod(iso){return iso&&new Date(iso)>=periodCutoff()}
 
   async function loadAll(){
-    const [conversations,transferEvents,botStates,failedMessages,attendants,connections,sla]=await Promise.all([
+    const [conversations,transferEvents,botStates,failedMessages,attendants,connections,sla,presence]=await Promise.all([
       api('chat_conversations?select=id,customer_phone,customer_name,status,assigned_user_id,last_message_at,unread_count,next_callback_at,created_at,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name)').catch(()=>[]),
       api('chat_conversation_events?action=eq.TRANSFER&select=conversation_id,created_at&order=created_at.desc').catch(()=>[]),
       api('chat_conversation_bot_state?select=conversation_id,status').catch(()=>[]),
@@ -44,8 +52,9 @@
       api('profiles?select=id,full_name,role&active=eq.true&role=in.(GESTOR,ATENDENTE)&order=full_name').catch(()=>[]),
       api('chat_connections?select=id,name,status').catch(()=>[]),
       api('chat_sla_settings?select=*&limit=1').catch(()=>[]),
+      api('user_presence?select=user_id,last_seen_at').catch(()=>[]),
     ]);
-    mon={loaded:true,conversations:conversations||[],transferEvents:transferEvents||[],botStates:botStates||[],failedMessages:failedMessages||[],attendants:attendants||[],connections:connections||[],sla:(sla&&sla[0])||null,period:mon.period,selectedAttendantId:mon.selectedAttendantId};
+    mon={loaded:true,conversations:conversations||[],transferEvents:transferEvents||[],botStates:botStates||[],failedMessages:failedMessages||[],attendants:attendants||[],connections:connections||[],presence:presence||[],sla:(sla&&sla[0])||null,period:mon.period,selectedAttendantId:mon.selectedAttendantId,metricAttendantFilter:mon.metricAttendantFilter};
   }
 
   function backToConversas(){
@@ -78,11 +87,20 @@
   function slaAttentionLimit(){return mon.sla?.wait_atencao_max_min||30}
   function slaAlertLimit(){return mon.sla?.alert_gestor_min||60}
 
-  function convsInPeriod(){return mon.conversations.filter(c=>inPeriod(c.created_at)||inPeriod(c.last_message_at))}
+  // Achado do usuário em 2026-09-02: "o relatório também pode ser
+  // filtrado por atendente/operador, pra termos um comparativo" -- o
+  // filtro escopa TODAS as métricas (não só a tabela de atendentes) às
+  // conversas do atendente escolhido.
+  function convsInPeriod(){
+    let rows=mon.conversations.filter(c=>inPeriod(c.created_at)||inPeriod(c.last_message_at));
+    if(mon.metricAttendantFilter)rows=rows.filter(c=>String(c.assigned_user_id||'')===String(mon.metricAttendantFilter));
+    return rows;
+  }
   function metricRows(){
     const rows=convsInPeriod();
+    const rowIds=new Set(rows.map(c=>String(c.id)));
     const transferByConv={};
-    mon.transferEvents.filter(e=>inPeriod(e.created_at)).forEach(e=>{transferByConv[e.conversation_id]=(transferByConv[e.conversation_id]||0)+1});
+    mon.transferEvents.filter(e=>inPeriod(e.created_at)&&rowIds.has(String(e.conversation_id))).forEach(e=>{transferByConv[e.conversation_id]=(transferByConv[e.conversation_id]||0)+1});
     return {
       total:rows,
       abertas:rows.filter(c=>OPEN_STATUSES.includes(c.status)),
@@ -92,8 +110,8 @@
       retornosVencidos:rows.filter(c=>c.next_callback_at&&new Date(c.next_callback_at)<new Date()),
       transferByConv,
       transferidas:Object.keys(transferByConv).map(id=>({conv:mon.conversations.find(c=>String(c.id)===String(id)),count:transferByConv[id]})).filter(x=>x.conv),
-      fallback:mon.botStates.filter(b=>b.status==='LIMITE_TENTATIVAS'),
-      falhas:mon.failedMessages.filter(m=>inPeriod(m.created_at)),
+      fallback:mon.botStates.filter(b=>b.status==='LIMITE_TENTATIVAS'&&rowIds.has(String(b.conversation_id))),
+      falhas:mon.failedMessages.filter(m=>inPeriod(m.created_at)&&rowIds.has(String(m.conversation_id))),
     };
   }
 
@@ -183,11 +201,15 @@
     });
   }
   function attendantsCard(){
+    // Achado do usuário em 2026-09-02: esta tabela já mostra TODOS os
+    // atendentes ativos cadastrados (nunca filtrou por online) -- só
+    // faltava o indicador de presença por bolinha, agora via
+    // user_presence/presence-heartbeat-v1.js.
     const rows=attendantRows();
     return `<div class="vx-mon-card">
       <h3>Atendentes</h3>
-      <table class="vx-mon-table"><thead><tr><th>Atendente</th><th>Em aberto</th><th>Encerradas</th><th>Total</th></tr></thead>
-      <tbody>${rows.length?rows.map(r=>`<tr data-attendant="${E(r.a.id)}" class="${String(mon.selectedAttendantId)===String(r.a.id)?'active':''}"><td>${E(r.a.full_name)}</td><td>${r.open.length}</td><td>${r.closed.length}</td><td>${r.total.length}</td></tr>`).join(''):'<tr><td colspan="4" class="vx-mon-empty">Nenhum atendente ativo.</td></tr>'}</tbody></table>
+      <table class="vx-mon-table"><thead><tr><th></th><th>Atendente</th><th>Em aberto</th><th>Encerradas</th><th>Total</th></tr></thead>
+      <tbody>${rows.length?rows.map(r=>`<tr data-attendant="${E(r.a.id)}" class="${String(mon.selectedAttendantId)===String(r.a.id)?'active':''}"><td><span class="vx-mon-presence-dot ${isOnline(r.a.id)?'online':'offline'}" title="${isOnline(r.a.id)?'Online':'Offline'}"></span></td><td>${E(r.a.full_name)}</td><td>${r.open.length}</td><td>${r.closed.length}</td><td>${r.total.length}</td></tr>`).join(''):'<tr><td colspan="5" class="vx-mon-empty">Nenhum atendente ativo.</td></tr>'}</tbody></table>
     </div>`;
   }
   function attendantDetailCard(){
@@ -228,8 +250,13 @@
         <div class="vx-mon-period-tabs">
           ${[['HOJE','Hoje'],['SEMANA','Semana'],['MES','Mês']].map(([k,l])=>`<button type="button" class="${mon.period===k?'active':''}" data-period="${k}">${l}</button>`).join('')}
         </div>
+        <select id="vxMonAttendantFilter" title="Filtrar as métricas por atendente, pra comparar um a um">
+          <option value="">Todos os atendentes</option>
+          ${mon.attendants.map(a=>`<option value="${E(a.id)}" ${mon.metricAttendantFilter===String(a.id)?'selected':''}>${E(a.full_name)}</option>`).join('')}
+        </select>
         <button type="button" id="vxMonRefresh">🔄 Atualizar</button>
       </div>
+      ${mon.metricAttendantFilter?`<p class="vx-mon-filter-note">Mostrando só as métricas de <b>${E(mon.attendants.find(a=>String(a.id)===mon.metricAttendantFilter)?.full_name||'')}</b> -- escolha "Todos os atendentes" pra voltar à visão geral.</p>`:''}
       ${metricsRow()}
       ${slaCard()}
       ${alertsCard()}
@@ -240,6 +267,7 @@
     document.getElementById('vxMonBack').onclick=backToConversas;
     document.getElementById('vxMonRefresh').onclick=async()=>{await loadAll();render()};
     document.querySelectorAll('[data-period]').forEach(b=>b.onclick=async()=>{mon.period=b.dataset.period;render()});
+    document.getElementById('vxMonAttendantFilter').onchange=e=>{mon.metricAttendantFilter=e.target.value;render()};
     document.getElementById('vxMonSlaSave').onclick=async()=>{
       const fields={
         wait_normal_max_min:Number(document.getElementById('vxMonSlaNormal').value)||15,
