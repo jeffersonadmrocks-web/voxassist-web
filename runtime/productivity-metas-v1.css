@@ -1,0 +1,39 @@
+.vx-pm-wrap{padding:14px;display:flex;flex-direction:column;gap:12px;background:#f5f7fb;min-height:100%}
+.vx-pm-head{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #e1e8ef;border-radius:12px;padding:12px 14px}
+.vx-pm-back{border:1px solid #ccd7e0;background:#f7f9fb;color:#24445d;border-radius:7px;padding:7px 12px;font-size:12px;cursor:pointer}
+.vx-pm-head-title{flex:1}
+.vx-pm-head-title h1{margin:0;font-size:18px;color:#173650}
+.vx-pm-head-title p{margin:3px 0 0;font-size:11px;color:#708296}
+.vx-pm-head select{border:1px solid #ccd7e0;border-radius:7px;padding:7px 10px;font-size:12px;color:#173650;background:#fff}
+.vx-pm-tabs{display:flex;gap:6px;flex-wrap:wrap;background:#fff;border:1px solid #e1e8ef;border-radius:12px;padding:8px}
+.vx-pm-tab{border:1px solid transparent;background:none;color:#5a6f83;font-size:12px;font-weight:700;padding:8px 12px;border-radius:8px;cursor:pointer}
+.vx-pm-tab:hover{background:#f0f4f8}
+.vx-pm-tab.active{background:#173650;color:#fff}
+.vx-pm-panel{display:flex;flex-direction:column;gap:12px}
+.vx-pm-summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.vx-pm-summary-card{background:#fff;border:1px solid #e1e8ef;border-radius:11px;padding:12px}
+.vx-pm-summary-card span{display:block;font-size:10px;color:#708296;font-weight:700;text-transform:uppercase}
+.vx-pm-summary-card b{display:block;font-size:20px;color:#173650;margin-top:4px}
+.vx-pm-summary-card small{display:block;color:#8291a0;font-size:10px;margin-top:4px}
+.vx-pm-card{background:#fff;border:1px solid #e1e8ef;border-radius:12px;padding:14px}
+.vx-pm-card h3{margin:0 0 10px;font-size:13px;color:#173650}
+.vx-pm-table{width:100%;border-collapse:collapse;font-size:11.5px}
+.vx-pm-table th,.vx-pm-table td{padding:8px;border-bottom:1px solid #edf1f5;text-align:left}
+.vx-pm-table th{color:#708296;font-size:10px;text-transform:uppercase}
+.vx-pm-table b.ok{color:#3d9466}
+.vx-pm-table b.warn{color:#c94b3a}
+.vx-pm-empty{color:#8291a0;font-style:italic}
+.vx-pm-form-card{border-color:#c9d8e6}
+.vx-pm-form{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.vx-pm-form label{display:flex;flex-direction:column;gap:4px;font-size:10.5px;font-weight:700;color:#5a6f83}
+.vx-pm-form input,.vx-pm-form select{border:1px solid #ccd7e0;border-radius:7px;padding:7px 9px;font-size:12px;color:#173650;font-weight:400}
+.vx-pm-form input[type=checkbox]{width:16px;height:16px;align-self:flex-start}
+.vx-pm-form button.primary{grid-column:1/-1;border:0;background:#173650;color:#fff;border-radius:8px;padding:9px;font-size:12px;font-weight:700;cursor:pointer}
+.vx-pm-hint{font-weight:400;color:#8291a0}
+.vx-pm-tiers{grid-column:1/-1;display:flex;flex-direction:column;gap:6px}
+.vx-pm-tier-row{display:grid;grid-template-columns:1fr 1fr 1.4fr 1fr auto;gap:6px}
+.vx-pm-tier-row input,.vx-pm-tier-row select{border:1px solid #ccd7e0;border-radius:6px;padding:6px 8px;font-size:11px}
+.vx-pm-tier-remove{border:1px solid #e0b4b0;background:#fdf1ef;color:#c94b3a;border-radius:6px;cursor:pointer;font-size:14px}
+.vx-pm-add-tier-btn{grid-column:1/-1;border:1px dashed #ccd7e0;background:none;color:#5a6f83;border-radius:7px;padding:7px;font-size:11px;cursor:pointer}
+.vx-pm-close-campaign-btn{border:1px solid #e0b4b0;background:#fdf1ef;color:#c94b3a;border-radius:6px;padding:5px 9px;font-size:10.5px;cursor:pointer}
+@media(max-width:1000px){.vx-pm-summary-grid{grid-template-columns:1fr}.vx-pm-form{grid-template-columns:1fr}.vx-pm-tier-row{grid-template-columns:1fr}}
