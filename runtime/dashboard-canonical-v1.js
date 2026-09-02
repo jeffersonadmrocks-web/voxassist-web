@@ -206,12 +206,20 @@
     // corrigido em 2026-09-01 a pedido do usuário (faixas antigas
     // 0/1-3/4-7/8+ estavam erradas -- inclusive sobrepostas).
     function ageBuckets(rows){
-      const b=[0,0,0,0];
-      rows.forEach(o=>{const a=age(o);if(a<=7)b[0]++;else if(a<=15)b[1]++;else if(a<=30)b[2]++;else b[3]++});
+      const b=[0,0,0,0], rowsByBucket=[[],[],[],[]];
+      rows.forEach(o=>{const a=age(o);const i=a<=7?0:a<=15?1:a<=30?2:3;b[i]++;rowsByBucket[i].push(o)});
       const oldest=rows.reduce((m,o)=>Math.max(m,age(o)),0);
-      return {b,oldest};
+      return {b,oldest,rowsByBucket};
     }
     const gvAnalysis=ageBuckets(analysis), gvApproval=ageBuckets(approval), gvReady=ageBuckets(ready);
+    // Drill-down por faixa etária do Gestão Visual -- clicar num
+    // número/segmento mostra exatamente quais OS estão naquela faixa
+    // (achado do usuário em 2026-09-01: os números eram estáticos, sem
+    // forma de ver quais atendimentos estavam por trás do total).
+    const gvDrills={};
+    [['gvAnalysis',gvAnalysis,'Aguardando Análise'],['gvApproval',gvApproval,'Aguardando Aprovação'],['gvReady',gvReady,'Prontos para Entrega']].forEach(([key,g,label])=>{
+      g.rowsByBucket.forEach((rows,i)=>{gvDrills[`${key}_b${i}`]=rows});
+    });
 
     // Produtividade por técnico (tabela) -- OS/Valor recebido/Prontos/Aproveitamento.
     const prodRows=techs.map(t=>{
@@ -259,17 +267,17 @@
       return {label,iso,rows,count:rows.length,dupWarning};
     });
 
-    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows};
+    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,...gvDrills};
 
     function kpi(icon,title,value,sub,key){return `<button type="button" class="vx-c-kpi" data-drill="${key}" data-title="${E(title)}"><span class="vx-c-kpi-icon">${icon}</span><span class="vx-c-kpi-label">${E(title)}</span><b>${E(value)}</b><small>${E(sub)}</small></button>`}
     function oppRow(label,n){return `<div class="vx-c-opp-row"><span>${E(label)}</span><b>${n}</b></div>`}
     function taskRow(label,n){return `<div class="vx-c-task-row"><span class="vx-c-task-check">☐</span><span>${E(label)}</span><b>${n}</b></div>`}
     function iconRow(icon,label,n,tone){return `<div class="vx-c-icon-row"><span class="vx-c-icon-row-ic ${tone||''}">${icon}</span><span>${E(label)}</span><b>${n}</b></div>`}
-    function gvPanel(title,g){
+    function gvPanel(title,g,drillKey){
       const labels=['0 a 7 dias','8 a 15 dias','16 a 30 dias','31 a 90 dias'],tones=['b0','b1','b2','b3'];
       return `<div class="vx-c-gv-panel"><div class="vx-c-gv-head"><strong>${E(title)}</strong><span>Total: ${g.b.reduce((s,n)=>s+n,0)}</span></div>
         <div class="vx-c-gv-bar">${g.b.map((n,i)=>`<span class="vx-c-gv-seg ${tones[i]}" style="flex:${Math.max(n,0.001)}"></span>`).join('')}</div>
-        <div class="vx-c-gv-legend">${g.b.map((n,i)=>`<div><small>${labels[i]}</small><b>${n}</b></div>`).join('')}</div>
+        <div class="vx-c-gv-legend">${g.b.map((n,i)=>`<button type="button" class="vx-c-gv-legend-item" data-drill="${drillKey}_b${i}" data-title="${E(title)} — ${labels[i]}" ${n?'':'disabled'}><small>${labels[i]}</small><b>${n}</b></button>`).join('')}</div>
         <small class="vx-c-gv-oldest">Mais antigo: ${g.oldest} dia${g.oldest===1?'':'s'}</small></div>`;
     }
 
@@ -305,7 +313,7 @@
       </div>
 
       <section class="vx-c-gv-card"><div class="vx-c-title"><h3>Gestão Visual <span class="vx-c-info" title="Distribuição das OS por tempo desde a última mudança de situação">ⓘ</span></h3><a href="#" data-drill="active" data-title="Gestão Visual">Ver todos</a></div>
-        <div class="vx-c-gv-grid">${gvPanel('AGUARDANDO ANÁLISE',gvAnalysis)}${gvPanel('AGUARDANDO APROVAÇÃO',gvApproval)}${gvPanel('PRONTOS PARA ENTREGA',gvReady)}</div>
+        <div class="vx-c-gv-grid">${gvPanel('AGUARDANDO ANÁLISE',gvAnalysis,'gvAnalysis')}${gvPanel('AGUARDANDO APROVAÇÃO',gvApproval,'gvApproval')}${gvPanel('PRONTOS PARA ENTREGA',gvReady,'gvReady')}</div>
       </section>
 
       <div class="vx-c-grid-3">

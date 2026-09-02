@@ -66,9 +66,11 @@
 .vx-c-gv-seg{display:block}
 .vx-c-gv-seg.b0{background:#3d9466}.vx-c-gv-seg.b1{background:#d8b83a}.vx-c-gv-seg.b2{background:var(--vx-warn)}.vx-c-gv-seg.b3{background:var(--vx-risk)}
 .vx-c-gv-legend{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:8px}
-.vx-c-gv-legend div{text-align:center}
-.vx-c-gv-legend small{display:block;font-size:8.5px;color:var(--vx-muted)}
-.vx-c-gv-legend b{display:block;font-size:13px;color:var(--vx-text);margin-top:1px}
+.vx-c-gv-legend-item{text-align:center;border:0;background:none;padding:3px 2px;border-radius:6px;font-family:inherit;cursor:pointer}
+.vx-c-gv-legend-item:hover:not(:disabled){background:var(--vx-surface-2,#f6f8fb)}
+.vx-c-gv-legend-item:disabled{cursor:default}
+.vx-c-gv-legend-item small{display:block;font-size:8.5px;color:var(--vx-muted)}
+.vx-c-gv-legend-item b{display:block;font-size:13px;color:var(--vx-text);margin-top:1px}
 .vx-c-gv-oldest{display:block;margin-top:8px;font-size:9.5px;color:var(--vx-muted)}
 
 /* ---------- 3 listas (Tarefas / Peças / Exceção) ---------- */
