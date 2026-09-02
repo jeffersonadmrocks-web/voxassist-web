@@ -76,7 +76,7 @@
           <div class="vx-events new-os-events"><div class="vx-events-title">EVENTOS CONFIRMADOS</div><div class="vx-event-grid"><div class="vx-event"><b>ENTRADA</b><span>AUTOMÁTICA AO SALVAR</span></div><div class="vx-event"><b>ANÁLISE</b><span>—</span></div><div class="vx-event"><b>APROVAÇÃO</b><span>—</span></div><div class="vx-event"><b>CONSERTO</b><span>—</span></div><div class="vx-event"><b>PRONTO</b><span>—</span></div><div class="vx-event"><b>ENTREGA</b><span>—</span></div></div></div>
         </div>
       </div>
-      <div class="vx-newos-actions"><button type="button" class="cancel" onclick="render('os')">CANCELAR</button><button class="save" type="submit">SALVAR OS</button><button type="button" class="advance" id="saveAdvance">SALVAR E ABRIR O.S.</button></div></section>
+      <div class="vx-newos-actions"><button type="button" class="cancel" onclick="render('os')">CANCELAR</button><button type="button" class="advance" id="saveAdvance">CRIAR O.S.</button></div></section>
     </form>
     <div id="newNotesModal" class="vx-newos-modal hidden"><div class="vx-newos-modal-card"><h3>F11 – OBSERVAÇÕES INTERNAS</h3><p style="font-size:11px;color:#607185">Conteúdo interno. Não será impresso nos documentos do cliente.</p><textarea id="newNotesText"></textarea><div class="vx-newos-modal-actions"><button type="button" class="cancel" id="newNotesCancel">CANCELAR</button><button type="button" class="save" id="newNotesSave">SALVAR OBSERVAÇÃO</button></div></div></div>`;
 
@@ -84,7 +84,7 @@
     ['newClientPhone2','newClientZip','newClientAddress','newClientNumber','newClientComplement','newClientNeighborhood','newClientCity','newClientState','productType','brand','model','serial','accessories','reported'].forEach(id=>document.querySelector('#'+id)?.addEventListener('input',()=>{document.querySelector('#'+id).value=U(document.querySelector('#'+id).value)}));
     const group=document.querySelector('#productGroup'),type=document.querySelector('#productType');const infer=t=>{t=U(t);if(t.includes('TV'))return'TV';if(/REFRIG|FREEZER|AR-COND|GELADEIRA/.test(t))return'REFRIGERAÇÃO';if(/MICRO|FOG|LAVA|BEBED/.test(t))return'LINHA BRANCA';if(/AUDIO|SOM/.test(t))return'ÁUDIO';return t?'GERAL':''};type.addEventListener('input',()=>group.value=infer(type.value));
     const modal=document.querySelector('#newNotesModal'),noteText=document.querySelector('#newNotesText'),noteHidden=document.querySelector('#notes');document.querySelector('#newNotesBtn').onclick=()=>{noteText.value=noteHidden.value||'';modal.classList.remove('hidden');noteText.focus()};document.querySelector('#newNotesCancel').onclick=()=>modal.classList.add('hidden');document.querySelector('#newNotesSave').onclick=()=>{noteHidden.value=U(noteText.value);modal.classList.add('hidden');toast('Observação interna preparada para salvar com a OS.')};
-    document.querySelector('#osForm').onsubmit=e=>saveNewUnified(e,false);document.querySelector('#saveAdvance').onclick=e=>saveNewUnified(e,true);
+    document.querySelector('#saveAdvance').onclick=e=>saveNewUnified(e,true);
   };
 
   async function saveNewUnified(e,advance){
