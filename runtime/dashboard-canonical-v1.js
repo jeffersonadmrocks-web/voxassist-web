@@ -261,14 +261,21 @@
     });
 
     // Produtividade por técnico (tabela) -- OS/Valor recebido/Prontos/Aproveitamento.
+    // Achado do usuário em 2026-09-02: ao contrário dos outros cards
+    // (corrigidos no commit 5d32a85), esta tabela nunca ganhou
+    // drill-down -- "2 OS" era só texto estático, sem como ver quais
+    // eram. Corrigido do mesmo jeito: cada célula clicável abre o
+    // modal real com as OS por trás do número.
     const prodRows=techs.map(t=>{
       const mine=orders.filter(o=>o.technician_id===t.id);
-      const readyMine=mine.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA').length;
+      const readyRowsMine=mine.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA');
       const finalMine=mine.filter(o=>norm(o.status)==='FINALIZADA');
       const valorRecebido=validPayments.filter(p=>mine.some(o=>String(o.id)===String(p.service_order_id))).reduce((s,p)=>s+Number(p.amount||0),0);
-      return {tech:t,os:mine.length,valor:valorRecebido,prontos:readyMine,aproveitamento:pct(finalMine.length,mine.length||1)};
+      return {tech:t,os:mine.length,osRows:mine,valor:valorRecebido,prontos:readyRowsMine.length,prontosRows:readyRowsMine,aproveitamento:pct(finalMine.length,mine.length||1)};
     }).filter(r=>r.os>0).sort((a,b)=>b.valor-a.valor);
     const totalRecebidoOS=prodRows.reduce((s,r)=>s+r.valor,0);
+    const prodDrills={};
+    prodRows.forEach(r=>{prodDrills['prodOs_'+r.tech.id]=r.osRows;prodDrills['prodProntos_'+r.tech.id]=r.prontosRows});
 
     // Feed em tempo real -- eventos reais de os_status_history.
     function feedText(h){
@@ -306,7 +313,7 @@
       return {label,iso,rows,count:rows.length,dupWarning};
     });
 
-    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,...gvDrills};
+    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,...gvDrills,...prodDrills};
     const partsDrills={partsAll,partsPendentes,partsCompra,partsEntrega,partsAtrasadas,partsRecebidasHoje};
     const tasksDrills={tasks};
     const caseDrills={casesAbertos,casesNovos,casesAndamento,casesResolvidos};
@@ -395,7 +402,7 @@
         <section class="vx-c-prod-table-card"><div class="vx-c-title"><h3>Produtividade</h3></div>
           <p class="vx-c-prod-total">Total recebido nas OS: <b>${M(totalRecebidoOS)}</b></p>
           <div class="vx-c-tw"><table class="vx-c-prod-table"><thead><tr><th>Técnico</th><th>OS</th><th>Valor Recebido</th><th>Prontos</th><th>Aproveitamento</th></tr></thead>
-          <tbody>${prodRows.length?prodRows.map(r=>`<tr><td>${E(r.tech.full_name)}</td><td>${r.os}</td><td>${M(r.valor)}</td><td>${r.prontos}</td><td>${r.aproveitamento}%</td></tr>`).join(''):'<tr><td colspan="5" class="vx-c-empty">Nenhuma OS atribuída ainda.</td></tr>'}</tbody></table></div>
+          <tbody>${prodRows.length?prodRows.map(r=>`<tr><td>${E(r.tech.full_name)}</td><td><button type="button" class="vx-c-prod-cell" data-drill="prodOs_${E(r.tech.id)}" data-title="OS de ${E(r.tech.full_name)}">${r.os}</button></td><td>${M(r.valor)}</td><td><button type="button" class="vx-c-prod-cell" data-drill="prodProntos_${E(r.tech.id)}" data-title="Prontos de ${E(r.tech.full_name)}" ${r.prontos?'':'disabled'}>${r.prontos}</button></td><td>${r.aproveitamento}%</td></tr>`).join(''):'<tr><td colspan="5" class="vx-c-empty">Nenhuma OS atribuída ainda.</td></tr>'}</tbody></table></div>
         </section>
       </div>
 

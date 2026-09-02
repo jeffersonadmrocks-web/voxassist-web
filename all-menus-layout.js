@@ -83,7 +83,16 @@
     card('☑','MINHAS TAREFAS','Pendências atribuídas ao usuário com prioridade e prazo.','agenda-operacional','blue')+
     card('◷','AGENDA / COMPROMISSOS','Atendimentos externos, retiradas e compromissos.','agenda-operacional','purple')+
     card('★','NPS ELECTROLUX','Clientes elegíveis, prioridades e acompanhamento da pesquisa.','nps-electrolux','teal')+
-    card('!','CASOS DE ATENÇÃO','Pendências direcionadas e situações que exigem acompanhamento.','agenda-operacional','red')+
+    // Achado do usuário em 2026-09-02: este card apontava pra
+    // 'agenda-operacional' (mesmo alvo genérico de Minhas Tarefas) --
+    // não é um caso de atenção filtrado nenhum, é só a tela de agenda.
+    // Clicar num item ali abria a OS vinculada a QUALQUER tarefa da
+    // lista, sem relação com "caso de atenção" nenhum -- daí abrir uma
+    // OS aparentemente aleatória. Corrigido pra apontar pro Dashboard
+    // real ('dashboard'), onde o card "Casos de Atenção" já existe com
+    // dados reais (dashboard_cases) e drill-down correto (mesmo padrão
+    // já usado por "Oportunidades do Dia" logo abaixo).
+    card('!','CASOS DE ATENÇÃO','Pendências direcionadas e situações que exigem acompanhamento.','dashboard','red')+
     card('↗','ATENDIMENTO EXTERNO','Agenda de técnicos de campo e observações de visita.','agenda-operacional','orange')+
     card('⌁','RETIRADAS / ENTREGAS','Acompanhe clientes previstos para retirada ou entrega.','pesquisa-os','green')+
     card('✉','LEMBRETES / WHATSAPP','Fila de lembretes e comunicações previstas.','whatsapp','teal')+
