@@ -3,7 +3,39 @@
   const baseRender=window.render;
   const colorMap={blue:'#1671d8',orange:'#f07d00',purple:'#7650d6',green:'#13904b',cyan:'#2389b9',red:'#cf3542',gray:'#60758d',brown:'#b7681d',teal:'#148c7a'};
   const card=(icon,title,sub,target,color='blue')=>`<button class="module-action-card ${color}" data-target="${target}"><span class="icon">${icon}</span><span><strong>${title}</strong><small>${sub}</small></span></button>`;
-  const summary=(label,n,color='blue')=>`<div class="module-summary-card" style="--accent:${colorMap[color]||color}"><span>${label}</span><b>${n}</b></div>`;
+  // Achado do usuário em 2026-09-02: os cards de resumo (topo de cada
+  // hub -- Atendimento/Oficina/Atividades/Financeiro/Loja) eram <div>
+  // estáticos, sem data-target nem handler nenhum -- mostravam o
+  // número real, mas clicar não fazia nada. Corrigido só onde existe
+  // lista real por trás (rows é um array de verdade -- OS ou tarefas
+  // já carregadas em state): vira botão, abre summaryModal com os
+  // registros reais. Onde não há lista real (placeholder tipo '—'),
+  // continua um <div> não-interativo -- nunca finge um drill-down que
+  // não existe.
+  let summaryDrills={};
+  let summarySeq=0;
+  const summary=(label,rows,color='blue',type='os')=>{
+    if(!Array.isArray(rows))return `<div class="module-summary-card" style="--accent:${colorMap[color]||color}"><span>${label}</span><b>${rows}</b></div>`;
+    const key='sum'+(summarySeq++);
+    summaryDrills[key]={title:label,rows,type};
+    return `<button type="button" class="module-summary-card module-summary-card-btn" data-summary="${key}" style="--accent:${colorMap[color]||color}" ${rows.length?'':'disabled'}><span>${label}</span><b>${rows.length}</b></button>`;
+  };
+  function summaryModal(title,rows,type){
+    document.querySelector('#vxSummaryModal')?.remove();
+    const bg=document.createElement('div');bg.id='vxSummaryModal';bg.className='vx-modal-bg';
+    const esc=v=>typeof window.esc==='function'?window.esc(v??''):String(v??'');
+    const body=type==='task'
+      ?(rows.length?`<table><thead><tr><th>Tarefa</th><th>Situação</th><th>Prazo</th></tr></thead><tbody>${rows.map(t=>`<tr><td><b>${esc(t.title||t.description||'—')}</b></td><td>${esc(t.status||'—')}</td><td>${t.due_at?new Date(t.due_at).toLocaleDateString('pt-BR'):'—'}</td></tr>`).join('')}</tbody></table>`:'<p>Nenhum registro encontrado.</p>')
+      :type==='stock'
+      ?(rows.length?`<table><thead><tr><th>Peça</th><th>Código</th><th>Qtd</th></tr></thead><tbody>${rows.map(s=>`<tr><td><b>${esc(s.description||'—')}</b></td><td>${esc(s.code||'—')}</td><td>${esc(s.quantity??'—')}</td></tr>`).join('')}</tbody></table>`:'<p>Nenhum registro encontrado.</p>')
+      :(rows.length?`<table><thead><tr><th>O.S.</th><th>Cliente</th><th>Equipamento</th><th>Situação</th></tr></thead><tbody>${rows.map(o=>`<tr data-os="${esc(o.id)}" style="cursor:pointer"><td><b>${esc(o.os_number||'—')}</b></td><td>${esc(o.clients?.name||'—')}</td><td>${esc([o.equipments?.product_type,o.equipments?.brand,o.equipments?.model].filter(Boolean).join(' • ')||'—')}</td><td>${esc(o.status||'—')}</td></tr>`).join('')}</tbody></table>`:'<p>Nenhum registro encontrado.</p>');
+    bg.innerHTML=`<div class="vx-modal"><h3>${esc(title)} <small style="font-weight:400;color:#64748b">(${rows.length} registro${rows.length===1?'':'s'})</small></h3><div style="max-height:60vh;overflow:auto">${body}</div><div class="vx-modal-actions"><button type="button" data-close>Fechar</button></div></div>`;
+    document.body.appendChild(bg);
+    bg.querySelector('[data-close]').onclick=()=>bg.remove();
+    bg.onclick=e=>{if(e.target===bg)bg.remove()};
+    if(type!=='task')bg.querySelectorAll('[data-os]').forEach(tr=>tr.onclick=()=>{const id=tr.dataset.os;bg.remove();window.render('os:'+id)});
+  }
+  function bindSummaries(){document.querySelectorAll('[data-summary]').forEach(b=>b.onclick=()=>{const d=summaryDrills[b.dataset.summary];if(d)summaryModal(d.title,d.rows,d.type)});}
   // Achado real (Consolidação Geral, 2026-09-01): 9 cards apontavam pra
   // um alvo sem tela nenhuma e caíam só no toast genérico -- botão que
   // "funciona" (não trava, não é morto) mas nunca abre nada. A regra
@@ -49,8 +81,16 @@
   }
   async function renderOperational(view,label){await baseRender(view);state.view='op:'+view;renderTabs(label);const title=document.querySelector('#title');if(title)title.textContent=label;}
   function lowerTabs(){return `<div class="module-lower-tabs"><button class="active">Oportunidades do Dia</button><button>Casos de Atenção</button><button data-target="agenda-operacional">Minhas Tarefas</button><button data-target="agenda-operacional">Agenda / Compromissos</button><button data-target="estoque-operacional">Pedidos de Peças</button><button>Produtividade / Bonificação</button></div><div class="module-lower-content">Ambiente de homologação — dados fictícios.</div>`}
-  function home(title,subtitle,actions,metrics='',buttons=''){const app=document.querySelector('#app');if(!app)return;app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>${title}</h2><p>${subtitle}</p></div><div class="module-head-actions">${buttons}</div></div>${metrics?`<div class="module-summary">${metrics}</div>`:''}<div class="module-action-grid">${actions}</div>${lowerTabs()}</div>`;bindTargets();}
-  function countStatus(s){return state.orders.filter(o=>o.status===s).length}
+  // summaryDrills NÃO é resetado aqui -- os argumentos (metrics, com os
+  // summary(...) que povoam summaryDrills) já foram todos avaliados
+  // ANTES do corpo desta função rodar (é assim que chamada de função
+  // funciona em JS). Resetar aqui apagaria as entradas na hora que
+  // acabaram de ser criadas, antes do clique existir pra usá-las --
+  // achado real ao testar esta correção. Só acumula entre telas (chave
+  // sequencial, nunca colide) -- efeito colateral inofensivo.
+  function home(title,subtitle,actions,metrics='',buttons=''){const app=document.querySelector('#app');if(!app)return;app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>${title}</h2><p>${subtitle}</p></div><div class="module-head-actions">${buttons}</div></div>${metrics?`<div class="module-summary">${metrics}</div>`:''}<div class="module-action-grid">${actions}</div>${lowerTabs()}</div>`;bindTargets();bindSummaries();}
+  function ordersByStatus(s){return state.orders.filter(o=>o.status===s)}
+  function countStatus(s){return ordersByStatus(s).length}
 
   function atendimento(){home('Atendimento','Balcão • Clientes • Ordens de Serviço',
     card('+','ABRIR NOVA O.S.','Inicie um atendimento sem sair da tela da OS.','nova-os','blue')+
@@ -62,10 +102,10 @@
     card('▤','RECIBOS','Emissão e consulta de recibos.','financeiro-operacional','gray')+
     card('▦','VENDA DE PEÇAS','Venda rápida vinculada ao atendimento.','estoque-operacional','teal')+
     card('▣','VENDA DE APARELHO','Registro de venda de equipamentos.','loja-vendas','brown'),
-    summary('AGUARDANDO ANÁLISE',countStatus('AGUARDANDO ANALISE'),'orange')+
-    summary('AGUARDANDO APROVAÇÃO',countStatus('AGUARDANDO APROVACAO'),'purple')+
-    summary('EM CONSERTO',countStatus('AGUARDANDO CONSERTO'),'blue')+
-    summary('PRONTA',countStatus('PRONTO PARA ENTREGA'),'green')
+    summary('AGUARDANDO ANÁLISE',ordersByStatus('AGUARDANDO ANALISE'),'orange')+
+    summary('AGUARDANDO APROVAÇÃO',ordersByStatus('AGUARDANDO APROVACAO'),'purple')+
+    summary('EM CONSERTO',ordersByStatus('AGUARDANDO CONSERTO'),'blue')+
+    summary('PRONTA',ordersByStatus('PRONTO PARA ENTREGA'),'green')
   )}
   function oficina(){home('Oficina','Fila técnica • Diagnóstico • Documentação • Peças',
     card('⚒','FILA TÉCNICA','Visualize aparelhos aguardando análise, conserto e finalização.','oficina-operacional','orange')+
@@ -77,7 +117,7 @@
     card('⌑','PARECERES TÉCNICOS','Gere pareceres e documentos de fabricante/seguradora.','pareceres','gray')+
     card('▧','FOTOS / ANEXOS','Consulte fotos obrigatórias, PDFs e documentos da OS.','anexos','teal')+
     card('☑','CHECKLISTS','Acompanhe checklists técnicos e pendências de homologação.','testes-operacional','brown'),
-    summary('AGUARDANDO ANÁLISE',countStatus('AGUARDANDO ANALISE'),'orange')+summary('EM CONSERTO',countStatus('AGUARDANDO CONSERTO'),'blue')+summary('PRONTO',countStatus('PRONTO PARA ENTREGA'),'green')+summary('TAREFAS',state.tasks.length,'purple')
+    summary('AGUARDANDO ANÁLISE',ordersByStatus('AGUARDANDO ANALISE'),'orange')+summary('EM CONSERTO',ordersByStatus('AGUARDANDO CONSERTO'),'blue')+summary('PRONTO',ordersByStatus('PRONTO PARA ENTREGA'),'green')+summary('TAREFAS',state.tasks,'purple','task')
   )}
   function atividades(){home('Atividades','Tarefas • Agenda • Casos • Compromissos',
     card('☑','MINHAS TAREFAS','Pendências atribuídas ao usuário com prioridade e prazo.','agenda-operacional','blue')+
@@ -99,7 +139,7 @@
     card('▣','PEDIDOS DE PEÇAS','Pendências de compra, previsão e chegada de peças.','estoque-operacional','brown')+
     card('★','OPORTUNIDADES DO DIA','Ações comerciais e operacionais do dia.','dashboard','cyan')+
     card('▥','HISTÓRICO DE ATIVIDADES','Consulta de tarefas concluídas e movimentações.','agenda-operacional','gray'),
-    summary('TAREFAS',state.tasks.length,'blue')+summary('PENDENTES',state.tasks.filter(t=>t.status==='PENDENTE').length,'orange')+summary('EM ANDAMENTO',state.tasks.filter(t=>t.status==='EM ANDAMENTO').length,'purple')+summary('CONCLUÍDAS',state.tasks.filter(t=>t.status==='CONCLUIDA').length,'green')
+    summary('TAREFAS',state.tasks,'blue','task')+summary('PENDENTES',state.tasks.filter(t=>t.status==='PENDENTE'),'orange','task')+summary('EM ANDAMENTO',state.tasks.filter(t=>t.status==='EM ANDAMENTO'),'purple','task')+summary('CONCLUÍDAS',state.tasks.filter(t=>t.status==='CONCLUIDA'),'green','task')
   )}
   function financeiro(){home('Financeiro','Caixa • Recebimentos • Orçamentos • Relatórios',
     card('$','CAIXA','Lançamentos, formas de pagamento e fechamento do período.','financeiro-caixa','green')+
@@ -111,7 +151,7 @@
     card('▧','RECIBOS','Emissão e consulta de recibos.','financeiro-operacional','gray')+
     card('⇩','EXPORTAR PDF / EXCEL','Relatórios financeiros para conferência e gestão.','relatorios-fin','brown')+
     card('⚙','CONFIGURAÇÕES FINANCEIRAS','Meios de pagamento, grupos e permissões.','usuarios-operacional','red'),
-    summary('OS ATIVAS',state.orders.filter(o=>o.status!=='FINALIZADA').length,'blue')+summary('AGUARD. APROVAÇÃO',countStatus('AGUARDANDO APROVACAO'),'purple')+summary('PRONTAS',countStatus('PRONTO PARA ENTREGA'),'green')+summary('LANÇAMENTOS','—','orange')
+    summary('OS ATIVAS',state.orders.filter(o=>o.status!=='FINALIZADA'),'blue')+summary('AGUARD. APROVAÇÃO',ordersByStatus('AGUARDANDO APROVACAO'),'purple')+summary('PRONTAS',ordersByStatus('PRONTO PARA ENTREGA'),'green')+summary('LANÇAMENTOS','—','orange')
   )}
   function loja(){home('Loja','Estoque • Peças • Vendas • Transferências',
     card('▦','ESTOQUE / PEÇAS','Consulta de itens, saldos, códigos e localizações.','estoque-operacional','green')+
@@ -123,7 +163,7 @@
     card('▣','VENDA DE PEÇAS','Venda rápida e vínculo opcional à OS.','estoque-operacional','teal')+
     card('▤','VENDA DE APARELHO','Registro comercial de equipamentos.','loja-vendas','brown')+
     card('⌕','CONSULTA / HISTÓRICO','Rastreabilidade por item, técnico, OS e loja.','estoque-operacional','gray'),
-    summary('ITENS CADASTRADOS',state.stock.length,'green')+summary('OS AGUARD. PEÇA',state.orders.filter(o=>(o.status||'').includes('PECA')).length,'orange')+summary('TÉCNICOS','—','cyan')+summary('PEND. FISCAIS','—','red')
+    summary('ITENS CADASTRADOS',state.stock,'green','stock')+summary('OS AGUARD. PEÇA',state.orders.filter(o=>(o.status||'').includes('PECA')),'orange')+summary('TÉCNICOS','—','cyan')+summary('PEND. FISCAIS','—','red')
   )}
   function relatorios(){home('Relatórios','Operação • Financeiro • Produtividade • Auditoria',
     card('▥','RELATÓRIOS DE O.S.','Entradas, saídas, prontos, ativos e filtros combináveis.','pesquisa-os','blue')+
