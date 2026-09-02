@@ -3,17 +3,38 @@
   const E=window.esc||((v='')=>String(v??''));
   let lastUserId=null;
 
+  // Achado do usuário em 2026-09-02: pra QUALQUER erro que batesse em
+  // "invalid input syntax for type uuid"/22P02, esta função respondia
+  // sempre a MESMA frase fixa ("cadastro está incompleto ou a empresa
+  // ativa não foi definida corretamente"), incondicionalmente -- sem
+  // checar se o problema era mesmo um campo vazio (auditoria em
+  // SALVAR ORÇAMENTO/ANÁLISE TÉCNICA confirmou que NENHUM campo é
+  // validado hoje -- o formulário sempre "salva com sucesso" mesmo
+  // totalmente vazio) e sem NUNCA logar a causa real em lugar nenhum
+  // -- o detalhe técnico simplesmente se perdia. 22P02 é sempre um
+  // erro TÉCNICO (um id que deveria ser UUID chegou malformado/vazio
+  // numa query), nunca "o operador esqueceu de preencher um campo" --
+  // agora tratado como tal: mensagem honesta pro operador, causa
+  // completa só no console (nunca exposta na tela).
   function humanMessage(raw){
     const s=String(raw||'');
-    if(/row-level security|violates row-level security|42501/i.test(s)) return 'A ação foi bloqueada por segurança. Confira se a Empresa Ativa corresponde ao cadastro e se seu usuário possui acesso a esta empresa.';
-    if(/invalid input syntax for type uuid|22P02/i.test(s)) return 'Não foi possível concluir a ação porque o cadastro está incompleto ou a empresa ativa não foi definida corretamente.';
-    if(/duplicate key|23505|already exists|already registered/i.test(s)) return 'Já existe um cadastro com estes dados.';
-    if(/jwt|session|sessão|token.*expired|expired.*token/i.test(s)) return 'Sua sessão expirou. Entre novamente no VoxAssist para continuar.';
-    if(/Failed to fetch|NetworkError|network request failed/i.test(s)) return 'Não foi possível comunicar com o servidor. Verifique a conexão e tente novamente.';
-    if(/permission|permissão|not allowed|forbidden/i.test(s)) return 'Seu usuário não possui permissão para realizar esta ação.';
-    if(/Falha ao criar OS\/agenda/i.test(s)) return 'Não foi possível importar esta OS na Empresa Ativa. Confira a empresa selecionada e as permissões do seu usuário.';
-    return s.replace(/^\{.*"message"\s*:\s*"([^"]+)".*\}$/,'$1');
+    let msg;
+    if(/row-level security|violates row-level security|42501/i.test(s)) msg='A ação foi bloqueada por segurança. Confira se a Empresa Ativa corresponde ao cadastro e se seu usuário possui acesso a esta empresa.';
+    else if(/invalid input syntax for type uuid|22P02/i.test(s)) msg='Não foi possível salvar por um problema técnico ao identificar um dos registros envolvidos. Tente novamente; se persistir, contate o suporte -- os detalhes já foram registrados no log técnico.';
+    else if(/duplicate key|23505|already exists|already registered/i.test(s)) msg='Já existe um cadastro com estes dados.';
+    else if(/jwt|session|sessão|token.*expired|expired.*token/i.test(s)) msg='Sua sessão expirou. Entre novamente no VoxAssist para continuar.';
+    else if(/Failed to fetch|NetworkError|network request failed/i.test(s)) msg='Não foi possível comunicar com o servidor. Verifique a conexão e tente novamente.';
+    else if(/permission|permissão|not allowed|forbidden/i.test(s)) msg='Seu usuário não possui permissão para realizar esta ação.';
+    else if(/Falha ao criar OS\/agenda/i.test(s)) msg='Não foi possível importar esta OS na Empresa Ativa. Confira a empresa selecionada e as permissões do seu usuário.';
+    else msg=s.replace(/^\{.*"message"\s*:\s*"([^"]+)".*\}$/,'$1');
+    if(msg!==s)console.error('[VoxAssist] Erro técnico original (mensagem exibida ao usuário foi traduzida):',s);
+    return msg;
   }
+
+  // Exposta pra quem precisa da mensagem humanizada SEM passar pelo
+  // toast (ex.: form-error-display-v1.js, pra mostrar numa caixa
+  // persistente em vez de um toast passageiro).
+  window.vxHumanMessage=humanMessage;
 
   // Mantém detalhes técnicos fora da interface e mensagens claras para o usuário.
   if(typeof window.toast==='function'&&!window.__vxHumanToast){

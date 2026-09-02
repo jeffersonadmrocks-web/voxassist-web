@@ -86,10 +86,30 @@
   }
   window.vxSaveEquipment=saveEquipmentComplementary;
 
+  // Achado do usuário em 2026-09-02: erro ao salvar aparecia num toast
+  // genérico que some sozinho em poucos segundos, sempre com a MESMA
+  // frase ("cadastro incompleto"), mesmo quando a causa real era outra
+  // (RLS, sessão, empresa ativa). Auditoria isolada (cada condição
+  // testada em separado, formulário totalmente vazio incluso)
+  // confirmou que HOJE NENHUM campo deste formulário é validado --
+  // técnico, defeito constatado, serviço, valores financeiros, todos
+  // opcionais, salvamento sempre aceito. Por instrução explícita do
+  // usuário, esta correção NÃO cria nenhum campo obrigatório novo --
+  // só troca a APRESENTAÇÃO: erro técnico agora usa
+  // vxShowTechnicalError (caixa persistente, nunca some sozinha, log
+  // completo só no console -- ver form-error-display-v1.js), e a única
+  // condição que já bloqueava (nenhuma OS carregada) ganha a mesma
+  // caixa em vez de um toast passageiro.
   async function saveBudget(){
     const o=state.activeOs;
     const panel=q('#vx-orcamento');
-    if(!o?.id || !panel) return toast('Nenhuma OS aberta para salvar.','err');
+    window.vxClearFormErrors?.(panel);
+    if(!o?.id || !panel){
+      const msg='Nenhuma OS aberta para salvar.';
+      if(panel && window.vxShowTechnicalError)window.vxShowTechnicalError(panel,msg);
+      else toast(msg,'err');
+      return;
+    }
     const btn=q('#vxSaveBudget');
     if(btn){btn.disabled=true;btn.textContent='SALVANDO...';}
     try{
@@ -112,7 +132,15 @@
       }
       updateBudgetTotal();
       toast('Orçamento / análise técnica salvos.');
-    }catch(err){toast('Falha ao salvar orçamento: '+err.message,'err');}
+    }catch(err){
+      // vxHumanMessage() (security-whirlpool-hardening-v0813.js) já
+      // traduz a causa técnica pra uma frase honesta e loga o erro
+      // original completo no console -- aqui só decide ONDE mostrar
+      // (caixa persistente, não toast passageiro).
+      const translated=typeof window.vxHumanMessage==='function'?window.vxHumanMessage(err.message):err.message;
+      if(window.vxShowTechnicalError)window.vxShowTechnicalError(panel,translated,err);
+      else toast('Falha ao salvar orçamento: '+err.message,'err');
+    }
     finally{if(btn){btn.disabled=false;btn.textContent='SALVAR ORÇAMENTO / ANÁLISE TÉCNICA';}}
   }
   window.vxSaveBudget=saveBudget;
