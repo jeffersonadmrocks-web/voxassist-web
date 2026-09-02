@@ -56,7 +56,10 @@
     toast('Função registrada para evolução/homologação da V0.8.12.');
   }
   async function renderOperational(view,label){await baseRender(view);state.view='op:'+view;renderTabs(label);const title=document.querySelector('#title');if(title)title.textContent=label;}
-  function lowerTabs(){return `<div class="module-lower-tabs"><button class="active">Oportunidades do Dia</button><button>Casos de Atenção</button><button data-target="agenda-operacional">Minhas Tarefas</button><button data-target="agenda-operacional">Agenda / Compromissos</button><button data-target="estoque-operacional">Pedidos de Peças</button><button>Produtividade / Bonificação</button></div><div class="module-lower-content">Ambiente de homologação — dados fictícios.</div>`}
+  // "Produtividade / Bonificação" ganhou data-target na Fase 10 --
+  // antes era um botão morto (sem handler nenhum, achado no
+  // diagnóstico). Aponta pra mesma tela real do card 3.
+  function lowerTabs(){return `<div class="module-lower-tabs"><button class="active">Oportunidades do Dia</button><button>Casos de Atenção</button><button data-target="agenda-operacional">Minhas Tarefas</button><button data-target="agenda-operacional">Agenda / Compromissos</button><button data-target="estoque-operacional">Pedidos de Peças</button><button data-target="produtividade-metas">Produtividade / Bonificação</button></div><div class="module-lower-content">Ambiente de homologação — dados fictícios.</div>`}
   function home(title,subtitle,actions,metrics='',buttons=''){const app=document.querySelector('#app');if(!app)return;app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>${title}</h2><p>${subtitle}</p></div><div class="module-head-actions">${buttons}</div></div>${metrics?`<div class="module-summary">${metrics}</div>`:''}<div class="module-action-grid">${actions}</div>${lowerTabs()}</div>`;bindTargets();}
   function countStatus(s){return state.orders.filter(o=>o.status===s).length}
 
