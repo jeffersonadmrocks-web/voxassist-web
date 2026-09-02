@@ -13,7 +13,12 @@
       const uid=window.state?.session?.user?.id;
       const cid=window.state?.profile?.active_company_id;
       if(!uid||!cid||typeof window.api!=='function')return;
-      await window.api('user_presence',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:uid,company_id:cid,last_seen_at:new Date().toISOString()})});
+      // logged_out_at:null -- achado do usuário em 2026-09-02: qualquer
+      // atividade nova precisa voltar pra ONLINE imediatamente, mesmo
+      // que a sessão tenha um logout explícito anterior registrado
+      // (ver user-logoff-v0813.js) -- sem isso, um login novo ficaria
+      // preso em OFFLINE até o campo antigo "vencer" sozinho.
+      await window.api('user_presence',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:uid,company_id:cid,last_seen_at:new Date().toISOString(),logged_out_at:null})});
     }catch(_e){/* heartbeat nunca pode travar nada da tela -- silencioso */}
   }
   function start(){

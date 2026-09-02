@@ -6,6 +6,16 @@
   let remountTimer=null;
 
   async function doLogout(){
+    // Achado do usuário em 2026-09-02 (pacote fila/robô/presença):
+    // "Offline: logout explícito" precisa de um sinal próprio, não só
+    // esperar o heartbeat vencer -- grava ANTES de derrubar a sessão
+    // (depois disso a chamada não teria mais auth.uid() válido pra
+    // RLS). Nunca trava o logout se isso falhar.
+    try{
+      const s=getState();
+      const uid=s?.session?.user?.id;
+      if(uid&&typeof api==='function')await api('user_presence',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:uid,company_id:s?.profile?.active_company_id||null,logged_out_at:new Date().toISOString()})});
+    }catch(e){}
     try{ if(typeof auth==='function') await auth('logout',{}); }catch(e){}
     try{ if(typeof clearSession==='function') clearSession(); }catch(e){}
     try{ localStorage.removeItem('vox_session'); }catch(e){}

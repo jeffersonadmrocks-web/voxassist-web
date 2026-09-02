@@ -81,15 +81,25 @@ export function validateOutboundMessage(input: OutboundValidationInput): Outboun
 }
 
 export type ExistingConversation = { id: string; status: string };
-export type ConversationTarget = { action: "REUSE"; conversationId: string } | { action: "CREATE" };
+export type ConversationTarget = { action: "REUSE"; conversationId: string } | { action: "REOPEN"; conversationId: string } | { action: "CREATE" };
 
 // Uma mensagem inbound pro mesmo telefone+conexão reaproveita a
 // conversa mais recente que ainda não foi FINALIZADA, em vez de criar
 // uma conversa nova a cada mensagem (isso fragmentaria o histórico e
 // quebraria "vínculo conversa ↔ cliente/OS" com o contexto espalhado).
+//
+// Achado do usuário em 2026-09-02 (pacote fila/robô/presença): decisão
+// anterior era CREATE quando só existiam conversas FINALIZADA -- uma
+// nova conversa (id novo) pro mesmo cliente, fragmentando o histórico
+// em duas linhas separadas. Pedido explícito agora é reabrir a MESMA
+// conversa (REOPEN, mesmo conversationId) preservando o histórico
+// completo -- assume que existingForPhone vem ordenado por
+// created_at desc (mesmo contrato já usado pelo chamador), então a
+// primeira é a mais recente.
 export function decideConversationTarget(existingForPhone: ExistingConversation[]): ConversationTarget {
   const open = existingForPhone.find((c) => c.status !== "FINALIZADA");
   if (open) return { action: "REUSE", conversationId: open.id };
+  if (existingForPhone.length) return { action: "REOPEN", conversationId: existingForPhone[0].id };
   return { action: "CREATE" };
 }
 

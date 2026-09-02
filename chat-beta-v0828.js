@@ -370,6 +370,15 @@
       <div class="vx-conn-grid">
         ${cache.connections.length?cache.connections.map(connectionCard).join(''):'<div class="vx-chatbeta-sub">Nenhuma conexão criada ainda.</div>'}
       </div>
+      <div class="vx-conn-help">
+        <h4>ⓘ Como funciona</h4>
+        <ol>
+          <li><b>Adicione uma conexão</b> -- informe um nome e selecione a filial pra organizar seus atendimentos.</li>
+          <li><b>Escaneie o QR Code</b> -- ele aparece assim que você clica em "Conectar", pra parear o número pelo WhatsApp.</li>
+          <li><b>Pronto!</b> -- assim que conectado, as conversas começam a chegar automaticamente.</li>
+        </ol>
+        <p class="vx-conn-tip">💡 <b>Dica:</b> você pode adicionar vários números WhatsApp e gerenciar cada um deles de forma independente.</p>
+      </div>
     </div>`;
     document.getElementById('conexoesBack').onclick=openConversasScreen;
     document.getElementById('novaConexaoForm').onsubmit=handleCreateConexao;
@@ -659,9 +668,20 @@
     ARQUIVADA:{text:'Arquivada',cls:'neutral'},
   };
 
+  // Achado do usuário em 2026-09-02 (pacote fila/robô/presença):
+  // conversas ENCERRADAS ficavam na fila principal pra sempre --
+  // "Todas"/os chips misturavam ativo com histórico fechado. Regra
+  // nova: sem busca digitada, FINALIZADA nunca aparece (nem em
+  // "Todas", nem nos contadores dos chips); com busca, ela pode voltar
+  // (achada por nome/telefone), com o badge "Encerrada" já existente
+  // (CONV_STATUS_LABEL.FINALIZADA) deixando isso óbvio. Limpar a busca
+  // volta a escondê-la. Relatórios/Monitor/histórico do cliente
+  // continuam noutras queries, não passam por aqui -- histórico
+  // completo intocado.
   function filteredConvList(){
     const me=myUserId();
-    let rows=hubState.list;
+    const searching=!!hubState.search.trim();
+    let rows=searching?hubState.list:hubState.list.filter(c=>c.status!=='FINALIZADA');
     if(hubState.filter==='MINHAS')rows=rows.filter(c=>String(c.assigned_user_id||'')===String(me));
     else if(hubState.filter==='NAO_ATRIBUIDAS')rows=rows.filter(c=>!c.assigned_user_id);
     else if(hubState.filter==='NAO_LIDAS')rows=rows.filter(c=>Number(c.unread_count||0)>0);
@@ -818,20 +838,28 @@
         <button id="chatHubBack" class="vx-cc-back">← Voltar</button>
         <div class="vx-cc-title-block"><h1>Central de Conversas</h1><p>Chat VoxAssist · desktop, 3 colunas</p></div>
         ${businessHoursBadge()}
-        ${isGestor()?'<button id="chatHubMonitor" class="vx-cc-settings-btn" type="button" title="Monitor de atividades -- visão do gestor sobre a operação">📊 Monitor</button><button id="chatHubUsers" class="vx-cc-settings-btn" type="button" title="Usuários -- WhatsApp interno">👤 Usuários</button>':''}
-        <button id="chatHubSettings" class="vx-cc-settings-btn" type="button" title="Configurações → Conexões (adicionar, remover, reconectar números)">⚙ Configurações</button>
+        <div class="vx-cc-top-actions">
+          ${isGestor()?'<button id="chatHubMonitor" class="vx-cc-settings-btn" type="button" title="Monitor de atividades -- visão do gestor sobre a operação">📊 Monitor</button><button id="chatHubUsers" class="vx-cc-settings-btn" type="button" title="Usuários -- WhatsApp interno">👤 Usuários</button>':''}
+          <button id="chatHubSettings" class="vx-cc-settings-btn" type="button" title="Configurações → Conexões (adicionar, remover, reconectar números)">⚙ Configurações</button>
+        </div>
       </div>
       <div class="vx-cc-board">
         <section class="vx-cc-pane vx-cc-pane-list">
           <div class="vx-cc-pane-head">
-            <div class="vx-cc-pane-head-row"><h2>Conversas</h2><button class="vx-cc-new-btn" id="chatNewConv" type="button">+ Nova</button></div>
+            <div class="vx-cc-pane-head-row"><h2>Conversas</h2><button class="vx-cc-new-btn vx-cc-new-btn-primary" id="chatNewConv" type="button">+ Nova</button></div>
             <div class="vx-cc-search"><input id="chatSearch" placeholder="Buscar por nome ou telefone…" value="${E(hubState.search)}" autocomplete="off"><div class="vx-cc-search-results" id="chatSearchResults" hidden></div></div>
-            <div class="vx-cc-filter-chips">
-              ${CONV_FILTER_CHIPS.map(([k,l])=>`<button type="button" class="vx-cc-chip ${hubState.filter===k?'active':''}" data-filter="${k}">${l}</button>`).join('')}
+            <div class="vx-cc-filter-group">
+              <small class="vx-cc-filter-group-label">Status das conversas</small>
+              <div class="vx-cc-filter-chips">
+                ${CONV_FILTER_CHIPS.map(([k,l])=>`<button type="button" class="vx-cc-chip ${hubState.filter===k?'active':''}" data-filter="${k}">${l}</button>`).join('')}
+              </div>
             </div>
-            <div class="vx-cc-filter-selects">
-              <select id="chatStoreFilter"><option value="">Todas as lojas</option>${cache.stores.map(s=>`<option value="${E(s.id)}" ${hubState.storeFilter===String(s.id)?'selected':''}>${E(s.name)}</option>`).join('')}</select>
-              <select id="chatConnFilter"><option value="">Todas as conexões</option>${cache.connections.map(c=>`<option value="${E(c.id)}" ${hubState.connectionFilter===String(c.id)?'selected':''}>${E(c.name)}</option>`).join('')}</select>
+            <div class="vx-cc-filter-group">
+              <small class="vx-cc-filter-group-label">Filtros rápidos</small>
+              <div class="vx-cc-filter-selects">
+                <select id="chatStoreFilter"><option value="">Todas as lojas</option>${cache.stores.map(s=>`<option value="${E(s.id)}" ${hubState.storeFilter===String(s.id)?'selected':''}>${E(s.name)}</option>`).join('')}</select>
+                <select id="chatConnFilter"><option value="">Todas as conexões</option>${cache.connections.map(c=>`<option value="${E(c.id)}" ${hubState.connectionFilter===String(c.id)?'selected':''}>${E(c.name)}</option>`).join('')}</select>
+              </div>
             </div>
           </div>
           <ul id="chatConvList" class="vx-cc-conv-list"></ul>
@@ -1250,11 +1278,27 @@
     }catch(err){/* auditoria não pode travar a ação principal -- só loga no console */console.error?.('Falha ao registrar evento de conversa:',err)}
   }
 
+  // Achado do usuário em 2026-09-02 (pacote fila/robô/presença): a
+  // captura precisa ser atômica -- em clique simultâneo, só um usuário
+  // pode vencer. O PATCH de antes não checava nada, então dois cliques
+  // ao mesmo tempo faziam os dois "ganharem" (o segundo sobrescrevia o
+  // primeiro em silêncio). Fix: o filtro assigned_user_id=is.null vai
+  // JUNTO do WHERE do UPDATE no banco -- Postgres serializa updates
+  // concorrentes na mesma linha, então só quem chegar primeiro
+  // encontra a linha ainda null e a atualiza; o segundo dá 0 linhas
+  // afetadas (nunca um erro -- só resultado vazio), detectável via
+  // Prefer:return=representation.
   async function assumirConversa(conversationId){
     try{
       const conv=hubState.list.find(c=>String(c.id)===String(conversationId));
       const previousUserId=conv?.assigned_user_id||null;
-      await api(`chat_conversations?id=eq.${conversationId}`,{method:'PATCH',body:JSON.stringify({assigned_user_id:myUserId()})});
+      const result=await api(`chat_conversations?id=eq.${conversationId}&assigned_user_id=is.null`,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({assigned_user_id:myUserId()})});
+      if(!Array.isArray(result)||!result.length){
+        toast?.('Este atendimento já foi assumido por outra pessoa.','err');
+        await loadConversasHubData();renderConvList();
+        if(String(hubState.selectedId)===String(conversationId))await selectConversa(conversationId,true);
+        return;
+      }
       await logConversationEvent(conversationId,'ASSUMIR',{assigned_user_id:previousUserId},{assigned_user_id:myUserId()});
       toast?.('Conversa atribuída a você.');
       await refreshConvSummary(conversationId);
@@ -1558,14 +1602,30 @@
     // handleSendMensagem). Se já pertence a OUTRO atendente, pergunta
     // em vez de decidir sozinho.
     if(conv&&!conv.assigned_user_id){
+      // Mesma captura atômica de assumirConversa() -- dois atendentes
+      // respondendo a mesma conversa sem dono ao mesmo tempo é
+      // exatamente a mesma corrida de "Assumir" (achado do usuário
+      // 2026-09-02), só disparada pelo envio da mensagem em vez do
+      // botão.
       try{
-        await api(`chat_conversations?id=eq.${conversaAtualId}`,{method:'PATCH',body:JSON.stringify({assigned_user_id:me})});
-        await logConversationEvent(conversaAtualId,'AUTO_ASSIGN_FIRST_MESSAGE',{assigned_user_id:null},{assigned_user_id:me});
-        conv.assigned_user_id=me;
-        await refreshConvSummary(conversaAtualId);
-        renderContexto(hubState.list.find(c=>String(c.id)===String(conversaAtualId)));
-        document.getElementById('vxCtxAssume')?.remove();
-        toast?.('Conversa atribuída a você automaticamente.');
+        const result=await api(`chat_conversations?id=eq.${conversaAtualId}&assigned_user_id=is.null`,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({assigned_user_id:me})});
+        if(Array.isArray(result)&&result.length){
+          await logConversationEvent(conversaAtualId,'AUTO_ASSIGN_FIRST_MESSAGE',{assigned_user_id:null},{assigned_user_id:me});
+          conv.assigned_user_id=me;
+          await refreshConvSummary(conversaAtualId);
+          renderContexto(hubState.list.find(c=>String(c.id)===String(conversaAtualId)));
+          document.getElementById('vxCtxAssume')?.remove();
+          toast?.('Conversa atribuída a você automaticamente.');
+        }else{
+          // Alguém assumiu entre o carregamento da tela e o envio --
+          // recarrega pra refletir o dono real antes de mandar a
+          // mensagem (a mensagem em si ainda é enviada normalmente).
+          await loadConversasHubData();
+          const fresh=hubState.list.find(c=>String(c.id)===String(conversaAtualId));
+          if(fresh)Object.assign(conv,fresh);
+          toast?.('Este atendimento já foi assumido por outra pessoa -- sua mensagem será enviada mesmo assim.','err');
+          renderContexto(fresh);
+        }
       }catch(err){toast?.('Não foi possível atribuir a conversa automaticamente: '+err.message,'err')}
     }else if(conv&&String(conv.assigned_user_id)!==String(me)){
       const owner=cache.attendants.find(a=>String(a.id)===String(conv.assigned_user_id));
@@ -1574,7 +1634,12 @@
       if(choice==='assume'){
         try{
           const previousUserId=conv.assigned_user_id;
-          await api(`chat_conversations?id=eq.${conversaAtualId}`,{method:'PATCH',body:JSON.stringify({assigned_user_id:me})});
+          const result=await api(`chat_conversations?id=eq.${conversaAtualId}&assigned_user_id=eq.${previousUserId}`,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({assigned_user_id:me})});
+          if(!Array.isArray(result)||!result.length){
+            toast?.('O responsável mudou enquanto você decidia -- confira de novo antes de assumir.','err');
+            await loadConversasHubData();renderContexto(hubState.list.find(c=>String(c.id)===String(conversaAtualId)));
+            return;
+          }
           await logConversationEvent(conversaAtualId,'ASSUMIR',{assigned_user_id:previousUserId},{assigned_user_id:me});
           conv.assigned_user_id=me;
           await refreshConvSummary(conversaAtualId);
