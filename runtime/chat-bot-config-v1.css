@@ -51,6 +51,27 @@
 .vx-bf-step-condition label{flex:1;margin-bottom:0}
 .vx-bf-step-condition select,.vx-bf-step-condition input{margin-top:4px}
 
+/* Achado do usuário em 2026-09-02 (mockup aprovado, artifact 42ebf5fb):
+   faltava o simulador interativo do fluxo -- casca conversacional por
+   cima das perguntas/regras já editadas acima. */
+.vx-bf-sim-thread{background:var(--cc-surface-2);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto}
+.vx-bf-sim-row{display:flex}
+.vx-bf-sim-row.client{justify-content:flex-end}
+.vx-bf-sim-bubble{max-width:78%;padding:8px 12px;border-radius:10px;font-size:12.5px;line-height:1.42;background:var(--cc-surface);border:1px solid var(--cc-border);color:var(--cc-ink)}
+.vx-bf-sim-row.client .vx-bf-sim-bubble{background:var(--cc-accent);color:#fff;border-color:var(--cc-accent)}
+.vx-bf-sim-options{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}
+.vx-bf-sim-opt{border:1px solid var(--cc-accent);background:var(--cc-accent-soft);color:var(--cc-accent);font-weight:700;font-size:12px;padding:7px 12px;border-radius:999px;cursor:pointer}
+.vx-bf-sim-opt:hover{background:var(--cc-accent);color:#fff}
+.vx-bf-sim-opt.vx-bf-sim-escape{border-color:var(--cc-border);background:var(--cc-surface);color:var(--cc-ink-dim)}
+.vx-bf-sim-freetext{display:flex;gap:6px;margin:2px 0 4px}
+.vx-bf-sim-freetext input{flex:1;border:1px solid var(--cc-border);background:var(--cc-surface);color:var(--cc-ink);border-radius:8px;padding:7px 9px;font-size:12.5px}
+.vx-bf-sim-freetext button{border:0;background:var(--cc-accent);color:#fff;font-weight:700;font-size:12px;padding:0 14px;border-radius:8px;cursor:pointer}
+.vx-bf-sim-summary{background:var(--cc-surface);border:1px solid var(--cc-border);border-radius:9px;padding:12px;font-size:12.5px;color:var(--cc-ink-dim);line-height:1.9}
+.vx-bf-sim-summary b{color:var(--cc-ink)}
+.vx-bf-sim-summary-dest{margin-top:6px;padding-top:6px;border-top:1px solid var(--cc-border);color:var(--cc-ink)}
+.vx-bf-sim-reset{margin-top:10px;border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink-dim);font-weight:700;font-size:12px;padding:7px 13px;border-radius:8px;cursor:pointer}
+.vx-bf-sim-reset:hover{background:var(--cc-accent-soft);color:var(--cc-accent)}
+
 .vx-bf-version-status{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--cc-border);margin-bottom:10px;font-size:12.5px;font-weight:600;color:var(--cc-ink-dim)}
 .vx-bf-version-status button{border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink-dim);font-weight:700;font-size:12px;padding:8px 14px;border-radius:8px;cursor:pointer}
 .vx-bf-version-status button.primary{border:0;background:var(--cc-accent);color:#fff}

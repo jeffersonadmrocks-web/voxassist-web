@@ -322,6 +322,85 @@
     </div>`;
   }
 
+  /* ---------- simulador interativo (achado do usuário em 2026-09-02,
+     mockup aprovado artifact 42ebf5fb, linhas 2214-2272): faltava a
+     casca conversacional por cima do que já existia -- as perguntas
+     reais (bf.steps/bf.conditions), as regras reais (testRoutingCombo,
+     já usado pelo "Testar uma combinação" acima) e o atendente padrão
+     real. isStepEligibleSim/nextEligibleStepSim espelham
+     isStepEligible/resolveNextEligibleStep de
+     supabase/functions/_shared/chatBotFlow.ts:48-60,70-81 -- mesma
+     regra de elegibilidade (ativa + ainda não respondida + condição
+     bate por normVal, igual normalizeAnswerValue), só client-side pra
+     não precisar de round-trip nenhum durante a simulação. Nenhuma
+     lógica de roteamento nova -- o resultado final chama o mesmo
+     testRoutingCombo de cima. */
+  let simState={answers:{},history:[],humanEscape:false};
+  function activeSortedSteps(){return[...bf.steps].filter(s=>s.active).sort((a,b)=>a.step_order-b.step_order)}
+  function isStepEligibleSim(step,answers){
+    if(Object.prototype.hasOwnProperty.call(answers,step.step_key))return false;
+    const condition=bf.conditions.find(c=>c.step_id===step.id);
+    if(!condition)return true;
+    const dependsOnStep=bf.steps.find(s=>s.id===condition.depends_on_step_id);
+    if(!dependsOnStep)return false;
+    return normVal(answers[dependsOnStep.step_key])===normVal(condition.depends_on_value);
+  }
+  function nextEligibleStepSim(answers){return activeSortedSteps().find(s=>isStepEligibleSim(s,answers))||null}
+  function resetSimulation(){simState={answers:{},history:[],humanEscape:false};renderSimulator()}
+  function simCurrentStep(){return simState.humanEscape?null:nextEligibleStepSim(simState.answers)}
+  function simAnswer(value,label){
+    const cur=simCurrentStep();
+    if(!cur)return;
+    simState.answers[cur.step_key]=value;
+    simState.history.push({question:cur.question_text,answerLabel:label});
+    renderSimulator();
+  }
+  function renderSimulator(){
+    const box=document.getElementById('vxBfSimThread');
+    if(!box)return;
+    const steps=activeSortedSteps();
+    if(!steps.length){box.innerHTML='<p class="vx-bf-empty">Nenhuma pergunta ativa -- a conversa vai direto pro destino padrão.</p>';return}
+    const v=bf.draft||bf.published||{};
+    let html=simState.history.map(h=>`<div class="vx-bf-sim-row bot"><div class="vx-bf-sim-bubble">${E(h.question)}</div></div><div class="vx-bf-sim-row client"><div class="vx-bf-sim-bubble">${E(h.answerLabel)}</div></div>`).join('');
+    if(simState.humanEscape){
+      html+=`<div class="vx-bf-sim-row client"><div class="vx-bf-sim-bubble">🙋 Falar com atendente</div></div><div class="vx-bf-sim-summary">Encaminhado direto pra um atendente -- pediu "falar com atendente" antes de terminar a triagem, sem passar pelas regras de roteamento.</div>`;
+    }else{
+      const cur=simCurrentStep();
+      if(cur){
+        html+=`<div class="vx-bf-sim-row bot"><div class="vx-bf-sim-bubble">${E(cur.question_text)}</div></div>`;
+        if(cur.answer_type==='CHOICE'){
+          const opts=Array.isArray(cur.options)?cur.options:[];
+          html+=`<div class="vx-bf-sim-options">${opts.length?opts.map(o=>`<button type="button" class="vx-bf-sim-opt" data-sim-answer="${E(o.value)}" data-sim-label="${E(o.label)}">${E(o.label)}</button>`).join(''):'<p class="vx-bf-empty">Esta pergunta ainda não tem opções de resposta.</p>'}</div>`;
+        }else{
+          html+=`<div class="vx-bf-sim-freetext"><input type="text" id="vxBfSimFreeText" placeholder="Resposta do cliente…" maxlength="200"><button type="button" id="vxBfSimFreeTextSend">Enviar</button></div>`;
+        }
+        if(v.always_human_toggle)html+=`<div class="vx-bf-sim-options"><button type="button" class="vx-bf-sim-opt vx-bf-sim-escape" data-sim-human="1">🙋 Falar com atendente</button></div>`;
+      }else{
+        const storeStep=steps.find(s=>s.routing_dimension==='STORE'),warrantyStep=steps.find(s=>s.routing_dimension==='WARRANTY'),brandStep=steps.find(s=>s.routing_dimension==='BRAND');
+        const matched=testRoutingCombo(storeStep?simState.answers[storeStep.step_key]||null:null,warrantyStep?simState.answers[warrantyStep.step_key]||'':'',brandStep?simState.answers[brandStep.step_key]||'':'');
+        const destino=matched?(matched.target?.full_name||'atendente'):(v.default_attendant_id?(bf.profiles.find(p=>p.id===v.default_attendant_id)?.full_name||'atendente padrão'):'nenhum atendente padrão configurado');
+        html+=`<div class="vx-bf-sim-summary"><b>Resumo da triagem</b>${simState.history.map(h=>`<div>${E(h.question)}: <b>${E(h.answerLabel)}</b></div>`).join('')}<div class="vx-bf-sim-summary-dest">Encaminhado para: <b>${E(destino)}</b>${matched?` <small>(regra com especificidade ${matched.specificity})</small>`:''}</div></div>`;
+      }
+    }
+    box.innerHTML=html;
+    box.scrollTop=box.scrollHeight;
+    box.querySelectorAll('[data-sim-answer]').forEach(btn=>btn.onclick=()=>simAnswer(btn.dataset.simAnswer,btn.dataset.simLabel));
+    box.querySelector('[data-sim-human]')?.addEventListener('click',()=>{simState.humanEscape=true;renderSimulator()});
+    const freeInput=box.querySelector('#vxBfSimFreeText');
+    const sendFreeText=()=>{const val=freeInput.value.trim();if(val)simAnswer(val,val)};
+    box.querySelector('#vxBfSimFreeTextSend')?.addEventListener('click',sendFreeText);
+    freeInput?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendFreeText()}});
+  }
+  function simulatorCard(){
+    if(!bf.draft&&!bf.published)return'';
+    return `<div class="vx-bf-card">
+      <h3>Simular o fluxo</h3>
+      <p class="vx-bf-sub">Testa o robô como o cliente veria, com as perguntas e regras configuradas acima -- qualquer edição reflete aqui na próxima simulação.</p>
+      <div class="vx-bf-sim-thread" id="vxBfSimThread"></div>
+      <button type="button" class="vx-bf-sim-reset" id="vxBfSimReset">↺ Reiniciar simulação</button>
+    </div>`;
+  }
+
   function wireStepRows(){
     document.querySelectorAll('.vx-bf-step-row').forEach(row=>{
       const stepId=row.dataset.step;
@@ -389,6 +468,7 @@
       </div>
       ${welcomeCard()}
       ${stepsCard()}
+      ${simulatorCard()}
       ${generalSettingsCard()}
       ${versionsCard()}
       ${routingRulesCard()}
@@ -420,7 +500,9 @@
       const box=document.getElementById('vxBfTestResult');
       box.textContent=matched?`Vai pra ${matched.target?.full_name||'atendente'} (regra com especificidade ${matched.specificity}).`:`Nenhuma regra bate -- usaria o atendente padrão (${bf.draft?.default_attendant_id||bf.published?.default_attendant_id?bf.profiles.find(p=>p.id===(bf.draft||bf.published).default_attendant_id)?.full_name:'nenhum configurado'}).`;
     });
+    document.getElementById('vxBfSimReset')?.addEventListener('click',resetSimulation);
     wireStepRows();
+    resetSimulation();
   }
 
   async function renderChatBotConfig(){
