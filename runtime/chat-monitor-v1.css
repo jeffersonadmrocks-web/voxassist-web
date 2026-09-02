@@ -19,14 +19,30 @@
 .vx-mon-presence-dot.ausente{background:var(--cc-warn-ink,#b45309)}
 .vx-mon-presence-dot.offline{background:var(--cc-err-ink)}
 
-.vx-mon-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.vx-mon-kpi{text-align:left;border:1px solid var(--cc-border);border-top:3px solid var(--cc-accent);background:var(--cc-surface);border-radius:10px;padding:12px 14px;cursor:pointer;font-family:inherit}
+/* Achado do usuário em 2026-09-02 (referência visual aprovada): faltava
+   ícone-em-círculo-colorido por card e a grade era 3 colunas fixas em
+   vez de acomodar 4 numa tela larga, como na referência. */
+.vx-mon-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.vx-mon-kpi{display:flex;align-items:center;gap:11px;text-align:left;border:1px solid var(--cc-border);border-top:3px solid var(--cc-accent);background:var(--cc-surface);border-radius:10px;padding:12px 14px;cursor:pointer;font-family:inherit;box-shadow:var(--cc-shadow)}
 .vx-mon-kpi:hover:not(:disabled){background:var(--cc-accent-soft)}
 .vx-mon-kpi:disabled{cursor:default;opacity:.7}
-.vx-mon-kpi span{display:block;color:var(--cc-ink-faint);font-size:10.5px;font-weight:700;text-transform:uppercase}
-.vx-mon-kpi b{display:block;font-size:22px;margin-top:6px;color:var(--cc-accent)}
+.vx-mon-kpi-ic{flex:none;width:34px;height:34px;border-radius:9px;background:var(--cc-info-bg);display:flex;align-items:center;justify-content:center;font-size:16px}
+.vx-mon-kpi-body{display:flex;flex-direction:column;min-width:0}
+.vx-mon-kpi-body span{display:block;color:var(--cc-ink-faint);font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vx-mon-kpi-body b{display:block;font-size:21px;margin-top:3px;color:var(--cc-accent)}
 .vx-mon-kpi-warn{border-top-color:var(--cc-err-ink)}
-.vx-mon-kpi-warn b{color:var(--cc-err-ink)}
+.vx-mon-kpi-warn .vx-mon-kpi-ic{background:var(--cc-err-bg);color:var(--cc-err-ink)}
+.vx-mon-kpi-warn .vx-mon-kpi-body b{color:var(--cc-err-ink)}
+
+.vx-mon-sla-row{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;align-items:start}
+.vx-mon-howitworks-card h3{font-size:13px}
+.vx-mon-howitworks-item{display:flex;align-items:baseline;gap:8px;font-size:12px;color:var(--cc-ink-dim);padding:6px 0;border-top:1px solid var(--cc-border)}
+.vx-mon-howitworks-item:first-of-type{border-top:0}
+.vx-mon-howitworks-item b{color:var(--cc-ink)}
+.vx-mon-howitworks-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.vx-mon-howitworks-dot.ok{background:var(--cc-ok-ink)}
+.vx-mon-howitworks-dot.warn{background:var(--cc-warn-ink)}
+.vx-mon-howitworks-dot.err{background:var(--cc-err-ink)}
 
 .vx-mon-card{background:var(--cc-surface);border:1px solid var(--cc-border);border-radius:12px;padding:16px 18px;box-shadow:var(--cc-shadow)}
 .vx-mon-card h3{margin:0 0 4px;font-size:14.5px;color:var(--cc-navy)}
@@ -66,5 +82,6 @@
 .vx-mon-modal-body td{padding:8px;border-bottom:1px solid var(--cc-border);font-size:12.5px;cursor:pointer}
 .vx-mon-modal-body tr:hover td{background:var(--cc-surface-2)}
 
+@media(max-width:1000px){.vx-mon-metrics{grid-template-columns:repeat(3,1fr)}.vx-mon-sla-row{grid-template-columns:1fr}}
 @media(max-width:900px){.vx-mon-metrics{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.vx-mon-metrics{grid-template-columns:1fr}}

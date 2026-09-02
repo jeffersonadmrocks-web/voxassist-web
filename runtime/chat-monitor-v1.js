@@ -172,25 +172,27 @@
   function metricsRow(){
     const m=metricRows();
     const cards=[
-      ['Total de atendimentos',m.total.length,()=>convModal('Total de atendimentos',m.total)],
-      ['Em aberto',m.abertas.length,()=>convModal('Em aberto',m.abertas)],
-      ['Encerradas',m.encerradas.length,()=>convModal('Encerradas',m.encerradas)],
-      ['Não atribuídas',m.naoAtribuidas.length,()=>convModal('Não atribuídas',m.naoAtribuidas)],
-      [`SLA vencido (≥${slaAttentionLimit()}min)`,m.slaVencido.length,()=>convModal('SLA vencido',m.slaVencido),true],
-      ['Retornos vencidos',m.retornosVencidos.length,()=>convModal('Retornos vencidos',m.retornosVencidos),true],
-      ['Transferências',m.transferidas.length,()=>transferModal(m.transferidas)],
-      ['Caíram no fallback do robô',m.fallback.length,null],
-      ['Falhas de envio',m.falhas.length,()=>failedModal(m.falhas),true],
+      ['💬','Total de atendimentos',m.total.length,()=>convModal('Total de atendimentos',m.total)],
+      ['🎧','Em aberto',m.abertas.length,()=>convModal('Em aberto',m.abertas)],
+      ['✅','Encerradas',m.encerradas.length,()=>convModal('Encerradas',m.encerradas)],
+      ['👤','Não atribuídas',m.naoAtribuidas.length,()=>convModal('Não atribuídas',m.naoAtribuidas)],
+      ['⏱',`SLA vencido (≥${slaAttentionLimit()}min)`,m.slaVencido.length,()=>convModal('SLA vencido',m.slaVencido),true],
+      ['↩','Retornos vencidos',m.retornosVencidos.length,()=>convModal('Retornos vencidos',m.retornosVencidos),true],
+      ['➤','Transferências',m.transferidas.length,()=>transferModal(m.transferidas)],
+      ['📥','Caíram no fallback do robô',m.fallback.length,null],
+      ['⚠','Falhas de envio',m.falhas.length,()=>failedModal(m.falhas),true],
     ];
     // Achado do usuário em 2026-09-02 (referência visual aprovada):
     // hierarquia dos KPIs -- os que sinalizam problema (marcados acima)
     // ganham destaque quando têm contagem > 0, mesmos números de
-    // sempre, só apresentação diferente.
-    return `<div class="vx-mon-metrics">${cards.map((c,i)=>`<button type="button" class="vx-mon-kpi ${c[3]&&c[1]>0?'vx-mon-kpi-warn':''}" data-kpi="${i}" ${c[2]?'':'disabled'}><span>${E(c[0])}</span><b>${c[1]}</b></button>`).join('')}</div>`;
+    // sempre, só apresentação diferente. Ícone num círculo colorido por
+    // card (achado do usuário: faltava esse tratamento visual, não
+    // dado novo nenhum).
+    return `<div class="vx-mon-metrics">${cards.map((c,i)=>`<button type="button" class="vx-mon-kpi ${c[4]&&c[2]>0?'vx-mon-kpi-warn':''}" data-kpi="${i}" ${c[3]?'':'disabled'}><span class="vx-mon-kpi-ic">${c[0]}</span><span class="vx-mon-kpi-body"><span>${E(c[1])}</span><b>${c[2]}</b></span></button>`).join('')}</div>`;
   }
   function slaCard(){
     const s=mon.sla||{};
-    return `<div class="vx-mon-card">
+    return `<div class="vx-mon-card vx-mon-sla-card">
       <h3>Limites de tempo de espera do cliente</h3>
       <p class="vx-mon-sub">Mesmos valores usados no chip "Tempo excedido" da lista de conversas e no card de SLA acima -- editar aqui muda os dois lugares.</p>
       <div class="vx-mon-sla-fields">
@@ -199,6 +201,18 @@
         <label>Alertar gestor a partir de (min)<input type="number" min="1" id="vxMonSlaAlerta" value="${E(s.alert_gestor_min??60)}"></label>
       </div>
       <button type="button" class="vx-mon-save-btn" id="vxMonSlaSave">Salvar limites</button>
+    </div>`;
+  }
+  // Achado do usuário em 2026-09-02 (referência visual aprovada): faltava
+  // a legenda "Como funciona" ao lado dos limites -- só texto explicativo
+  // fixo, mesmo conceito já usado nos 3 estados (normal/atenção/alerta),
+  // nenhum dado novo.
+  function slaHowItWorksCard(){
+    return `<div class="vx-mon-card vx-mon-howitworks-card">
+      <h3>ⓘ Como funciona</h3>
+      <div class="vx-mon-howitworks-item"><span class="vx-mon-howitworks-dot ok"></span><b>Normal:</b> dentro do tempo normal de resposta.</div>
+      <div class="vx-mon-howitworks-item"><span class="vx-mon-howitworks-dot warn"></span><b>Atenção:</b> atenção da equipe para responder.</div>
+      <div class="vx-mon-howitworks-item"><span class="vx-mon-howitworks-dot err"></span><b>Alerta gestor:</b> notificação para o gestor.</div>
     </div>`;
   }
   function alertsCard(){
@@ -272,7 +286,7 @@
       </div>
       ${mon.metricAttendantFilter?`<p class="vx-mon-filter-note">Mostrando só as métricas de <b>${E(mon.attendants.find(a=>String(a.id)===mon.metricAttendantFilter)?.full_name||'')}</b> -- escolha "Todos os atendentes" pra voltar à visão geral.</p>`:''}
       ${metricsRow()}
-      ${slaCard()}
+      <div class="vx-mon-sla-row">${slaCard()}${slaHowItWorksCard()}</div>
       ${alertsCard()}
       ${attendantsCard()}
       ${attendantDetailCard()}
