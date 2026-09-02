@@ -104,7 +104,17 @@
   }
 
   /* ---------- navegação ---------- */
-  let cache={connections:[],stores:[],attendants:[],tags:[]};
+  let cache={connections:[],stores:[],attendants:[],tags:[],quickReplies:[]};
+
+  /* ---------- Respostas rápidas (Fase 4) ----------
+     Templates reutilizáveis de mensagem, por empresa -- mesmo padrão
+     de catálogo de chat_tags (Fase 2): popover no composer,
+     criar/excluir direto dali. */
+  let quickReplyPopoverOpen=false;
+
+  async function loadQuickReplies(){
+    cache.quickReplies=await api('chat_quick_reply_templates?select=*&order=created_at.desc').catch(()=>[]);
+  }
 
   /* ---------- Tags (Fase 2) ----------
      Catálogo por empresa (chat_tags) + atribuição por conversa
@@ -475,7 +485,7 @@
     hubState.selectedId=null;
     app.innerHTML='<div class="vx-chatbeta"><div class="vx-chatbeta-loading">Carregando Central de Conversas…</div></div>';
     try{
-      await Promise.all([loadConversasHubData(),loadConexoesData(),loadAttendants(),loadTags()]);
+      await Promise.all([loadConversasHubData(),loadConexoesData(),loadAttendants(),loadTags(),loadQuickReplies()]);
       renderConversasHub();
       stopListPoll();
       listPollTimer=setInterval(async()=>{await loadConversasHubData();renderConvList()},8000);
@@ -612,6 +622,7 @@
   async function selectConversa(id,skipListRerender){
     stopConversaPoll();
     internalNoteMode=false;
+    quickReplyPopoverOpen=false;
     hubState.selectedId=id;
     const conv=hubState.list.find(c=>String(c.id)===String(id));
     // Abrir a conversa marca como lida -- mesma correção real do
@@ -650,10 +661,20 @@
       <div id="vxMsgList" class="vx-msg-list"><div class="vx-chatbeta-loading">Carregando mensagens…</div></div>
       <form id="vxMsgForm" class="vx-cc-composer">
         <button type="button" id="vxNoteToggleBtn" class="vx-cc-note-btn" title="Nota interna" aria-label="Alternar nota interna">📝</button>
+        <div class="vx-cc-qr-wrap">
+          <button type="button" id="vxQuickReplyBtn" class="vx-cc-note-btn" title="Respostas rápidas" aria-label="Respostas rápidas">💬</button>
+          <div class="vx-cc-qr-popover" id="vxQuickReplyPopover" ${quickReplyPopoverOpen?'':'hidden'}></div>
+        </div>
         <input name="body" placeholder="Escrever mensagem…" required maxlength="4000">
         <button type="submit" class="vx-cc-send-btn">Enviar</button>
       </form>`;
     document.getElementById('vxMsgForm').onsubmit=handleSendMensagem;
+    document.getElementById('vxQuickReplyBtn').onclick=e=>{
+      e.stopPropagation();
+      quickReplyPopoverOpen=!quickReplyPopoverOpen;
+      document.getElementById('vxQuickReplyPopover').hidden=!quickReplyPopoverOpen;
+      if(quickReplyPopoverOpen)renderQuickReplyPopoverContent();
+    };
     document.getElementById('vxNoteToggleBtn').onclick=()=>{
       internalNoteMode=!internalNoteMode;
       const form=document.getElementById('vxMsgForm');
@@ -777,6 +798,67 @@
       createTagAndAssign(conv.id,input.value,selectedTagSwatch);
       selectedTagSwatch=TAG_SWATCH_COLORS[0];
     };
+  }
+
+  function renderQuickReplyPopoverContent(){
+    const pop=document.getElementById('vxQuickReplyPopover');
+    if(!pop)return;
+    pop.innerHTML=`
+      <div class="vx-cc-qr-list">${cache.quickReplies.length?cache.quickReplies.map(q=>`
+        <div class="vx-cc-qr-item">
+          <button type="button" class="vx-cc-qr-option" data-qr-use="${E(q.id)}">${E(q.title)}<small>${E(q.body)}</small></button>
+          <button type="button" class="vx-cc-qr-delete-btn" data-qr-delete="${E(q.id)}" title="Excluir resposta rápida" aria-label="Excluir ${E(q.title)}">🗑</button>
+        </div>`).join(''):'<div class="vx-cc-qr-empty">Nenhuma resposta rápida criada ainda.</div>'}</div>
+      <div class="vx-cc-qr-new-row">
+        <input type="text" id="vxQrNewTitle" placeholder="Título (ex: Saudação)" maxlength="60" autocomplete="off">
+        <textarea id="vxQrNewBody" placeholder="Texto da resposta…" maxlength="1000" rows="2"></textarea>
+        <button type="button" id="vxQrCreateBtn">Criar resposta rápida</button>
+      </div>`;
+    pop.querySelectorAll('[data-qr-use]').forEach(btn=>{
+      btn.onclick=()=>useQuickReply(btn.dataset.qrUse);
+    });
+    pop.querySelectorAll('[data-qr-delete]').forEach(btn=>{
+      btn.onclick=e=>{e.stopPropagation();deleteQuickReply(btn.dataset.qrDelete)};
+    });
+    const createBtn=document.getElementById('vxQrCreateBtn');
+    if(createBtn)createBtn.onclick=()=>{
+      const title=document.getElementById('vxQrNewTitle').value;
+      const body=document.getElementById('vxQrNewBody').value;
+      createQuickReply(title,body);
+    };
+  }
+
+  function useQuickReply(id){
+    const q=cache.quickReplies.find(x=>String(x.id)===String(id));
+    if(!q)return;
+    const input=document.querySelector('#vxMsgForm input[name=body]');
+    if(input)input.value=q.body;
+    quickReplyPopoverOpen=false;
+    document.getElementById('vxQuickReplyPopover').hidden=true;
+    input?.focus();
+  }
+
+  async function createQuickReply(title,body){
+    const t=String(title||'').trim(), b=String(body||'').trim();
+    if(!t||!b)return;
+    try{
+      const created=await api('chat_quick_reply_templates',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({company_id:state.profile.active_company_id,title:t,body:b,created_by:myUserId()})});
+      const q=created?.[0];
+      if(q)cache.quickReplies.unshift(q);
+      renderQuickReplyPopoverContent();
+      toast?.(`Resposta rápida "${t}" criada.`);
+    }catch(err){toast?.('Não foi possível criar a resposta rápida: '+err.message,'err')}
+  }
+
+  async function deleteQuickReply(id){
+    const q=cache.quickReplies.find(x=>String(x.id)===String(id));
+    if(!confirm(`Excluir a resposta rápida "${q?.title||''}"?`))return;
+    try{
+      await api(`chat_quick_reply_templates?id=eq.${id}`,{method:'DELETE'});
+      cache.quickReplies=cache.quickReplies.filter(x=>String(x.id)!==String(id));
+      renderQuickReplyPopoverContent();
+      toast?.(`Resposta rápida "${q?.title||''}" excluída.`);
+    }catch(err){toast?.('Não foi possível excluir a resposta rápida: '+err.message,'err')}
   }
 
   async function toggleConversationTag(conversationId,tagId,checked){
