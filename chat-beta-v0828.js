@@ -1247,12 +1247,19 @@
     const lado=m.direction==='OUTBOUND'?'vx-msg-out':'vx-msg-in';
     const isDeleted=!!m.deleted_at;
     const isImport=m.origin==='IMPORT';
+    // origin='BOT' (Fase 7 do Robô de Atendimento) -- mensagem
+    // automática (boas-vindas/triagem/fora do horário quando há fluxo
+    // publicado), enviada de verdade ao cliente via gateway, igual
+    // REALTIME -- só o selo abaixo distingue visualmente na Central,
+    // mesma ideia do selo "Histórico" já usado pra IMPORT.
+    const isBot=m.origin==='BOT';
     const deletedLabel=isDeleted?'<span class="vx-msg-deleted-label">🗑 Apagada no WhatsApp — mantida aqui como registro</span>':'';
     const importTag=isImport?'<span class="vx-msg-tag vx-msg-tag-import">Histórico</span>':'';
+    const botTag=isBot?'<span class="vx-msg-tag vx-msg-tag-bot">🤖 Robô</span>':'';
     const replyBtn=isDeleted?'':`<button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button>`;
     const isMedia=m.message_type&&m.message_type!=='TEXT'&&m.media_storage_path;
     const bodyHtml=isMedia?mediaBodyHtml(m):`<span>${E(m.body||'[sem texto]')}</span>`;
-    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}"><div class="vx-msg-bubble">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}</div>`;
+    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}"><div class="vx-msg-bubble${isBot?' vx-msg-bubble-bot':''}">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}${botTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}</div>`;
   }
   function renderReplyBanner(){
     const el=document.getElementById('vxReplyBanner');
