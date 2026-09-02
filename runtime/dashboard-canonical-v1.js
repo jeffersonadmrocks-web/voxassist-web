@@ -134,8 +134,17 @@
     const casesNovos=casesLast30.filter(c=>norm(c.status)==='NOVO');
     const casesAndamento=casesLast30.filter(c=>norm(c.status)==='EM ANDAMENTO');
     const casesResolvidos=casesLast30.filter(c=>norm(c.status)==='RESOLVIDO');
+    // Card "Pedidos de Peças": Pendentes de aprovação/Em compra/
+    // Aguardando entrega/Atrasados/Recebidos hoje -- vocabulário
+    // confirmado pelo usuário em 2026-09-01 (mesma situação de Casos
+    // de Atenção: sem CHECK constraint no schema, mas confirmado como
+    // o vocabulário real esperado, não suposição a partir da imagem).
     const partsAll=safe(by['Peças'].data);
+    const partsPendentes=partsAll.filter(p=>['PENDENTE','SOLICITADO'].includes(norm(p.status)));
+    const partsCompra=partsAll.filter(p=>norm(p.status).includes('COMPRA'));
+    const partsEntrega=partsAll.filter(p=>norm(p.status).includes('ENTREGA'));
     const partsAtrasadas=partsAll.filter(p=>p.expected_date&&new Date(p.expected_date)<today&&!norm(p.status).includes('RECEBID'));
+    const partsRecebidasHoje=partsAll.filter(p=>norm(p.status).includes('RECEBID')&&p.updated_at&&isoDate(new Date(p.updated_at))===isoDate(today));
     const finMap=new Map(safe(by['Financeiro'].data).map(f=>[String(f.service_order_id),f]));
     const validPayments=safe(by['Pagamentos'].data).filter(p=>p.paid_at&&!['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA'].includes(norm(p.status)));
     const receivedToday=validPayments.filter(p=>new Date(p.paid_at)>=today).reduce((s,p)=>s+Number(p.amount||0),0);
@@ -167,7 +176,7 @@
     const entreguesMes=monthTransitions('FINALIZADA',month0,monthEnd);
     const activeOpenedThisMonth=active.filter(o=>new Date(o.opened_at)>=month0).length;
 
-    // Gestão Visual -- faixas de idade (1-7/8-15/16-30/31-90 dias),
+    // Gestão Visual -- faixas de idade (0-7/8-15/16-30/31-90 dias),
     // corrigido em 2026-09-01 a pedido do usuário (faixas antigas
     // 0/1-3/4-7/8+ estavam erradas -- inclusive sobrepostas).
     function ageBuckets(rows){
@@ -231,7 +240,7 @@
     function taskRow(label,n){return `<div class="vx-c-task-row"><span class="vx-c-task-check">☐</span><span>${E(label)}</span><b>${n}</b></div>`}
     function iconRow(icon,label,n,tone){return `<div class="vx-c-icon-row"><span class="vx-c-icon-row-ic ${tone||''}">${icon}</span><span>${E(label)}</span><b>${n}</b></div>`}
     function gvPanel(title,g){
-      const labels=['1 a 7 dias','8 a 15 dias','16 a 30 dias','31 a 90 dias'],tones=['b0','b1','b2','b3'];
+      const labels=['0 a 7 dias','8 a 15 dias','16 a 30 dias','31 a 90 dias'],tones=['b0','b1','b2','b3'];
       return `<div class="vx-c-gv-panel"><div class="vx-c-gv-head"><strong>${E(title)}</strong><span>Total: ${g.b.reduce((s,n)=>s+n,0)}</span></div>
         <div class="vx-c-gv-bar">${g.b.map((n,i)=>`<span class="vx-c-gv-seg ${tones[i]}" style="flex:${Math.max(n,0.001)}"></span>`).join('')}</div>
         <div class="vx-c-gv-legend">${g.b.map((n,i)=>`<div><small>${labels[i]}</small><b>${n}</b></div>`).join('')}</div>
@@ -278,12 +287,15 @@
           ${taskRow('Tirar novos casos de atenção',casesNovos.length)}
           ${taskRow('Retornar clientes pendentes',tasks.length)}
           ${taskRow('Acompanhar orçamentos sem resposta',approval.length)}
-          ${taskRow('Aprovar pedidos de peças',partsAll.length)}
+          ${taskRow('Aprovar pedidos de peças',partsPendentes.length)}
           ${taskRow('Confirmar aparelhos prontos',ready.length)}
         </section>
         <section class="vx-c-list-card"><div class="vx-c-title"><h3>Pedidos de Peças</h3><a href="#" data-drill="active" data-title="Pedidos de Peças">Ver todas</a></div>
-          ${iconRow('◷','Total de pedidos em aberto',partsAll.length,'')}
-          ${iconRow('⚠','Atrasados (prazo esperado vencido)',partsAtrasadas.length,'warn')}
+          ${iconRow('◷','Pendentes de aprovação',partsPendentes.length,'')}
+          ${iconRow('🛒','Em compra',partsCompra.length,'')}
+          ${iconRow('🚚','Aguardando entrega',partsEntrega.length,'')}
+          ${iconRow('⚠','Atrasados',partsAtrasadas.length,'warn')}
+          ${iconRow('✓','Recebidos hoje',partsRecebidasHoje.length,'ok')}
         </section>
         <section class="vx-c-list-card"><div class="vx-c-title"><h3>Gestão por Exceção</h3><a href="#" data-drill="repair" data-title="Gestão por Exceção">Ver todas</a></div>
           ${iconRow('⚠','OS paradas há mais de 7 dias',overdueRepair.length,'warn')}
