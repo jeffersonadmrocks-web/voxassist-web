@@ -269,6 +269,21 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
 .vx-cc-reply-banner-body span{font-size:12px;color:var(--cc-ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vx-cc-reply-banner button{border:0;background:none;cursor:pointer;font-size:16px;color:var(--cc-ink-faint);flex:none;padding:2px 6px}
 .vx-cc-reply-banner button:hover{color:var(--cc-ink)}
+
+/* ---------- Anexos (Fase 6) ---------- */
+.vx-msg-media{display:block;margin-bottom:4px}
+.vx-msg-media-image{position:relative;min-width:160px;min-height:100px}
+.vx-msg-media-image img{width:100%;max-width:260px;height:160px;max-height:260px;border-radius:8px;display:block;object-fit:cover;background:rgba(0,0,0,.06)}
+.vx-msg-media-fallback{display:block;font-size:11.5px;opacity:.7;padding:6px 0}
+.vx-msg-media-audio audio,.vx-msg-media-video video{max-width:260px}
+.vx-msg-media-video video{border-radius:8px}
+.vx-msg-media-doc{display:flex;align-items:center;gap:6px;border:1px solid rgba(8,40,68,.15);background:rgba(255,255,255,.6);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12.5px;font-weight:600;color:inherit;text-align:left;width:100%}
+.vx-msg-media-doc:hover{background:rgba(255,255,255,.9)}
+.vx-msg-media-doc small{font-weight:400;opacity:.7;margin-left:auto}
+.vx-msg-out .vx-msg-media-doc{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25);color:#fff}
+.vx-msg-out .vx-msg-media-doc:hover{background:rgba(255,255,255,.2)}
+.vx-msg-media-error{font-size:11px;font-style:italic;opacity:.75}
+.vx-msg-media-pending{font-size:10.5px;font-weight:700;opacity:.8;margin:2px 0 4px;padding:3px 6px;border-radius:6px;background:var(--cc-warn-bg,#fdf1d4);color:var(--cc-warn-ink,#8a5f00);display:inline-block}
 .vx-cc-qr-delete-btn:hover{opacity:1}
 .vx-cc-qr-empty{font-size:11.5px;color:var(--cc-ink-faint);padding:6px 4px}
 .vx-cc-qr-new-row{display:flex;flex-direction:column;gap:6px;margin-top:6px;padding-top:8px;border-top:1px solid var(--cc-border)}

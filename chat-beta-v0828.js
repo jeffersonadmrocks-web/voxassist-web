@@ -140,6 +140,128 @@
      conversa e ao enviar. */
   let replyingTo=null;
 
+  /* ---------- Anexos (Fase 6) -- LADO SEGURO apenas ----------
+     Upload real pro bucket privado `chat-media` (migration
+     20260901320000), mesmo padrão comprovado de system3-legacy.js
+     (fetch autenticado direto na Storage REST API, nunca
+     supabase-js .storage.from(), nunca URL pública). O anexo fica
+     salvo no VoxAssist e visível no histórico (status
+     AGUARDANDO_ENVIO, nunca avança) -- o envio real ao WhatsApp
+     depende do contrato de mídia do gateway externo
+     (voxassist-whatsapp-gateway, Railway), que não existe documentado
+     em lugar nenhum deste repositório (investigado antes de escrever
+     este código). Isto é uma pendência EXPLÍCITA, nunca fingida como
+     concluída -- toda mensagem com anexo mostra um aviso visível de
+     "pendente de envio". Limites espelham os limites reais e públicos
+     da plataforma WhatsApp Business (não inventados) e são reforçados
+     também no banco (trigger da mesma migration). */
+  const MEDIA_LIMITS={IMAGE:5*1024*1024,AUDIO:16*1024*1024,VIDEO:16*1024*1024,DOCUMENT:100*1024*1024};
+  function mediaTypeForMime(mime){
+    if(/^image\//.test(mime||''))return'IMAGE';
+    if(/^audio\//.test(mime||''))return'AUDIO';
+    if(/^video\//.test(mime||''))return'VIDEO';
+    if(mime==='application/pdf')return'DOCUMENT';
+    return null;
+  }
+  let attachmentUploading=false;
+  const mediaBlobCache=new Map();
+  async function uploadChatMedia(file,path){
+    const r=await fetch(`${CFG.url}/storage/v1/object/chat-media/${encodeURIComponent(path).replace(/%2F/g,'/')}`,{
+      method:'POST',
+      headers:{apikey:CFG.key,Authorization:'Bearer '+state.session.access_token,'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},
+      body:file,
+    });
+    if(!r.ok)throw new Error(await r.text());
+    return r.json();
+  }
+  async function downloadChatMediaBlobUrl(path){
+    if(mediaBlobCache.has(path))return mediaBlobCache.get(path);
+    const r=await fetch(`${CFG.url}/storage/v1/object/chat-media/${encodeURIComponent(path).replace(/%2F/g,'/')}`,{
+      headers:{apikey:CFG.key,Authorization:'Bearer '+state.session.access_token},
+    });
+    if(!r.ok)throw new Error(await r.text());
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    mediaBlobCache.set(path,url);
+    return url;
+  }
+  function updateAttachButtonsState(){
+    document.getElementById('vxAttachBtn')?.toggleAttribute('disabled',attachmentUploading);
+    document.getElementById('vxAttachCameraBtn')?.toggleAttribute('disabled',attachmentUploading);
+  }
+  async function handleAttachmentPick(file){
+    // attachmentUploading trava novo envio enquanto o anterior não
+    // termina -- proteção contra duplicidade por duplo clique/duplo
+    // disparo do input, pedida explicitamente pelo usuário.
+    if(!file||!conversaAtualId||attachmentUploading)return;
+    const mediaType=mediaTypeForMime(file.type);
+    if(!mediaType){toast?.('Tipo de arquivo não suportado -- envie imagem, PDF, áudio ou vídeo.','err');return}
+    const limit=MEDIA_LIMITS[mediaType];
+    if(file.size>limit){toast?.(`Arquivo muito grande -- limite de ${Math.round(limit/1024/1024)}MB pra este tipo.`,'err');return}
+    if(file.size<=0){toast?.('Arquivo vazio ou inválido.','err');return}
+    // Captura a conversa ALVO antes do upload assíncrono -- se o
+    // atendente trocar de conversa enquanto o upload está em
+    // andamento, o anexo tem que continuar indo pra conversa que
+    // estava selecionada quando ele clicou, nunca pra que estiver
+    // selecionada quando o upload terminar.
+    const targetConversationId=conversaAtualId;
+    attachmentUploading=true;
+    updateAttachButtonsState();
+    try{
+      const companyId=state.profile.active_company_id;
+      const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const path=`${companyId}/${targetConversationId}/${Date.now()}-${safeName}`;
+      await uploadChatMedia(file,path);
+      await api('chat_messages',{method:'POST',body:JSON.stringify({
+        company_id:companyId,conversation_id:targetConversationId,direction:'OUTBOUND',origin:'REALTIME',
+        message_type:mediaType,status:'AGUARDANDO_ENVIO',sender_user_id:myUserId(),
+        media_status:'DISPONIVEL',media_storage_path:path,media_mime_type:file.type,media_size_bytes:file.size,
+      })});
+      toast?.('Anexo salvo no VoxAssist -- envio ao WhatsApp ainda pendente (ver aviso na mensagem).');
+      if(String(conversaAtualId)===String(targetConversationId))await refreshMensagens();
+    }catch(err){
+      toast?.('Não foi possível enviar o anexo: '+err.message,'err');
+    }finally{
+      attachmentUploading=false;
+      updateAttachButtonsState();
+    }
+  }
+  function mediaBodyHtml(m){
+    const filename=(m.media_storage_path||'').split('/').pop()||'arquivo';
+    const sizeLabel=m.media_size_bytes?`${Math.round(m.media_size_bytes/1024)} KB`:'';
+    if(m.message_type==='IMAGE')return `<div class="vx-msg-media vx-msg-media-image" data-media-path="${E(m.media_storage_path)}"><img alt="Imagem anexada"><span class="vx-msg-media-fallback">🖼 Carregando imagem…</span></div>`;
+    if(m.message_type==='AUDIO')return `<div class="vx-msg-media vx-msg-media-audio" data-media-path="${E(m.media_storage_path)}"><audio controls></audio></div>`;
+    if(m.message_type==='VIDEO')return `<div class="vx-msg-media vx-msg-media-video" data-media-path="${E(m.media_storage_path)}"><video controls></video></div>`;
+    if(m.message_type==='DOCUMENT')return `<button type="button" class="vx-msg-media-doc" data-media-path="${E(m.media_storage_path)}" data-media-name="${E(filename)}">📄 ${E(filename)} <small>${E(sizeLabel)}</small></button>`;
+    return'';
+  }
+  function mediaPendingNoteHtml(m){
+    if(m.message_type&&m.message_type!=='TEXT'&&m.status==='AGUARDANDO_ENVIO'&&m.media_status==='DISPONIVEL'){
+      return '<div class="vx-msg-media-pending">⏳ Anexo salvo no VoxAssist — envio ao WhatsApp pendente (integração de mídia com o gateway ainda não confirmada)</div>';
+    }
+    return'';
+  }
+  function wireMediaElements(container){
+    container.querySelectorAll('.vx-msg-media-image, .vx-msg-media-audio, .vx-msg-media-video').forEach(el=>{
+      const path=el.dataset.mediaPath;
+      if(!path)return;
+      downloadChatMediaBlobUrl(path).then(url=>{
+        if(el.classList.contains('vx-msg-media-image')){const img=el.querySelector('img');if(img)img.src=url;el.querySelector('.vx-msg-media-fallback')?.remove()}
+        else if(el.classList.contains('vx-msg-media-audio')){const a=el.querySelector('audio');if(a)a.src=url}
+        else if(el.classList.contains('vx-msg-media-video')){const v=el.querySelector('video');if(v)v.src=url}
+      }).catch(()=>{el.innerHTML='<span class="vx-msg-media-error">Falha ao carregar anexo</span>'});
+    });
+    container.querySelectorAll('.vx-msg-media-doc').forEach(btn=>{
+      btn.onclick=async()=>{
+        const path=btn.dataset.mediaPath;
+        try{
+          const url=await downloadChatMediaBlobUrl(path);
+          const a=document.createElement('a');a.href=url;a.download=btn.dataset.mediaName||'arquivo';document.body.appendChild(a);a.click();a.remove();
+        }catch(err){toast?.('Não foi possível baixar o anexo: '+err.message,'err')}
+      };
+    });
+  }
+
   async function loadTags(){
     cache.tags=await api('chat_tags?select=*&order=label').catch(()=>[]);
   }
@@ -675,10 +797,19 @@
           <button type="button" id="vxQuickReplyBtn" class="vx-cc-note-btn" title="Respostas rápidas" aria-label="Respostas rápidas">💬</button>
           <div class="vx-cc-qr-popover" id="vxQuickReplyPopover" ${quickReplyPopoverOpen?'':'hidden'}></div>
         </div>
+        <button type="button" id="vxAttachBtn" class="vx-cc-note-btn" title="Anexar arquivo (imagem, PDF, áudio ou vídeo)" aria-label="Anexar arquivo">📎</button>
+        <input type="file" id="vxAttachFileInput" accept="image/*,application/pdf,audio/*,video/mp4" hidden>
+        <button type="button" id="vxAttachCameraBtn" class="vx-cc-note-btn" title="Tirar foto" aria-label="Tirar foto">📷</button>
+        <input type="file" id="vxAttachCameraInput" accept="image/*" capture="environment" hidden>
         <input name="body" placeholder="Escrever mensagem…" required maxlength="4000">
         <button type="submit" class="vx-cc-send-btn">Enviar</button>
       </form>`;
     document.getElementById('vxMsgForm').onsubmit=handleSendMensagem;
+    document.getElementById('vxAttachBtn').onclick=()=>document.getElementById('vxAttachFileInput').click();
+    document.getElementById('vxAttachCameraBtn').onclick=()=>document.getElementById('vxAttachCameraInput').click();
+    document.getElementById('vxAttachFileInput').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)handleAttachmentPick(f)};
+    document.getElementById('vxAttachCameraInput').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)handleAttachmentPick(f)};
+    updateAttachButtonsState();
     renderReplyBanner();
     document.getElementById('vxQuickReplyBtn').onclick=e=>{
       e.stopPropagation();
@@ -1077,7 +1208,7 @@
     // reply_to: embed via a FK que a migration da Fase 5 criou --
     // traz o corpo/direção da mensagem citada junto, sem round-trip
     // extra pra montar o preview de citação em cada linha.
-    return api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at,deleted_at,origin,sender_user_id,reply_to_message_id,profiles!chat_messages_sender_user_id_fkey(full_name),reply_to:chat_messages!chat_messages_reply_to_message_id_fkey(id,body,direction,origin)&order=created_at.asc`).catch(()=>[]);
+    return api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at,deleted_at,origin,sender_user_id,reply_to_message_id,message_type,media_status,media_storage_path,media_mime_type,media_size_bytes,profiles!chat_messages_sender_user_id_fkey(full_name),reply_to:chat_messages!chat_messages_reply_to_message_id_fkey(id,body,direction,origin)&order=created_at.asc`).catch(()=>[]);
   }
 
   // Ticks só fazem sentido pra mensagem enviada por nós (OUTBOUND) --
@@ -1117,7 +1248,9 @@
     const deletedLabel=isDeleted?'<span class="vx-msg-deleted-label">🗑 Apagada no WhatsApp — mantida aqui como registro</span>':'';
     const importTag=isImport?'<span class="vx-msg-tag vx-msg-tag-import">Histórico</span>':'';
     const replyBtn=isDeleted?'':`<button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button>`;
-    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}"><div class="vx-msg-bubble">${quoteBlock}${deletedLabel}<span>${E(m.body||'[sem texto]')}</span><div class="vx-msg-meta">${importTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}</div>`;
+    const isMedia=m.message_type&&m.message_type!=='TEXT'&&m.media_storage_path;
+    const bodyHtml=isMedia?mediaBodyHtml(m):`<span>${E(m.body||'[sem texto]')}</span>`;
+    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}"><div class="vx-msg-bubble">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}</div>`;
   }
   function renderReplyBanner(){
     const el=document.getElementById('vxReplyBanner');
@@ -1145,6 +1278,7 @@
     list.innerHTML=msgs.length?msgs.map(mensagemRow).join(''):'<p class="vx-chatbeta-sub">Nenhuma mensagem ainda.</p>';
     list.scrollTop=list.scrollHeight;
     list.querySelectorAll('[data-reply]').forEach(btn=>btn.onclick=()=>startReply(btn.dataset.reply));
+    wireMediaElements(list);
     await refreshConvSummary(conversaAtualId);
     const deletedAfter=msgs.filter(m=>m.deleted_at).length;
     // Só re-renderiza o Contexto se algo relevante pra ele mudou (nova
