@@ -61,8 +61,16 @@
     {key:'em_atendimento',label:'EM ATENDIMENTO',icon:'⚒',color:'orange',desc:'Técnico a caminho, atendimento em andamento ou produto na oficina.',statuses:['Técnico em deslocamento','Em atendimento','Produto na oficina']},
     {key:'ag_electrolux',label:'AG ELECTROLUX',icon:'↻',color:'red',desc:'Pendência de retorno da própria Electrolux (SAC, engenharia, suporte, diagnóstico).',statuses:['Enviado para Diagnostico remoto','Aguardando aprovação ADM','Aguardando retorno do suporte (técnico/administrativo)','Aguardando retorno Engenharia','Aguardando análise SAC']},
     {key:'correcao',label:'CORREÇÃO',icon:'⚙',color:'brown',desc:'Aguardando correção técnica do atendimento.',statuses:['Aguardando correção']},
-    {key:'outros_atendimentos',label:'OUTROS ATENDIMENTOS',icon:'⚑',color:'gray',desc:'Aceite/rejeição do técnico e demais casos que não se encaixam nos outros menus.',statuses:['Aguardando aceite do Técnico','Agendamento rejeitado pelo Técnico','Produto S.O.S','Despachada para o Técnico']},
   ];
+  // Achado do usuário em 2026-09-02: "OUTROS ATENDIMENTOS" (grupo fixo
+  // com 4 situações específicas) e "OUTROS STATUS" (o catch-all logo
+  // abaixo, pra qualquer situação não mapeada em nenhum grupo) tinham o
+  // mesmo ícone/cor/nome parecido e pareciam duplicados. Removido o
+  // grupo fixo -- suas 4 situações (Aguardando aceite do Técnico,
+  // Agendamento rejeitado pelo Técnico, Produto S.O.S, Despachada para
+  // o Técnico) agora caem naturalmente no catch-all "OUTROS STATUS"
+  // (groupFor() já retorna 'outros' pra qualquer status fora de
+  // GROUP_STATUS_MAP), sem precisar de nenhuma outra mudança.
   const GROUP_STATUS_MAP=new Map();
   GROUPS.forEach(g=>g.statuses.forEach(s=>GROUP_STATUS_MAP.set(s,g.key)));
   function groupFor(status){return GROUP_STATUS_MAP.get(status)||'outros';}
@@ -406,6 +414,41 @@
     if(clearBtn)clearBtn.onclick=()=>{localStorage.removeItem(CONFIG_KEY);stopPoll();elx.orders=[];renderHome();};
   }
 
+  /* ---------- Card de entrada do NPS Electrolux ----------
+     Achado do usuário em 2026-09-02: o NPS Electrolux é uma função
+     nativa da operação Electrolux e não deve aparecer como item
+     separado fora deste módulo (antes vivia como botão avulso na
+     Agenda Externa, ver electrolux-nps-v0826.js). Só ponto de entrada
+     visual/navegação -- a tela, os dados, o backend, a sincronização,
+     elegibilidade, histórico e permissões do NPS continuam 100%
+     intactos em electrolux-nps-v0826.js, chamados aqui via
+     window.vxOpenNpsScreen(). Estilo isolado (módulo isolado, mesma
+     filosofia do cabeçalho deste arquivo) -- não toca
+     all-menus-layout.css. */
+  function ensureNpsEntryStyle(){
+    if(document.getElementById('vxElxNpsEntryStyle'))return;
+    const s=document.createElement('style');
+    s.id='vxElxNpsEntryStyle';
+    s.textContent=`.vx-elx-nps-entry{display:flex;align-items:center;gap:14px;background:#f6f2fc;border:1px solid #c9b8ec;border-radius:10px;padding:14px 18px;margin:2px 0}
+.vx-elx-nps-icon{flex:none;width:44px;height:44px;border-radius:10px;background:#7c4fd1;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:800;letter-spacing:.03em;line-height:1.1}
+.vx-elx-nps-icon span{font-size:15px;line-height:1}
+.vx-elx-nps-text{flex:1;min-width:0}
+.vx-elx-nps-text strong{display:block;font-size:14px;color:#4a2e8a;letter-spacing:.02em}
+.vx-elx-nps-text p{margin:2px 0 0;font-size:12px;color:#6a5a94}
+.vx-elx-nps-btn{flex:none;border:0;background:#7c4fd1;color:#fff;font-weight:700;font-size:12.5px;padding:9px 16px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.vx-elx-nps-btn:hover{background:#6a3fc0}
+@media(max-width:640px){.vx-elx-nps-entry{flex-direction:column;align-items:flex-start}}`;
+    document.head.appendChild(s);
+  }
+  function npsEntryCard(){
+    ensureNpsEntryStyle();
+    return `<div class="vx-elx-nps-entry">
+      <div class="vx-elx-nps-icon">NPS<span>🙂</span></div>
+      <div class="vx-elx-nps-text"><strong>NPS ELECTROLUX</strong><p>Acompanhe, envie e gerencie as pesquisas de satisfação NPS dos atendimentos Electrolux.</p></div>
+      <button type="button" class="vx-elx-nps-btn" id="vxElxNpsEntryBtn">ACESSAR NPS →</button>
+    </div>`;
+  }
+
   /* ---------- Tela inicial: hub no padrão dos demais módulos (module-summary-card +
      module-action-card, ver all-menus-layout.js / atendimento(), oficina() etc.) ---------- */
   function renderHome(){
@@ -442,11 +485,13 @@
         <button type="button" class="module-summary-card ${active('garantia')?'vx-elx-summary-active':''}" style="--accent:#2674d9" data-summary="garantia"><span>GARANTIA</span><b>${garantia}</b></button>
         <button type="button" class="module-summary-card ${active('foradegarantia')?'vx-elx-summary-active':''}" style="--accent:#60728a" data-summary="foradegarantia"><span>FORA DE GARANTIA</span><b>${foraGarantia}</b></button>
       </div>
+      ${npsEntryCard()}
       ${elx.homeFilter?`<div class="vx-elx-filtercount" style="padding:0 2px">Mostrando os 9 menus filtrados por: <b>${esc(elx.homeFilter.label)}</b> (${filtered.length} de ${all.length} SVO(s)) — clique novamente no card pra limpar.</div>`:''}
       <div class="module-action-grid">${groupCards}${outrosCard}</div>
       ${apiConfigBlock()}
     </div>`;
 
+    document.getElementById('vxElxNpsEntryBtn')?.addEventListener('click',()=>window.vxOpenNpsScreen?.());
     app.querySelectorAll('[data-group]').forEach(b=>b.onclick=()=>{
       const g=GROUPS.find(x=>x.key===b.dataset.group);
       renderBoardScreen({label:g?g.label:'OUTROS STATUS',groupKey:b.dataset.group,...homeFilterToBoardOpts()});

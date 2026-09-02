@@ -122,7 +122,12 @@
   function atividades(){home('Atividades','Tarefas • Agenda • Casos • Compromissos',
     card('☑','MINHAS TAREFAS','Pendências atribuídas ao usuário com prioridade e prazo.','agenda-operacional','blue')+
     card('◷','AGENDA / COMPROMISSOS','Atendimentos externos, retiradas e compromissos.','agenda-operacional','purple')+
-    card('★','NPS ELECTROLUX','Clientes elegíveis, prioridades e acompanhamento da pesquisa.','nps-electrolux','teal')+
+    // Achado do usuário em 2026-09-02: havia um card "NPS ELECTROLUX"
+    // aqui -- removido. Este hub atividades() é código morto (nunca é
+    // renderizado de verdade, ver comentário em
+    // electrolux-nps-v0826.js), e o NPS Electrolux agora só tem um
+    // ponto de entrada: o card dentro do módulo Electrolux
+    // (electrolux-reports-v0813.js).
     // Achado do usuário em 2026-09-02: este card apontava pra
     // 'agenda-operacional' (mesmo alvo genérico de Minhas Tarefas) --
     // não é um caso de atenção filtrado nenhum, é só a tela de agenda.

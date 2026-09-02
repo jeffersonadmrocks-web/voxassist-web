@@ -1,10 +1,12 @@
-/* VoxAssist V0.8.13 — NPS Electrolux (Atividades → NPS Electrolux).
-   NÃO edita all-menus-layout.js. Injeta um card a mais na grid do hub
-   Atividades (mesmo padrão .module-action-card, ancorado no card nativo
-   "agenda-operacional" pra não vazar pra outros hubs) e, ao clicar,
-   substitui #app pela própria tela. "Voltar" chama window.render('agenda')
-   de novo, voltando pro hub Atividades. Carência de 6h desde concluded_at
-   antes de um caso virar elegível pra contato (ver isEligibleForContact em
+/* VoxAssist V0.8.13 — NPS Electrolux (Electrolux → NPS Electrolux).
+   Achado do usuário em 2026-09-02: o NPS é uma função nativa da
+   operação Electrolux, então o único ponto de entrada é o card "NPS
+   ELECTROLUX" dentro da tela Electrolux (electrolux-reports-v0813.js),
+   que chama window.vxOpenNpsScreen() abaixo -- substitui #app pela
+   própria tela real (mesma sempre foi, nada de novo aqui). "Voltar"
+   chama window.render('electrolux'), de volta pro módulo Electrolux.
+   Carência de 6h desde concluded_at antes de um caso virar elegível
+   pra contato (ver isEligibleForContact em
    supabase/functions/_shared/npsClassification.ts — a promoção em si roda
    no sync-electrolux-nps, este arquivo só lê/mostra o estado já resolvido).
    Nunca responde pelo cliente, nunca infere resposta, nunca envia nada
@@ -41,42 +43,19 @@
   const CONTACTED_SITUACOES=['PRIMEIRO_CONTATO_ENVIADO','LEMBRETE_ENVIADO','AGUARDANDO_RESPOSTA'];
   function isAttention(c){return c.classification==='ATENCAO'||c.situacao==='CASO_DE_ATENCAO'}
 
-  /* ---------- entrada na tela real de Atividades ----------
-     A tela "Atividades" do menu NÃO é o hub de cards atividades() de
-     all-menus-layout.js — esse hub é código morto: field-agenda-v0813.js
-     e depois field-agenda-complete-v0813.js reenvolvem window.render e
-     interceptam view==='agenda' direto, sem nunca delegar pro hub. Quem
-     realmente aparece é renderAgenda() (field-agenda-complete-v0813.js),
-     a tela "Agenda Externa". Âncora correta: .vx-agenda-controls (a
-     barra de botões "Agenda/Lista/Mapa/Feriado/Jornada" no topo dessa
-     tela), confirmado lendo renderAgenda() diretamente — não suposição.
-     Corrige um bug real: o card nunca apareceu em produção porque
-     ancorava num hub inalcançável. */
-  function ensureEntryCard(){
-    const controls=document.querySelector('.vx-agenda-controls');
-    if(!controls||controls.querySelector('[data-nps-entry]'))return;
-    const btn=document.createElement('button');
-    btn.type='button';
-    btn.dataset.npsEntry='1';
-    btn.textContent='NPS Electrolux';
-    btn.onclick=openNpsScreen;
-    controls.appendChild(btn);
-  }
-  // ensureEntryCard() já é auto-protegida (só age quando .vx-agenda-controls
-  // existe, ou seja, só na tela de Agenda) — nunca precisou de uma flag
-  // externa pra saber "estou na tela do NPS". Achado real: a flag
-  // npsScreenActive travava em true pra sempre sempre que o usuário saía
-  // da tela do NPS por qualquer caminho que não fosse o botão "Voltar"
-  // (trocar de aba, trocar de empresa) — o botão nunca mais reaparecia
-  // depois disso, mesmo voltando pra Agenda de verdade.
-  const observer=new MutationObserver(ensureEntryCard);
-  // Ancora em document.body, não #app: shell() (app.js) faz
-  // document.body.innerHTML=... em login/logout/troca de empresa, o que
-  // recria #app como um nó novo — um observer travado na referência
-  // antiga do #app fica órfão (nunca mais dispara) depois disso. Achado
-  // real: era exatamente por isso que o botão "sumia" depois de um
-  // tempo — o body em si nunca é substituído, só observá-lo direto.
-  observer.observe(document.body,{childList:true,subtree:true});
+  /* ---------- entrada na tela real do NPS ----------
+     Achado do usuário em 2026-09-02: o NPS Electrolux é uma função
+     nativa da operação Electrolux e não deve ter nenhum ponto de
+     entrada fora do módulo Electrolux. O botão "NPS Electrolux" que
+     esta função injetava na barra de controles da Agenda Externa
+     (.vx-agenda-controls, ver renderAgenda() em
+     field-agenda-complete-v0813.js) era exatamente esse acesso
+     duplicado/fora de lugar -- removido. O único ponto de entrada agora
+     é o card "NPS ELECTROLUX" dentro da tela Electrolux
+     (electrolux-reports-v0813.js), que chama window.vxOpenNpsScreen()
+     abaixo -- mesma tela real, mesmos dados, mesma lógica, só mudou
+     de onde se chega até ela. */
+  window.vxOpenNpsScreen=()=>openNpsScreen();
 
   /* ---------- dados ---------- */
   let cache={cases:[],contactsToday:[],profileNames:{},filter:{filial:'',situacao:'',classification:'',search:'',technicianId:'',responsibleId:'',dateFrom:'',dateTo:''}};
@@ -151,7 +130,10 @@
       document.getElementById('npsBackErr').onclick=goBack;
     }
   }
-  function goBack(){window.render('agenda')}
+  // Voltava pra 'agenda' de quando o único ponto de entrada era o botão
+  // na Agenda Externa -- agora que a entrada é sempre pelo módulo
+  // Electrolux (card "NPS ELECTROLUX"), "Voltar" volta pra lá.
+  function goBack(){window.render('electrolux')}
 
   /* ---------- indicadores ---------- */
   function indicators(){
