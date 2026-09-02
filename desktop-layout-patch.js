@@ -18,7 +18,7 @@
           <button class="nav" data-view="testes">▥ <span>RELATÓRIOS</span></button>
           <button class="nav" data-view="usuarios">⚙ <span>CONFIGURAÇÕES</span></button>
         </div>
-        <div class="desktop-version">VoxAssist v0.8.12<br>© 2026 Vox Eletrônica</div>
+        <div class="desktop-version">VoxAssist V0.8.13<br>© 2026 Vox Eletrônica</div>
       </aside>
       <main class="desktop-main">
         <header class="desktop-topbar">

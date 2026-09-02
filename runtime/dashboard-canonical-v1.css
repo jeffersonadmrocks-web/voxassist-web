@@ -3,6 +3,12 @@
    de painel de gestão real, cores semânticas por severidade. */
 :root{
   --vx-navy:#082844;--vx-navy-deep:#05192b;--vx-navy-mid:#123a5e;
+  /* Achado do usuário em 2026-09-02: "o topo ficou bom, azul-marinho
+     poderia ser um tom um pouco mais claro" -- tom próprio só pro
+     gradiente do hero, sem mexer em --vx-navy (usado como cor de texto
+     em títulos/números no resto da tela, onde precisa ficar escuro
+     pra manter contraste em fundo branco). */
+  --vx-navy-hero:#123f66;--vx-navy-hero-deep:#0a2c4a;
   --vx-bg:#eef1f6;--vx-surface:#fff;--vx-border:#dde3ec;
   --vx-text:#0f2740;--vx-muted:#63758a;
   --vx-warn:#b8590a;--vx-warn-bg:#fdf0e3;
@@ -10,13 +16,14 @@
   --vx-ok:#1f7a3d;--vx-ok-bg:#e6f4ea;
   --vx-opp:#1c7a63;--vx-opp-bg:#e3f4ef;
   --vx-info:#2f6bab;--vx-info-bg:#e9eff6;
+  --vx-gold:#caa23a;
 }
 .vx-canonical{display:grid;gap:12px;background:var(--vx-bg);padding:14px}
 .vx-canonical *{box-sizing:border-box}
 .vx-c-warning{background:var(--vx-warn-bg);border:1px solid #ecd39d;color:#7a5616;border-radius:10px;padding:10px 12px;font-size:11px}
 
 /* ---------- hero ---------- */
-.vx-c-hero{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,var(--vx-navy) 0%,var(--vx-navy-deep) 100%);border-radius:14px;padding:16px 20px;color:#fff;box-shadow:0 6px 20px rgba(5,25,43,.18)}
+.vx-c-hero{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,var(--vx-navy-hero) 0%,var(--vx-navy-hero-deep) 100%);border-radius:14px;padding:16px 20px;color:#fff;box-shadow:0 6px 20px rgba(5,25,43,.18)}
 .vx-c-hero-eyebrow{display:block;font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#8fb4d9;margin-bottom:4px}
 .vx-c-hero h2{margin:0;font-size:19px;font-weight:700;color:#fff}
 .vx-c-hero p{margin:4px 0 0;color:#b7cbe0;font-size:11px}
@@ -41,7 +48,23 @@
 /* ---------- generic 2/3-col grid ---------- */
 .vx-c-grid-2{display:grid;grid-template-columns:1.3fr 1fr;gap:12px}
 .vx-c-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.vx-c-grid-2>section,.vx-c-grid-3>section{background:var(--vx-surface);border:1px solid var(--vx-border);border-radius:14px;padding:14px 16px}
+.vx-c-grid-2>section,.vx-c-grid-3>section{background:var(--vx-surface);border:1px solid var(--vx-border);border-top:3px solid var(--vx-border);border-radius:14px;padding:14px 16px}
+/* Achado do usuário em 2026-09-02: "do meio pra baixo tudo volta a
+   ficar muito branco/cinza e semelhante" -- pequeno tratamento de
+   cabeçalho (tarja de cor + ícone, já digitado no título em
+   dashboard-canonical-v1.js) por seção, sem repintar a tela inteira.
+   Casos de Atenção mantém o destaque forte que já existia (não mexido
+   aqui). Metas e Bonificação fica sem cor -- ainda não configurado,
+   mesmo sinal visual do próprio estado vazio dela. */
+.vx-c-opp-card{border-top-color:var(--vx-opp)}
+.vx-c-gv-card{border-top:3px solid var(--vx-info)}
+.vx-c-list-tasks{border-top-color:var(--vx-info)}
+.vx-c-list-parts{border-top-color:var(--vx-warn)}
+.vx-c-list-exception{border-top-color:var(--vx-risk)}
+.vx-c-feed-card{border-top-color:var(--vx-info)}
+.vx-c-prod-table-card{border-top-color:var(--vx-opp)}
+.vx-c-fin-card{border-top-color:var(--vx-ok)}
+.vx-c-agenda5-card{border-top:3px solid var(--vx-info)}
 
 /* ---------- Casos de Atenção + Oportunidades ---------- */
 .vx-c-cases-card{border-color:#f0c6c4!important;background:var(--vx-risk-bg)!important}
@@ -138,7 +161,7 @@ button.vx-c-icon-row:disabled{cursor:default;opacity:1}
 .vx-c-agenda5-warn{font-size:9.5px;font-weight:700;color:var(--vx-warn);background:var(--vx-warn-bg);border-radius:7px;padding:5px 7px}
 
 /* ---------- Descoberta do Dia ---------- */
-.vx-c-discovery{display:grid;grid-template-columns:1.4fr 1fr;gap:12px;background:var(--vx-surface);border:1px solid var(--vx-border);border-radius:14px;padding:14px 16px}
+.vx-c-discovery{display:grid;grid-template-columns:1.4fr 1fr;gap:12px;background:var(--vx-surface);border:1px solid var(--vx-border);border-top:3px solid var(--vx-gold);border-radius:14px;padding:14px 16px}
 .vx-c-discovery strong{font-size:11px;color:var(--vx-navy)}
 .vx-c-discovery p{margin:5px 0;color:#405870;font-size:10px;line-height:1.5}
 .vx-c-discovery summary{cursor:pointer;color:#1557a6;font-size:10px;font-weight:700}

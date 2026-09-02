@@ -358,7 +358,7 @@
             <div><b>${casesResolvidos.length}</b><span>Resolvidos</span><small>Últimos 30 dias</small></div>
           </div>
         </section>
-        <section class="vx-c-opp-card"><div class="vx-c-title"><h3>Oportunidades do Dia</h3><a href="#" data-drill="ready" data-title="Oportunidades do Dia">Ver todas</a></div>
+        <section class="vx-c-opp-card"><div class="vx-c-title"><h3>◎ Oportunidades do Dia</h3><a href="#" data-drill="ready" data-title="Oportunidades do Dia">Ver todas</a></div>
           ${oppRow('Retiradas previstas para hoje',retiradasHoje)}
           ${oppRow('Orçamentos sem resposta',approval.length)}
           ${oppRow('Aparelhos prontos para retirada',ready.length)}
@@ -367,26 +367,26 @@
         </section>
       </div>
 
-      <section class="vx-c-gv-card"><div class="vx-c-title"><h3>Gestão Visual <span class="vx-c-info" title="Distribuição das OS por tempo desde a última mudança de situação">ⓘ</span></h3><a href="#" data-drill="active" data-title="Gestão Visual">Ver todos</a></div>
+      <section class="vx-c-gv-card"><div class="vx-c-title"><h3>▥ Gestão Visual <span class="vx-c-info" title="Distribuição das OS por tempo desde a última mudança de situação">ⓘ</span></h3><a href="#" data-drill="active" data-title="Gestão Visual">Ver todos</a></div>
         <div class="vx-c-gv-grid">${gvPanel('AGUARDANDO ANÁLISE',gvAnalysis,'gvAnalysis')}${gvPanel('AGUARDANDO APROVAÇÃO',gvApproval,'gvApproval')}${gvPanel('PRONTOS PARA ENTREGA',gvReady,'gvReady')}</div>
       </section>
 
       <div class="vx-c-grid-3">
-        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Minhas Tarefas</h3></div>
+        <section class="vx-c-list-card vx-c-list-tasks"><div class="vx-c-title"><h3>☑ Minhas Tarefas</h3></div>
           ${taskRow('Tirar novos casos de atenção',casesNovos.length,'cases:casesNovos')}
           ${taskRow('Retornar clientes pendentes',tasks.length,'tasks:tasks')}
           ${taskRow('Acompanhar orçamentos sem resposta',approval.length,'approval')}
           ${taskRow('Aprovar pedidos de peças',partsPendentes.length,'parts:partsPendentes')}
           ${taskRow('Confirmar aparelhos prontos',ready.length,'ready')}
         </section>
-        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Pedidos de Peças</h3><a href="#" data-drill="parts:partsAll" data-title="Pedidos de Peças">Ver todas</a></div>
+        <section class="vx-c-list-card vx-c-list-parts"><div class="vx-c-title"><h3>▦ Pedidos de Peças</h3><a href="#" data-drill="parts:partsAll" data-title="Pedidos de Peças">Ver todas</a></div>
           ${iconRow('◷','Pendentes de aprovação',partsPendentes.length,'','parts:partsPendentes')}
           ${iconRow('🛒','Em compra',partsCompra.length,'','parts:partsCompra')}
           ${iconRow('🚚','Aguardando entrega',partsEntrega.length,'','parts:partsEntrega')}
           ${iconRow('⚠','Atrasados',partsAtrasadas.length,'warn','parts:partsAtrasadas')}
           ${iconRow('✓','Recebidos hoje',partsRecebidasHoje.length,'ok','parts:partsRecebidasHoje')}
         </section>
-        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Gestão por Exceção</h3></div>
+        <section class="vx-c-list-card vx-c-list-exception"><div class="vx-c-title"><h3>⚠ Gestão por Exceção</h3></div>
           ${iconRow('⚠','OS paradas há mais de 7 dias',overdueRepair.length,'warn','overdueRepair')}
           ${iconRow('⏳','Orçamentos sem resposta há mais de 3 dias',overdueApproval.length,'warn','overdueApproval')}
           ${iconRow('📦','Peças atrasadas',partsAtrasadas.length,'warn','parts:partsAtrasadas')}
@@ -396,10 +396,10 @@
       </div>
 
       <div class="vx-c-grid-2">
-        <section class="vx-c-feed-card"><div class="vx-c-title"><h3>Feed em Tempo Real</h3><a href="#" id="vxFeedAll">Ver tudo</a></div>
+        <section class="vx-c-feed-card"><div class="vx-c-title"><h3>◉ Feed em Tempo Real</h3><a href="#" id="vxFeedAll">Ver tudo</a></div>
           ${feed.length?feed.map(h=>`<div class="vx-c-feed-row"><span class="vx-c-feed-dot"></span><div><b>${new Date(h.changed_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</b><span>${E(feedText(h))}</span></div></div>`).join(''):'<p class="vx-c-empty">Nenhuma movimentação recente.</p>'}
         </section>
-        <section class="vx-c-prod-table-card"><div class="vx-c-title"><h3>Produtividade</h3></div>
+        <section class="vx-c-prod-table-card"><div class="vx-c-title"><h3>★ Produtividade</h3></div>
           <p class="vx-c-prod-total">Total recebido nas OS: <b>${M(totalRecebidoOS)}</b></p>
           <div class="vx-c-tw"><table class="vx-c-prod-table"><thead><tr><th>Técnico</th><th>OS</th><th>Valor Recebido</th><th>Prontos</th><th>Aproveitamento</th></tr></thead>
           <tbody>${prodRows.length?prodRows.map(r=>`<tr><td>${E(r.tech.full_name)}</td><td><button type="button" class="vx-c-prod-cell" data-drill="prodOs_${E(r.tech.id)}" data-title="OS de ${E(r.tech.full_name)}">${r.os}</button></td><td>${M(r.valor)}</td><td><button type="button" class="vx-c-prod-cell" data-drill="prodProntos_${E(r.tech.id)}" data-title="Prontos de ${E(r.tech.full_name)}" ${r.prontos?'':'disabled'}>${r.prontos}</button></td><td>${r.aproveitamento}%</td></tr>`).join(''):'<tr><td colspan="5" class="vx-c-empty">Nenhuma OS atribuída ainda.</td></tr>'}</tbody></table></div>
@@ -408,7 +408,7 @@
 
       <div class="vx-c-grid-2">
         <section class="vx-c-goals-card"><div class="vx-c-title"><h3>Metas e Bonificação</h3></div><div class="vx-c-goals-empty"><span class="vx-c-goals-icon">◷</span><p>Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</p></div></section>
-        <section class="vx-c-fin-card"><div class="vx-c-title"><h3>Resumo Financeiro</h3><small>somente pagamentos registrados</small></div>
+        <section class="vx-c-fin-card"><div class="vx-c-title"><h3>$ Resumo Financeiro</h3><small>somente pagamentos registrados</small></div>
           <div class="vx-c-fin-grid">
             <div><span>Faturamento realizado (Mês)</span><b>${M(receivedMonth)}</b></div>
             <div><span>A receber</span><b>${M(aReceber)}</b></div>
@@ -420,7 +420,7 @@
         </section>
       </div>
 
-      <section class="vx-c-agenda5-card"><div class="vx-c-title"><h3>Minha Agenda — Próximos 5 dias</h3><a href="#" id="vxAgendaFull">Ver agenda completa</a></div>
+      <section class="vx-c-agenda5-card"><div class="vx-c-title"><h3>◷ Minha Agenda — Próximos 5 dias</h3><a href="#" id="vxAgendaFull">Ver agenda completa</a></div>
         <div class="vx-c-agenda5-grid">${days.map(d=>{
           const manha=d.rows.filter(a=>norm(a.period)!=='TARDE'), tarde=d.rows.filter(a=>norm(a.period)==='TARDE');
           function apptCard(a){
