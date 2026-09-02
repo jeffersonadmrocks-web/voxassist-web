@@ -1,7 +1,6 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   collectRoutingDimensions,
-  decideBotTrigger,
   decideTriageStep,
   FlowStep,
   isBypassTrigger,
@@ -213,15 +212,4 @@ Deno.test("matchRoutingRules - nenhuma regra bate devolve null (chamador usa o a
 });
 Deno.test("matchRoutingRules - sem regra nenhuma configurada devolve null", () => {
   assertEquals(matchRoutingRules([], { store: "store-serra", warranty: null, brand: null }), null);
-});
-
-Deno.test("decideBotTrigger - sem fluxo publicado nunca faz nada", () => {
-  assertEquals(decideBotTrigger({ hasPublishedFlow: false, withinBusinessHours: true }), "NONE");
-  assertEquals(decideBotTrigger({ hasPublishedFlow: false, withinBusinessHours: false }), "NONE");
-});
-Deno.test("decideBotTrigger - fluxo publicado dentro do horário manda boas-vindas + 1ª pergunta", () => {
-  assertEquals(decideBotTrigger({ hasPublishedFlow: true, withinBusinessHours: true }), "SEND_WELCOME_AND_FIRST_STEP");
-});
-Deno.test("decideBotTrigger - fluxo publicado fora do horário manda só a mensagem de fora do horário", () => {
-  assertEquals(decideBotTrigger({ hasPublishedFlow: true, withinBusinessHours: false }), "SEND_AFTER_HOURS");
 });

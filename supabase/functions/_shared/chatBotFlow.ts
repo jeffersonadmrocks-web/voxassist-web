@@ -184,14 +184,3 @@ export function matchRoutingRules(
   if (!matching.length) return null;
   return [...matching].sort((a, b) => b.specificity - a.specificity)[0];
 }
-
-export type BotTriggerAction = "SEND_WELCOME_AND_FIRST_STEP" | "SEND_AFTER_HOURS" | "NONE";
-
-// Decisão da branch CREATE (conversa nova) do webhook -- separada de
-// decideAwayMessage/isWithinBusinessHours (messagingService.ts), que
-// continuam intocadas; esta função só decide o que o ROBÔ faz quando
-// existe uma versão publicada.
-export function decideBotTrigger(input: { hasPublishedFlow: boolean; withinBusinessHours: boolean }): BotTriggerAction {
-  if (!input.hasPublishedFlow) return "NONE";
-  return input.withinBusinessHours ? "SEND_WELCOME_AND_FIRST_STEP" : "SEND_AFTER_HOURS";
-}
