@@ -187,26 +187,38 @@
     const validPayments=safe(by['Pagamentos'].data).filter(p=>p.paid_at&&!['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA'].includes(norm(p.status)));
     const receivedMonth=validPayments.filter(p=>new Date(p.paid_at)>=month0).reduce((s,p)=>s+Number(p.amount||0),0);
 
-    // Resumo Financeiro -- 6 métricas com definição explícita dada pelo
+    // Resumo Financeiro -- 6 métricas. Definição original dada pelo
     // usuário em 2026-09-01 (a imagem de referência é só o layout; as
-    // definições de cada card vieram por texto, não da imagem):
+    // definições de cada card vieram por texto, não da imagem);
+    // "A receber" x "Oportunidade de faturamento" CORRIGIDO em
+    // 2026-09-02 -- achado do usuário: as duas métricas contavam a
+    // mesma OS em conserto duas vezes (uma líquida, outra bruta).
+    // Definição confirmada pelo usuário (versão do Dashboard -- o
+    // relatório financeiro completo, tela separada, pode ter conceito
+    // diferente):
     // 1. Faturamento realizado = quanto efetivamente entrou no mês
     //    (= receivedMonth, já real).
-    // 2. A receber = orçado em OS já aprovadas ou concluídas
-    //    (AGUARDANDO CONSERTO/EM CONSERTO/PRONTO PARA ENTREGA/
-    //    FINALIZADA), menos o que já foi pago dessa OS.
+    // 2. A receber = orçado em OS PRONTAS PARA ENTREGA (aparelho já
+    //    concluído, só aguardando o cliente retirar), menos o que já
+    //    foi pago dessa OS. Não inclui mais OS ainda em conserto --
+    //    essas agora só entram em "Oportunidade de faturamento" (ver
+    //    item 5), pra não contar o mesmo valor duas vezes.
     // 3. Média diária = faturamento realizado dividido pelos dias já
     //    passados do mês corrente.
     // 4. Ticket médio recebido = faturamento realizado dividido pelo
     //    número de OS distintas que receberam pagamento no mês.
-    // 5. Oportunidade de faturamento = orçado em OS aprovadas ainda em
-    //    conserto (não prontas) -- é o "repair" já calculado acima.
+    // 5. Oportunidade de faturamento = OS já aprovadas/autorizado o
+    //    reparo, ainda em conserto (AGUARDANDO CONSERTO/EM CONSERTO) --
+    //    "quase certo o recebimento, só falta a ação da equipe pra
+    //    gerar o resultado" (palavras do usuário) -- é o "repair" já
+    //    calculado acima, valor bruto orçado (não líquido -- é
+    //    potencial, não dívida em aberto).
     // 6. Meta do mês = sem tabela real de meta financeira persistida
     //    (mesma situação do card "Metas e Bonificação" ao lado) --
     //    fica honestamente "Não configurado", nunca um número inventado.
     const paidByOrder=new Map();
     validPayments.forEach(p=>{const k=String(p.service_order_id);paidByOrder.set(k,(paidByOrder.get(k)||0)+Number(p.amount||0))});
-    const aReceber=orders.filter(o=>['AGUARDANDO CONSERTO','EM CONSERTO','PRONTO PARA ENTREGA','FINALIZADA'].includes(norm(o.status))).reduce((s,o)=>{
+    const aReceber=orders.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA').reduce((s,o)=>{
       const bud=budget(finMap.get(String(o.id))), paid=paidByOrder.get(String(o.id))||0;
       return s+Math.max(0,bud-paid);
     },0);
