@@ -453,7 +453,7 @@
      mensagens reais, ausência automática. Nunca mostra remote_jid/
      sender_lid como se fosse telefone -- só customer_phone. */
   const CONV_SELECT='id,customer_phone,customer_name,status,last_message_preview,last_message_at,unread_count,assigned_user_id,client_id,current_store_id,connection_id,service_order_id,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name),stores!chat_conversations_store_id_fkey(name),chat_conversation_tags(tag_id)';
-  let hubState={list:[],filter:'TODAS',search:'',storeFilter:'',connectionFilter:'',selectedId:null};
+  let hubState={list:[],filter:'TODAS',search:'',storeFilter:'',connectionFilter:'',selectedId:null,currentTransferHistory:[]};
   let conversaAtualId=null;
   let conversaPollTimer=null;
   let listPollTimer=null;
@@ -665,8 +665,23 @@
     document.getElementById('vxCtxAssume')?.addEventListener('click',()=>assumirConversa(conv.id));
     document.getElementById('vxCtxReopen')?.addEventListener('click',()=>reabrirConversa(conv.id));
     document.getElementById('vxCtxClose')?.addEventListener('click',()=>encerrarConversa(conv.id));
-    document.getElementById('vxCtxTransferBtn')?.addEventListener('click',e=>{e.stopPropagation();const p=document.getElementById('vxCtxTransferPop');p.hidden=!p.hidden});
+    document.getElementById('vxCtxTransferBtn')?.addEventListener('click',e=>{
+      e.stopPropagation();
+      const p=document.getElementById('vxCtxTransferPop');
+      p.hidden=!p.hidden;
+      if(p.hidden)return;
+      // Recalcula na hora do clique -- não usa o "otherAttendants" fixo
+      // da renderização do cabeçalho, que fica desatualizado quando o
+      // responsável muda sem re-render completo do cabeçalho (ex.:
+      // auto-atribuição pela 1ª mensagem, ou "Assumir e responder" do
+      // conflito de propriedade).
+      const currentConv=hubState.list.find(c=>String(c.id)===String(conv.id));
+      const fresh=cache.attendants.filter(a=>String(a.id)!==String(currentConv?.assigned_user_id||''));
+      p.innerHTML=fresh.length?fresh.map(a=>`<button type="button" class="vx-cc-transfer-opt" data-transfer-to="${E(a.id)}">${E(a.full_name)}</button>`).join(''):'<div class="vx-cc-transfer-empty">Nenhum outro atendente ativo.</div>';
+      p.querySelectorAll('[data-transfer-to]').forEach(b=>{b.onclick=()=>transferirConversa(conv.id,b.dataset.transferTo)});
+    });
     document.querySelectorAll('[data-transfer-to]').forEach(b=>b.onclick=()=>transferirConversa(conv.id,b.dataset.transferTo));
+    hubState.currentTransferHistory=await api(`chat_conversation_events?conversation_id=eq.${id}&action=eq.TRANSFER&select=*&order=created_at.desc`).catch(()=>[]);
     renderContexto(conv);
     conversaAtualId=id;
     await refreshMensagens();
@@ -705,10 +720,18 @@
       <div class="vx-cc-ctx-kv"><span>Responsável</span><span>${E(responsavelNome||'Não atribuída')}</span></div>
       </div>`;
     const auditCard=deletedEvents.length?`<div class="vx-cc-ctx-card"><h3>Auditoria da conversa</h3>${deletedEvents.map(a=>`<div class="vx-cc-ctx-kv"><span>${E(a.text)}</span><span>${E(a.time)}</span></div>`).join('')}</div>`:'';
+    // Histórico de transferências -- quem/de quem/pra quem/quando,
+    // regra dada pelo usuário em 2026-09-01. Lido de
+    // chat_conversation_events (já existia no schema, nunca era
+    // escrito) via hubState.currentTransferHistory, carregado em
+    // selectConversa antes de chamar renderContexto.
+    const attendantName=id=>id?(cache.attendants.find(a=>String(a.id)===String(id))?.full_name||'—'):'Ninguém';
+    const transferHistory=hubState.currentTransferHistory||[];
+    const transferCard=transferHistory.length?`<div class="vx-cc-ctx-card"><h3>Histórico de transferências</h3>${transferHistory.map(ev=>`<div class="vx-cc-ctx-kv"><span>${E(attendantName(ev.previous_data?.assigned_user_id))} → ${E(attendantName(ev.new_data?.assigned_user_id))}</span><span>${new Date(ev.created_at).toLocaleString('pt-BR')}</span></div>`).join('')}</div>`:'';
     const actionsCard=`<div class="vx-cc-ctx-card"><h3>Ações</h3><div class="vx-cc-ctx-actions">
       <button type="button" class="vx-cc-ctx-action-btn" id="vxCtxTransferStore">Transferir loja</button>
       </div></div>`;
-    ctx.innerHTML=clientCard+tagsCard+osCard+atendimentoCard+auditCard+actionsCard;
+    ctx.innerHTML=clientCard+tagsCard+osCard+atendimentoCard+transferCard+auditCard+actionsCard;
     document.getElementById('vxCtxOpenOs')?.addEventListener('click',()=>window.render('os:'+conv.service_order_id));
     document.getElementById('vxCtxTransferStore')?.addEventListener('click',()=>openTransferLojaModal(conv.id,conv.current_store_id));
     const searchInput=document.getElementById('vxCtxClientSearch');
@@ -825,9 +848,23 @@
     }catch(err){toast?.('Não foi possível vincular o cliente: '+err.message,'err')}
   }
 
+  /* ---------- Auditoria de atribuição/transferência ----------
+     chat_conversation_events já existia no schema (fundação do chat,
+     28/08) mas nunca era escrito por nenhum código -- usado agora pra
+     registrar quem/de quem/pra quem/quando em cada mudança de
+     responsável, regra dada pelo usuário em 2026-09-01. */
+  async function logConversationEvent(conversationId,action,previousData,newData){
+    try{
+      await api('chat_conversation_events',{method:'POST',body:JSON.stringify({company_id:state.profile.active_company_id,conversation_id:conversationId,action,previous_data:previousData||{},new_data:newData||{},changed_by:myUserId()})});
+    }catch(err){/* auditoria não pode travar a ação principal -- só loga no console */console.error?.('Falha ao registrar evento de conversa:',err)}
+  }
+
   async function assumirConversa(conversationId){
     try{
+      const conv=hubState.list.find(c=>String(c.id)===String(conversationId));
+      const previousUserId=conv?.assigned_user_id||null;
       await api(`chat_conversations?id=eq.${conversationId}`,{method:'PATCH',body:JSON.stringify({assigned_user_id:myUserId()})});
+      await logConversationEvent(conversationId,'ASSUMIR',{assigned_user_id:previousUserId},{assigned_user_id:myUserId()});
       toast?.('Conversa atribuída a você.');
       await refreshConvSummary(conversationId);
       renderContexto(hubState.list.find(c=>String(c.id)===String(conversationId)));
@@ -851,7 +888,10 @@
   }
   async function transferirConversa(conversationId,targetUserId){
     try{
+      const conv=hubState.list.find(c=>String(c.id)===String(conversationId));
+      const previousUserId=conv?.assigned_user_id||null;
       await api(`chat_conversations?id=eq.${conversationId}`,{method:'PATCH',body:JSON.stringify({assigned_user_id:targetUserId})});
+      await logConversationEvent(conversationId,'TRANSFER',{assigned_user_id:previousUserId},{assigned_user_id:targetUserId});
       const target=cache.attendants.find(a=>String(a.id)===String(targetUserId));
       toast?.(`Conversa transferida para ${target?.full_name||'outro atendente'}.`);
       await refreshConvSummary(conversationId);
@@ -991,6 +1031,33 @@
     }
   }
 
+  /* Pergunta o que fazer quando o atendente envia mensagem numa
+     conversa já atribuída a OUTRO atendente -- regra dada pelo
+     usuário em 2026-09-01. Nunca decide sozinho (nem assume, nem
+     ignora): sempre pergunta, e mantém o responsável atual se a
+     escolha for só interagir. */
+  function askOwnershipConflict(assignedName){
+    return new Promise(resolve=>{
+      document.querySelector('#vxOwnershipModal')?.remove();
+      const bg=document.createElement('div');
+      bg.id='vxOwnershipModal';
+      bg.className='vx-modal-bg';
+      bg.innerHTML=`<div class="vx-modal">
+        <h3>Conversa de outro atendente</h3>
+        <p class="vx-chatbeta-sub">Esta conversa está atribuída a <b>${E(assignedName)}</b>. O que você quer fazer?</p>
+        <div class="vx-modal-actions">
+          <button type="button" data-choice="cancel">Cancelar</button>
+          <button type="button" data-choice="interact">Só responder (mantém ${E(assignedName)})</button>
+          <button type="button" data-choice="assume" class="primary">Assumir e responder</button>
+        </div>
+      </div>`;
+      document.body.appendChild(bg);
+      const close=choice=>{bg.remove();resolve(choice)};
+      bg.querySelectorAll('[data-choice]').forEach(b=>{b.onclick=()=>close(b.dataset.choice)});
+      bg.addEventListener('click',e=>{if(e.target===bg)close('cancel')});
+    });
+  }
+
   async function handleSendMensagem(e){
     e.preventDefault();
     const f=new FormData(e.target);
@@ -998,6 +1065,41 @@
     if(!body||!conversaAtualId)return;
     const btn=e.target.querySelector('button[type=submit]');
     const input=e.target.querySelector('input[name=body]');
+    const conv=hubState.list.find(c=>String(c.id)===String(conversaAtualId));
+    const me=myUserId();
+    // Auto-atribuição por ação humana (regra dada pelo usuário em
+    // 2026-09-01): a primeira mensagem humana (nota interna ou real)
+    // numa conversa sem responsável assume automaticamente pra quem
+    // enviou -- nunca por mensagem automática/bot/IA/fora do horário,
+    // que nunca passam por aqui (só o clique real do atendente chama
+    // handleSendMensagem). Se já pertence a OUTRO atendente, pergunta
+    // em vez de decidir sozinho.
+    if(conv&&!conv.assigned_user_id){
+      try{
+        await api(`chat_conversations?id=eq.${conversaAtualId}`,{method:'PATCH',body:JSON.stringify({assigned_user_id:me})});
+        await logConversationEvent(conversaAtualId,'AUTO_ASSIGN_FIRST_MESSAGE',{assigned_user_id:null},{assigned_user_id:me});
+        conv.assigned_user_id=me;
+        await refreshConvSummary(conversaAtualId);
+        renderContexto(hubState.list.find(c=>String(c.id)===String(conversaAtualId)));
+        document.getElementById('vxCtxAssume')?.remove();
+        toast?.('Conversa atribuída a você automaticamente.');
+      }catch(err){toast?.('Não foi possível atribuir a conversa automaticamente: '+err.message,'err')}
+    }else if(conv&&String(conv.assigned_user_id)!==String(me)){
+      const owner=cache.attendants.find(a=>String(a.id)===String(conv.assigned_user_id));
+      const choice=await askOwnershipConflict(owner?.full_name||'outro atendente');
+      if(choice==='cancel')return;
+      if(choice==='assume'){
+        try{
+          const previousUserId=conv.assigned_user_id;
+          await api(`chat_conversations?id=eq.${conversaAtualId}`,{method:'PATCH',body:JSON.stringify({assigned_user_id:me})});
+          await logConversationEvent(conversaAtualId,'ASSUMIR',{assigned_user_id:previousUserId},{assigned_user_id:me});
+          conv.assigned_user_id=me;
+          await refreshConvSummary(conversaAtualId);
+          renderContexto(hubState.list.find(c=>String(c.id)===String(conversaAtualId)));
+          document.getElementById('vxCtxAssume')?.remove();
+        }catch(err){toast?.('Não foi possível assumir a conversa: '+err.message,'err');return}
+      }
+    }
     btn.disabled=true;
     try{
       if(internalNoteMode){
