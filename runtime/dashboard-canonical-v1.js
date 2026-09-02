@@ -15,11 +15,13 @@
  * 1:1 óbvia. Referência visual = só composição/densidade/estilo; NUNCA
  * números, rótulos ou vocabulário de status copiados da imagem -- fonte
  * de verdade é sempre schema real + funcionalidade já aprovada:
- * - dashboard_cases.status: só o default 'NOVO' é confirmado por schema
- *   (sem CHECK constraint, nenhuma outra função do repo escreve nessa
- *   tabela). Uso NOVO (confirmado) e a mesma exclusão !RESOLVIDO/
- *   CANCELADO já usada no Dashboard canônico original -- nunca uma
- *   quebra em NOVO/EM ANDAMENTO/RESOLVIDO, que não tem base real.
+ * - dashboard_cases.status: sem CHECK constraint no schema (só o default
+ *   'NOVO' é garantido), mas o usuário confirmou em 2026-09-01 que o
+ *   vocabulário real esperado é exatamente NOVO/EM ANDAMENTO/RESOLVIDO
+ *   -- confirmação explícita do usuário, não suposição a partir da
+ *   imagem de referência. Os 3 contadores do card são escopados aos
+ *   últimos 30 dias (via created_at); o drill-down "Ver todos os
+ *   casos" continua mostrando todos os casos em aberto, sem esse corte.
  * - parts_requests.status: mesma situação (sem CHECK constraint, nenhum
  *   outro código escreve nessa tabela). Uso só a contagem total (igual
  *   ao Dashboard original) e "Atrasados" via expected_date (data real,
@@ -97,6 +99,7 @@
     const month0=startOfMonth(today);
     const prevMonth0=new Date(month0.getFullYear(),month0.getMonth()-1,1);
     const agendaEnd=new Date(today);agendaEnd.setDate(agendaEnd.getDate()+4);
+    const days30Ago=new Date(today);days30Ago.setDate(days30Ago.getDate()-30);
     const isoDate=d=>d.toISOString().slice(0,10);
 
     const results=await Promise.all([
@@ -121,8 +124,16 @@
     const noTech=active.filter(o=>!o.technician_id), urgent=active.filter(o=>norm(o.priority).includes('URG'));
     const tasks=safe(by['Tarefas'].data).filter(t=>!['CONCLUIDO','CANCELADO'].includes(norm(t.status)));
     const casesAll=safe(by['Casos de atenção'].data);
-    const casesNovos=casesAll.filter(c=>norm(c.status)==='NOVO');
     const casesAbertos=casesAll.filter(c=>!['RESOLVIDO','CANCELADO'].includes(norm(c.status)));
+    // Card "Casos de Atenção": Novos/Em andamento/Resolvidos, escopados
+    // aos últimos 30 dias -- confirmado pelo usuário em 2026-09-01 (a
+    // versão anterior, mais conservadora, tratava EM ANDAMENTO/
+    // RESOLVIDO como vocabulário não confirmado; o usuário confirmou
+    // que é exatamente esse o vocabulário real esperado).
+    const casesLast30=casesAll.filter(c=>c.created_at&&new Date(c.created_at)>=days30Ago);
+    const casesNovos=casesLast30.filter(c=>norm(c.status)==='NOVO');
+    const casesAndamento=casesLast30.filter(c=>norm(c.status)==='EM ANDAMENTO');
+    const casesResolvidos=casesLast30.filter(c=>norm(c.status)==='RESOLVIDO');
     const partsAll=safe(by['Peças'].data);
     const partsAtrasadas=partsAll.filter(p=>p.expected_date&&new Date(p.expected_date)<today&&!norm(p.status).includes('RECEBID'));
     const finMap=new Map(safe(by['Financeiro'].data).map(f=>[String(f.service_order_id),f]));
@@ -244,8 +255,9 @@
       <div class="vx-c-grid-2">
         <section class="vx-c-cases-card"><div class="vx-c-title"><h3>⚠ Casos de Atenção</h3><a href="#" data-drill="casesAbertos" data-title="Casos de Atenção">Ver todos os casos</a></div>
           <div class="vx-c-cases-row">
-            <div><b>${casesAbertos.length}</b><span>Em aberto</span><small>Ainda não resolvidos</small></div>
-            <div><b>${casesNovos.length}</b><span>Novos</span><small>Aguardando triagem</small></div>
+            <div><b>${casesNovos.length}</b><span>Novos casos</span><small>Requerem triagem</small></div>
+            <div><b>${casesAndamento.length}</b><span>Em andamento</span><small>Aguardando retorno do cliente</small></div>
+            <div><b>${casesResolvidos.length}</b><span>Resolvidos</span><small>Últimos 30 dias</small></div>
           </div>
         </section>
         <section class="vx-c-opp-card"><div class="vx-c-title"><h3>Oportunidades do Dia</h3><a href="#" data-drill="ready" data-title="Oportunidades do Dia">Ver todas</a></div>
