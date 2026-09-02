@@ -1465,10 +1465,21 @@
   }
 
   async function loadMensagens(conversationId){
-    // reply_to: embed via a FK que a migration da Fase 5 criou --
-    // traz o corpo/direção da mensagem citada junto, sem round-trip
-    // extra pra montar o preview de citação em cada linha.
-    return api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at,deleted_at,origin,sender_user_id,reply_to_message_id,message_type,media_status,media_storage_path,media_mime_type,media_size_bytes,profiles!chat_messages_sender_user_id_fkey(full_name),reply_to:chat_messages!chat_messages_reply_to_message_id_fkey(id,body,direction,origin)&order=created_at.asc`).catch(()=>[]);
+    // Achado do usuário em 2026-09-02: o embed reply_to via FK
+    // auto-referenciada (chat_messages -> chat_messages) nunca resolveu
+    // pelo PostgREST -- PGRST200 "Could not find a relationship",
+    // confirmado direto na API real, mesmo com a constraint existindo
+    // certinho no banco (limitação conhecida do PostgREST com FK
+    // auto-referenciada, não cache desatualizado -- outras relações
+    // novas do mesmo dia resolvem normalmente). Erro silencioso
+    // (.catch(()=>[])) fazia a conversa inteira aparecer vazia. Corrige
+    // resolvendo reply_to no cliente: a mensagem citada sempre está
+    // nesta mesma lista (mesma conversa, sem paginação), então um
+    // lookup local id->linha substitui o embed sem depender dele.
+    const rows=await api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at,deleted_at,origin,sender_user_id,reply_to_message_id,message_type,media_status,media_storage_path,media_mime_type,media_size_bytes,profiles!chat_messages_sender_user_id_fkey(full_name)&order=created_at.asc`).catch(()=>[]);
+    const byId=Object.fromEntries(rows.map(m=>[String(m.id),m]));
+    rows.forEach(m=>{m.reply_to=m.reply_to_message_id?(byId[String(m.reply_to_message_id)]||null):null});
+    return rows;
   }
 
   // Ticks só fazem sentido pra mensagem enviada por nós (OUTBOUND) --
