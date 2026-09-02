@@ -69,6 +69,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const conversationId = typeof body?.conversationId === "string" ? body.conversationId.trim() : "";
     const text = typeof body?.body === "string" ? body.body : "";
+    const replyToMessageId = typeof body?.replyToMessageId === "string" && body.replyToMessageId.trim() ? body.replyToMessageId.trim() : null;
     if (!conversationId) {
       return respond({ ok: false, error: "missing_conversation_id" }, 400);
     }
@@ -82,6 +83,24 @@ Deno.serve(async (req) => {
       // Mesma resposta pra "não existe" e "existe mas RLS não deixa ver"
       // — não vaza se a conversa existe em outra empresa.
       return respond({ ok: false, error: "conversation_not_found" }, 404);
+    }
+
+    // Se veio replyToMessageId, confirma que pertence a ESTA conversa
+    // antes de gastar uma chamada real ao gateway -- mesma checagem
+    // que o trigger do banco (chat_messages_reply_to_same_conversation,
+    // Fase 5) reforça na gravação, mas falhar aqui evita mandar a
+    // mensagem pro cliente pra só depois descobrir que a citação era
+    // inválida. userClient (RLS) garante que a mensagem citada também
+    // é de uma conversa que este usuário já pode ver.
+    if (replyToMessageId) {
+      const { data: quoted } = await userClient
+        .from("chat_messages")
+        .select("id, conversation_id")
+        .eq("id", replyToMessageId)
+        .maybeSingle<{ id: string; conversation_id: string }>();
+      if (!quoted || quoted.conversation_id !== conversationId) {
+        return respond({ ok: false, error: "invalid_reply_to_message" }, 400);
+      }
     }
 
     const connectionStatus = conversation.chat_connections?.status ?? "DESCONECTADO";
@@ -108,6 +127,13 @@ Deno.serve(async (req) => {
       return respond({ ok: false, error: "conversation_without_target" }, 400);
     }
 
+    // replyToMessageId NÃO é encaminhado ao gateway (Fase 5, escopo
+    // documentado na migration chat_messages_reply_to): não há
+    // confirmação de que voxassist-whatsapp-gateway suporte citação
+    // nativa do WhatsApp (nenhuma referência a "quoted"/"context" em
+    // nenhuma function deste repo). A citação fica só como metadado do
+    // VoxAssist (gravada abaixo) -- nunca inventa um campo de payload
+    // pro gateway sem confirmação real de que ele o entende.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     let gatewayResult: { externalMessageId?: string };
@@ -141,6 +167,7 @@ Deno.serve(async (req) => {
       body: text,
       external_message_id: gatewayResult.externalMessageId ?? null,
       status: "ENVIADA",
+      reply_to_message_id: replyToMessageId,
     });
     // unread_count volta a 0 quando o atendente responde -- mesma
     // correção do achado real em chat-inbound-webhook (a coluna nunca

@@ -132,6 +132,14 @@
      gateway). Reseta ao trocar de conversa, igual ao protótipo. */
   let internalNoteMode=false;
 
+  /* ---------- Resposta com citação (Fase 5) ----------
+     Guarda a mensagem que o atendente escolheu "responder" (banner
+     acima do composer, cancelável) -- metadado do VoxAssist, ver
+     comentário da migration da Fase 5 sobre o gateway não ter suporte
+     confirmado a citação nativa do WhatsApp. Reseta ao trocar de
+     conversa e ao enviar. */
+  let replyingTo=null;
+
   async function loadTags(){
     cache.tags=await api('chat_tags?select=*&order=label').catch(()=>[]);
   }
@@ -623,6 +631,7 @@
     stopConversaPoll();
     internalNoteMode=false;
     quickReplyPopoverOpen=false;
+    replyingTo=null;
     hubState.selectedId=id;
     const conv=hubState.list.find(c=>String(c.id)===String(id));
     // Abrir a conversa marca como lida -- mesma correção real do
@@ -659,6 +668,7 @@
         </div>
       </div>
       <div id="vxMsgList" class="vx-msg-list"><div class="vx-chatbeta-loading">Carregando mensagens…</div></div>
+      <div id="vxReplyBanner" class="vx-cc-reply-banner" hidden></div>
       <form id="vxMsgForm" class="vx-cc-composer">
         <button type="button" id="vxNoteToggleBtn" class="vx-cc-note-btn" title="Nota interna" aria-label="Alternar nota interna">📝</button>
         <div class="vx-cc-qr-wrap">
@@ -669,6 +679,7 @@
         <button type="submit" class="vx-cc-send-btn">Enviar</button>
       </form>`;
     document.getElementById('vxMsgForm').onsubmit=handleSendMensagem;
+    renderReplyBanner();
     document.getElementById('vxQuickReplyBtn').onclick=e=>{
       e.stopPropagation();
       quickReplyPopoverOpen=!quickReplyPopoverOpen;
@@ -1063,7 +1074,10 @@
   }
 
   async function loadMensagens(conversationId){
-    return api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at,deleted_at,origin,sender_user_id,profiles!chat_messages_sender_user_id_fkey(full_name)&order=created_at.asc`).catch(()=>[]);
+    // reply_to: embed via a FK que a migration da Fase 5 criou --
+    // traz o corpo/direção da mensagem citada junto, sem round-trip
+    // extra pra montar o preview de citação em cada linha.
+    return api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at,deleted_at,origin,sender_user_id,reply_to_message_id,profiles!chat_messages_sender_user_id_fkey(full_name),reply_to:chat_messages!chat_messages_reply_to_message_id_fkey(id,body,direction,origin)&order=created_at.asc`).catch(()=>[]);
   }
 
   // Ticks só fazem sentido pra mensagem enviada por nós (OUTBOUND) --
@@ -1079,18 +1093,46 @@
     return'';
   }
 
+  // Preview curto da mensagem citada -- mesmo texto usado no bloco de
+  // citação dentro da bolha e no banner do composer (Fase 5).
+  function quoteSnippetText(m){
+    if(!m)return'';
+    if(m.origin==='INTERNAL')return'📝 '+(m.body||'').slice(0,80);
+    return (m.body||'[sem texto]').slice(0,80);
+  }
+  function quoteSnippetAuthor(m){
+    if(!m)return'';
+    return m.origin==='INTERNAL'?'Nota interna':(m.direction==='OUTBOUND'?'Você':'Cliente');
+  }
   function mensagemRow(m){
     const hora=new Date(m.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const quoteBlock=m.reply_to?`<div class="vx-msg-quote"><b>${E(quoteSnippetAuthor(m.reply_to))}</b><span>${E(quoteSnippetText(m.reply_to))}</span></div>`:'';
     if(m.origin==='INTERNAL'){
       const autor=m.profiles?.full_name||'—';
-      return `<div class="vx-msg-row vx-msg-internal"><div class="vx-msg-bubble vx-msg-bubble-internal"><span class="vx-msg-internal-tag">📝 Nota interna — visível só pra equipe</span><span><b>${E(autor)}:</b> ${E(m.body||'')}</span><small>${E(hora)}</small></div></div>`;
+      return `<div class="vx-msg-row vx-msg-internal"><div class="vx-msg-bubble vx-msg-bubble-internal">${quoteBlock}<span class="vx-msg-internal-tag">📝 Nota interna — visível só pra equipe</span><span><b>${E(autor)}:</b> ${E(m.body||'')}</span><small>${E(hora)}</small></div><button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button></div>`;
     }
     const lado=m.direction==='OUTBOUND'?'vx-msg-out':'vx-msg-in';
     const isDeleted=!!m.deleted_at;
     const isImport=m.origin==='IMPORT';
     const deletedLabel=isDeleted?'<span class="vx-msg-deleted-label">🗑 Apagada no WhatsApp — mantida aqui como registro</span>':'';
     const importTag=isImport?'<span class="vx-msg-tag vx-msg-tag-import">Histórico</span>':'';
-    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}"><div class="vx-msg-bubble">${deletedLabel}<span>${E(m.body||'[sem texto]')}</span><div class="vx-msg-meta">${importTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div></div>`;
+    const replyBtn=isDeleted?'':`<button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button>`;
+    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}"><div class="vx-msg-bubble">${quoteBlock}${deletedLabel}<span>${E(m.body||'[sem texto]')}</span><div class="vx-msg-meta">${importTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}</div>`;
+  }
+  function renderReplyBanner(){
+    const el=document.getElementById('vxReplyBanner');
+    if(!el)return;
+    if(!replyingTo){el.hidden=true;el.innerHTML='';return}
+    el.hidden=false;
+    el.innerHTML=`<div class="vx-cc-reply-banner-body"><b>Respondendo a ${E(quoteSnippetAuthor(replyingTo))}</b><span>${E(quoteSnippetText(replyingTo))}</span></div><button type="button" id="vxReplyCancel" title="Cancelar resposta">×</button>`;
+    document.getElementById('vxReplyCancel').onclick=()=>{replyingTo=null;renderReplyBanner()};
+  }
+  function startReply(messageId){
+    const msg=(hubState.currentMessages||[]).find(m=>String(m.id)===String(messageId));
+    if(!msg)return;
+    replyingTo=msg;
+    renderReplyBanner();
+    document.querySelector('#vxMsgForm input[name=body]')?.focus();
   }
 
   async function refreshMensagens(){
@@ -1102,6 +1144,7 @@
     hubState.currentMessages=msgs;
     list.innerHTML=msgs.length?msgs.map(mensagemRow).join(''):'<p class="vx-chatbeta-sub">Nenhuma mensagem ainda.</p>';
     list.scrollTop=list.scrollHeight;
+    list.querySelectorAll('[data-reply]').forEach(btn=>btn.onclick=()=>startReply(btn.dataset.reply));
     await refreshConvSummary(conversaAtualId);
     const deletedAfter=msgs.filter(m=>m.deleted_at).length;
     // Só re-renderiza o Contexto se algo relevante pra ele mudou (nova
@@ -1183,6 +1226,7 @@
       }
     }
     btn.disabled=true;
+    const replyToMessageId=replyingTo?.id||null;
     try{
       if(internalNoteMode){
         // Grava direto via REST -- nunca passa por chat-send-message,
@@ -1190,16 +1234,18 @@
         // WhatsApp. Não atualiza last_message_preview/last_message_at/
         // unread_count da conversa (essas colunas são só pra
         // resumo real de conversa com o cliente).
-        await api('chat_messages',{method:'POST',body:JSON.stringify({company_id:state.profile.active_company_id,conversation_id:conversaAtualId,direction:'OUTBOUND',origin:'INTERNAL',message_type:'TEXT',body,sender_user_id:myUserId()})});
+        await api('chat_messages',{method:'POST',body:JSON.stringify({company_id:state.profile.active_company_id,conversation_id:conversaAtualId,direction:'OUTBOUND',origin:'INTERNAL',message_type:'TEXT',body,sender_user_id:myUserId(),reply_to_message_id:replyToMessageId})});
       }else{
         const res=await fetch(CFG.url+'/functions/v1/chat-send-message',{
           method:'POST',headers:authHeaders(),
-          body:JSON.stringify({conversationId:conversaAtualId,body}),
+          body:JSON.stringify({conversationId:conversaAtualId,body,replyToMessageId}),
         });
         const data=await res.json().catch(()=>null);
         if(!res.ok||!data?.ok)throw new Error(data?.message||data?.error||'Falha ao enviar.');
       }
       input.value='';
+      replyingTo=null;
+      renderReplyBanner();
       await refreshMensagens();
     }catch(err){
       toast?.('Não foi possível enviar: '+err.message,'err');
