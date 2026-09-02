@@ -13,7 +13,13 @@
   const isOpen=o=>!['FINALIZADA','CANCELADA'].includes(norm(o.status));
   const safe=x=>Array.isArray(x)?x:[];
   const scope=rows=>role()==='TECNICO'?rows.filter(o=>o.technician_id===me()):role()==='ATENDENTE'?rows.filter(o=>o.attendant_id===me()||!o.attendant_id):rows;
-  const budget=f=>Math.max(0,Number(f?.labor_value||0)+Number(f?.freight_value||0)+Number(f?.auxiliary_material_value||0)+Number(f?.technical_report_value||0)-Number(f?.discount_value||0));
+  // Fonte única de cálculo financeiro (Fase 6) -- mesma função usada pela
+  // tela Produtividade/Metas, em vez de duas implementações que só
+  // concordam por coincidência. Fallback local só existe pra não quebrar
+  // se o script novo ainda não carregou por algum motivo (nunca deveria
+  // acontecer -- vem antes deste arquivo em index.html).
+  const budget=window.vxProductivityCalc?.budget||(f=>Math.max(0,Number(f?.labor_value||0)+Number(f?.freight_value||0)+Number(f?.auxiliary_material_value||0)+Number(f?.technical_report_value||0)-Number(f?.discount_value||0)));
+  const validPaymentsOf=window.vxProductivityCalc?.validPayments||(payments=>(payments||[]).filter(p=>p?.paid_at&&!['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA'].includes(norm(p.status))));
   const startMonth=()=>new Date(new Date().getFullYear(),new Date().getMonth(),1);
   const withTimeout=(promise,ms,label)=>Promise.race([promise,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+' excedeu '+ms+'ms')),ms))]);
   const inferGroup=t=>{t=norm(t);if(t.includes('TV'))return 'TV';if(/REFRIG|FREEZER|AR-COND|GELADEIRA/.test(t))return 'REFRIGERAÇÃO';if(/MICRO|FOG|LAVA|BEBED/.test(t))return 'LINHA BRANCA';if(/AUDIO|ÁUDIO|SOM|RADIO|RÁDIO/.test(t))return 'ÁUDIO';return t?'GERAL':''};
@@ -94,7 +100,7 @@
     const today=new Date().toISOString().slice(0,10), apps=safe(by['Agenda'].data).filter(a=>a.appointment_date===today);
     const parts=safe(by['Peças'].data).filter(p=>!['RECEBIDO','CANCELADO'].includes(norm(p.status)));
     const finMap=new Map(safe(by['Financeiro'].data).map(f=>[String(f.service_order_id),f]));
-    const validPayments=safe(by['Pagamentos'].data).filter(p=>p.paid_at&&!['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA'].includes(norm(p.status)));
+    const validPayments=validPaymentsOf(safe(by['Pagamentos'].data));
     const day0=new Date();day0.setHours(0,0,0,0);const month0=startMonth();
     const receivedToday=validPayments.filter(p=>new Date(p.paid_at)>=day0).reduce((s,p)=>s+Number(p.amount||0),0);
     const receivedMonth=validPayments.filter(p=>new Date(p.paid_at)>=month0).reduce((s,p)=>s+Number(p.amount||0),0);
