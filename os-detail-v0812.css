@@ -23,3 +23,14 @@
 #vx-os .vx-field-grid.two>.vx-field.wide textarea{min-height:58px;height:58px;background:#fff}
 @media(max-width:1200px){.vx-os-head{align-items:flex-start}.vx-os-head-actions{flex-wrap:wrap}.vx-os-summary-grid{grid-template-columns:1fr}.vx-os-box{min-height:auto}.vx-form-3,.vx-form-3.budget,.vx-form-3.finance{grid-template-columns:1fr 1fr}.vx-attach-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:760px){.vx-os-head{flex-direction:column}.vx-os-head-left,.vx-os-head-actions{width:100%;flex-wrap:wrap}.vx-field-grid,.vx-field-grid.two,.vx-form-2,.vx-form-3,.vx-form-3.budget,.vx-form-3.finance,.vx-event-grid,.vx-budget-values{grid-template-columns:1fr}.vx-field.span2{grid-column:auto}.vx-part-search{grid-template-columns:1fr}.vx-attach-grid{grid-template-columns:1fr}}
+
+/* Achado do usuario em 2026-09-02: o select multiplo nativo do popup de Caso de Atencao (Enviar para) ficava apertado, dificil de ler, principalmente em telas menores -- trocado por lista de checkboxes agrupada. */
+.vx-caso-recipients{max-height:220px;overflow-y:auto;border:1px solid #cbd7e2;border-radius:6px;padding:8px 10px;background:#fafcfd}
+.vx-caso-recipients-group{margin-bottom:8px}
+.vx-caso-recipients-group:last-child{margin-bottom:0}
+.vx-caso-recipients-group b{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#5e7188;margin-bottom:4px}
+.vx-caso-recipient-item{display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:12.5px;color:#1a2733;cursor:pointer;border-radius:5px}
+.vx-caso-recipient-item:hover{background:#eef3f8}
+.vx-caso-recipient-item input{width:16px;height:16px;flex:none;margin:0}
+.vx-caso-recipients-empty{display:block;padding:4px;font-size:11.5px;color:#8a96a3;font-style:italic}
+@media(max-width:520px){.vx-caso-recipients{max-height:180px}}

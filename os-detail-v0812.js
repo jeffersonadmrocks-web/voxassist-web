@@ -45,10 +45,10 @@
       <div class="vx-field"><label>Descrição</label><textarea id="vxCasoMessage" maxlength="500" rows="3"></textarea></div>
       <div class="vx-field"><label>Prioridade</label><select id="vxCasoPriority"><option value="NORMAL">Normal</option><option value="ALTA">Alta</option><option value="URGENTE">Urgente</option></select></div>
       <div class="vx-field"><label>Enviar para (opcional -- vazio = visível pra empresa toda)</label>
-        <select id="vxCasoRecipients" multiple size="6">
-          <optgroup label="Grupos">${CASO_ROLE_GROUPS.map(([v,l])=>`<option value="role:${v}">${val(l)}</option>`).join('')}</optgroup>
-          <optgroup label="Pessoas">${people.map(p=>`<option value="user:${val(p.id)}">${val(p.full_name)}</option>`).join('')}</optgroup>
-        </select>
+        <div class="vx-caso-recipients" id="vxCasoRecipients">
+          <div class="vx-caso-recipients-group"><b>Grupos</b>${CASO_ROLE_GROUPS.map(([v,l])=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="role:${v}">${val(l)}</label>`).join('')}</div>
+          <div class="vx-caso-recipients-group"><b>Pessoas</b>${people.length?people.map(p=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="user:${val(p.id)}">${val(p.full_name)}</label>`).join(''):'<span class="vx-caso-recipients-empty">Nenhum usuário ativo.</span>'}</div>
+        </div>
       </div>
       <div class="vx-modal-actions"><button type="button" data-cancel>Cancelar</button><button type="button" class="primary" data-save>Criar caso</button></div>
     </div>`;
@@ -62,7 +62,7 @@
       const btn=bg.querySelector('[data-save]');btn.disabled=true;
       const myId=state.session?.user?.id||state.profile?.id||null;
       const companyId=state.profile?.active_company_id;
-      const recipients=[...bg.querySelectorAll('#vxCasoRecipients option:checked')].map(o=>o.value);
+      const recipients=[...bg.querySelectorAll('#vxCasoRecipients input:checked')].map(el=>el.value);
       try{
         const created=await api('dashboard_cases',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
           service_order_id:o.id,
