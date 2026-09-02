@@ -71,6 +71,44 @@
     bg.onclick=e=>{if(e.target===bg)bg.remove();};
   }
 
+  // Modal pra linhas de parts_requests (achado do usuário em
+  // 2026-09-01: "Pedidos de Peças" não tinha como ver quais pedidos
+  // reais estavam por trás de cada número -- mesmo problema do
+  // Gestão Visual, mesma correção: linhas reais, não só a contagem).
+  function partsModal(title,rows){
+    document.querySelector('#vxCanonicalModal')?.remove();
+    const bg=document.createElement('div');bg.id='vxCanonicalModal';bg.className='vx-c-modal-bg';
+    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Peça</th><th>Código</th><th>Qtd</th><th>Fornecedor</th><th>Situação</th><th>Previsão</th></tr></thead><tbody>${rows.map(p=>`<tr><td><b>${E(p.description||'—')}</b></td><td>${E(p.code||'—')}</td><td>${E(p.quantity||1)}</td><td>${E(p.supplier||'—')}</td><td>${E(norm(p.status)||'—')}</td><td>${p.expected_date?new Date(p.expected_date).toLocaleDateString('pt-BR'):'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
+    document.body.appendChild(bg);
+    bg.querySelector('[data-close]').onclick=()=>bg.remove();
+    bg.onclick=e=>{if(e.target===bg)bg.remove();};
+  }
+
+  // Modal pra ver o histórico completo do Feed (achado do usuário em
+  // 2026-09-01: "Ver tudo" não fazia nada -- o feed real vinha
+  // truncado nas últimas 8 mudanças de status; aqui mostra tudo que
+  // já foi buscado, sem esse corte).
+  function feedModal(title,rows,feedTextFn){
+    document.querySelector('#vxCanonicalModal')?.remove();
+    const bg=document.createElement('div');bg.id='vxCanonicalModal';bg.className='vx-c-modal-bg';
+    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Quando</th><th>Evento</th></tr></thead><tbody>${rows.map(h=>`<tr><td>${new Date(h.changed_at).toLocaleString('pt-BR')}</td><td>${E(feedTextFn(h))}</td></tr>`).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
+    document.body.appendChild(bg);
+    bg.querySelector('[data-close]').onclick=()=>bg.remove();
+    bg.onclick=e=>{if(e.target===bg)bg.remove();};
+  }
+
+  // Modal pra linhas de tasks (achado do usuário em 2026-09-01: mesma
+  // situação -- "Retornar clientes pendentes" não mostrava quais
+  // tarefas reais).
+  function tasksModal(title,rows){
+    document.querySelector('#vxCanonicalModal')?.remove();
+    const bg=document.createElement('div');bg.id='vxCanonicalModal';bg.className='vx-c-modal-bg';
+    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Tarefa</th><th>Prioridade</th><th>Situação</th><th>Prazo</th></tr></thead><tbody>${rows.map(t=>`<tr><td><b>${E(t.title||'—')}</b></td><td>${E(norm(t.priority)||'—')}</td><td>${E(norm(t.status)||'—')}</td><td>${t.due_at?new Date(t.due_at).toLocaleDateString('pt-BR'):'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
+    document.body.appendChild(bg);
+    bg.querySelector('[data-close]').onclick=()=>bg.remove();
+    bg.onclick=e=>{if(e.target===bg)bg.remove();};
+  }
+
   function orderValue(o,finMap){const direct=Number(o.total_amount||o.budget_total||o.valor_total||o.total||o.amount||0);if(direct)return direct;return budget(finMap.get(String(o.id)))}
 
   // Pluralização mínima pra "N geladeiras do mesmo modelo" -- só os
@@ -184,6 +222,7 @@
     const byClient=new Map();
     active.forEach(o=>{if(!o.client_id)return;byClient.set(o.client_id,(byClient.get(o.client_id)||0)+1)});
     const repeatClients=[...byClient.values()].filter(n=>n>1).length;
+    const repeatClientOrders=active.filter(o=>o.client_id&&byClient.get(o.client_id)>1);
 
     // retiradas previstas pra hoje = compromisso de hoje numa OS já pronta
     const agenda=safe(by['Agenda 5 dias'].data);
@@ -267,12 +306,21 @@
       return {label,iso,rows,count:rows.length,dupWarning};
     });
 
-    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,...gvDrills};
+    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,...gvDrills};
+    const partsDrills={partsAll,partsPendentes,partsCompra,partsEntrega,partsAtrasadas,partsRecebidasHoje};
+    const tasksDrills={tasks};
+    const caseDrills={casesAbertos,casesNovos,casesAndamento,casesResolvidos};
 
     function kpi(icon,title,value,sub,key){return `<button type="button" class="vx-c-kpi" data-drill="${key}" data-title="${E(title)}"><span class="vx-c-kpi-icon">${icon}</span><span class="vx-c-kpi-label">${E(title)}</span><b>${E(value)}</b><small>${E(sub)}</small></button>`}
     function oppRow(label,n){return `<div class="vx-c-opp-row"><span>${E(label)}</span><b>${n}</b></div>`}
-    function taskRow(label,n){return `<div class="vx-c-task-row"><span class="vx-c-task-check">☐</span><span>${E(label)}</span><b>${n}</b></div>`}
-    function iconRow(icon,label,n,tone){return `<div class="vx-c-icon-row"><span class="vx-c-icon-row-ic ${tone||''}">${icon}</span><span>${E(label)}</span><b>${n}</b></div>`}
+    function taskRow(label,n,key){
+      if(!key)return `<div class="vx-c-task-row"><span class="vx-c-task-check">☐</span><span>${E(label)}</span><b>${n}</b></div>`;
+      return `<button type="button" class="vx-c-task-row" data-drill="${key}" data-title="${E(label)}"${n?'':' disabled'}><span class="vx-c-task-check">☐</span><span>${E(label)}</span><b>${n}</b></button>`;
+    }
+    function iconRow(icon,label,n,tone,key){
+      if(!key)return `<div class="vx-c-icon-row"><span class="vx-c-icon-row-ic ${tone||''}">${icon}</span><span>${E(label)}</span><b>${n}</b></div>`;
+      return `<button type="button" class="vx-c-icon-row" data-drill="${key}" data-title="${E(label)}"${n?'':' disabled'}><span class="vx-c-icon-row-ic ${tone||''}">${icon}</span><span>${E(label)}</span><b>${n}</b></button>`;
+    }
     function gvPanel(title,g,drillKey){
       const labels=['0 a 7 dias','8 a 15 dias','16 a 30 dias','31 a 90 dias'],tones=['b0','b1','b2','b3'];
       return `<div class="vx-c-gv-panel"><div class="vx-c-gv-head"><strong>${E(title)}</strong><span>Total: ${g.b.reduce((s,n)=>s+n,0)}</span></div>
@@ -317,26 +365,26 @@
       </section>
 
       <div class="vx-c-grid-3">
-        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Minhas Tarefas</h3><a href="#" data-drill="casesAbertos" data-title="Minhas Tarefas">Ver todas</a></div>
-          ${taskRow('Tirar novos casos de atenção',casesNovos.length)}
-          ${taskRow('Retornar clientes pendentes',tasks.length)}
-          ${taskRow('Acompanhar orçamentos sem resposta',approval.length)}
-          ${taskRow('Aprovar pedidos de peças',partsPendentes.length)}
-          ${taskRow('Confirmar aparelhos prontos',ready.length)}
+        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Minhas Tarefas</h3></div>
+          ${taskRow('Tirar novos casos de atenção',casesNovos.length,'cases:casesNovos')}
+          ${taskRow('Retornar clientes pendentes',tasks.length,'tasks:tasks')}
+          ${taskRow('Acompanhar orçamentos sem resposta',approval.length,'approval')}
+          ${taskRow('Aprovar pedidos de peças',partsPendentes.length,'parts:partsPendentes')}
+          ${taskRow('Confirmar aparelhos prontos',ready.length,'ready')}
         </section>
-        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Pedidos de Peças</h3><a href="#" data-drill="active" data-title="Pedidos de Peças">Ver todas</a></div>
-          ${iconRow('◷','Pendentes de aprovação',partsPendentes.length,'')}
-          ${iconRow('🛒','Em compra',partsCompra.length,'')}
-          ${iconRow('🚚','Aguardando entrega',partsEntrega.length,'')}
-          ${iconRow('⚠','Atrasados',partsAtrasadas.length,'warn')}
-          ${iconRow('✓','Recebidos hoje',partsRecebidasHoje.length,'ok')}
+        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Pedidos de Peças</h3><a href="#" data-drill="parts:partsAll" data-title="Pedidos de Peças">Ver todas</a></div>
+          ${iconRow('◷','Pendentes de aprovação',partsPendentes.length,'','parts:partsPendentes')}
+          ${iconRow('🛒','Em compra',partsCompra.length,'','parts:partsCompra')}
+          ${iconRow('🚚','Aguardando entrega',partsEntrega.length,'','parts:partsEntrega')}
+          ${iconRow('⚠','Atrasados',partsAtrasadas.length,'warn','parts:partsAtrasadas')}
+          ${iconRow('✓','Recebidos hoje',partsRecebidasHoje.length,'ok','parts:partsRecebidasHoje')}
         </section>
-        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Gestão por Exceção</h3><a href="#" data-drill="repair" data-title="Gestão por Exceção">Ver todas</a></div>
-          ${iconRow('⚠','OS paradas há mais de 7 dias',overdueRepair.length,'warn')}
-          ${iconRow('⏳','Orçamentos sem resposta há mais de 3 dias',overdueApproval.length,'warn')}
-          ${iconRow('📦','Peças atrasadas',partsAtrasadas.length,'warn')}
-          ${iconRow('📥','Aparelhos prontos há mais de 3 dias',readyOverdue3.length,'warn')}
-          ${iconRow('👤','Clientes com mais de 1 OS aberta',repeatClients,'')}
+        <section class="vx-c-list-card"><div class="vx-c-title"><h3>Gestão por Exceção</h3></div>
+          ${iconRow('⚠','OS paradas há mais de 7 dias',overdueRepair.length,'warn','overdueRepair')}
+          ${iconRow('⏳','Orçamentos sem resposta há mais de 3 dias',overdueApproval.length,'warn','overdueApproval')}
+          ${iconRow('📦','Peças atrasadas',partsAtrasadas.length,'warn','parts:partsAtrasadas')}
+          ${iconRow('📥','Aparelhos prontos há mais de 3 dias',readyOverdue3.length,'warn','readyOverdue3')}
+          ${iconRow('👤','Clientes com mais de 1 OS aberta',repeatClients,'','repeatClientOrders')}
         </section>
       </div>
 
@@ -344,7 +392,7 @@
         <section class="vx-c-feed-card"><div class="vx-c-title"><h3>Feed em Tempo Real</h3><a href="#" id="vxFeedAll">Ver tudo</a></div>
           ${feed.length?feed.map(h=>`<div class="vx-c-feed-row"><span class="vx-c-feed-dot"></span><div><b>${new Date(h.changed_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</b><span>${E(feedText(h))}</span></div></div>`).join(''):'<p class="vx-c-empty">Nenhuma movimentação recente.</p>'}
         </section>
-        <section class="vx-c-prod-table-card"><div class="vx-c-title"><h3>Produtividade</h3><a href="#" data-drill="active" data-title="Produtividade">Ver relatório completo</a></div>
+        <section class="vx-c-prod-table-card"><div class="vx-c-title"><h3>Produtividade</h3></div>
           <p class="vx-c-prod-total">Total recebido nas OS: <b>${M(totalRecebidoOS)}</b></p>
           <div class="vx-c-tw"><table class="vx-c-prod-table"><thead><tr><th>Técnico</th><th>OS</th><th>Valor Recebido</th><th>Prontos</th><th>Aproveitamento</th></tr></thead>
           <tbody>${prodRows.length?prodRows.map(r=>`<tr><td>${E(r.tech.full_name)}</td><td>${r.os}</td><td>${M(r.valor)}</td><td>${r.prontos}</td><td>${r.aproveitamento}%</td></tr>`).join(''):'<tr><td colspan="5" class="vx-c-empty">Nenhuma OS atribuída ainda.</td></tr>'}</tbody></table></div>
@@ -352,7 +400,7 @@
       </div>
 
       <div class="vx-c-grid-2">
-        <section class="vx-c-goals-card"><div class="vx-c-title"><h3>Metas e Bonificação</h3><a href="#" id="vxGoalsDetail">Ver detalhes</a></div><div class="vx-c-goals-empty"><span class="vx-c-goals-icon">◷</span><p>Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</p></div></section>
+        <section class="vx-c-goals-card"><div class="vx-c-title"><h3>Metas e Bonificação</h3></div><div class="vx-c-goals-empty"><span class="vx-c-goals-icon">◷</span><p>Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</p></div></section>
         <section class="vx-c-fin-card"><div class="vx-c-title"><h3>Resumo Financeiro</h3><small>somente pagamentos registrados</small></div>
           <div class="vx-c-fin-grid">
             <div><span>Faturamento realizado (Mês)</span><b>${M(receivedMonth)}</b></div>
@@ -388,9 +436,13 @@
       ev.preventDefault();
       const k=el.dataset.drill;
       const title=el.dataset.title||el.textContent.trim()||'Detalhamento';
-      if(k==='casesAbertos')return casesModal(title,casesAbertos);
+      if(k.startsWith('parts:'))return partsModal(title,partsDrills[k.slice(6)]||[]);
+      if(k.startsWith('tasks:'))return tasksModal(title,tasksDrills[k.slice(6)]||[]);
+      if(k.startsWith('cases:')||k==='casesAbertos')return casesModal(title,caseDrills[k==='casesAbertos'?'casesAbertos':k.slice(6)]||[]);
       if(drills[k])modal(title,drills[k]);
     });
+    document.getElementById('vxFeedAll').onclick=(ev)=>{ev.preventDefault();feedModal('Feed em Tempo Real',history,feedText)};
+    document.getElementById('vxAgendaFull').onclick=(ev)=>{ev.preventDefault();if(typeof window.render==='function')window.render('agenda')};
   };
 
   window.VoxAssistRuntime=window.VoxAssistRuntime||{};
