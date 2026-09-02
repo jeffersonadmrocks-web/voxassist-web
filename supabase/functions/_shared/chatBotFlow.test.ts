@@ -7,11 +7,35 @@ import {
   isStepEligible,
   matchRoutingRules,
   normalizeAnswerValue,
+  renderBotTemplate,
   resolveNextEligibleStep,
   RoutingRule,
   StepCondition,
   validateAnswer,
 } from "./chatBotFlow.ts";
+
+Deno.test("renderBotTemplate - substitui nome_contato pelo primeiro nome (achado do usuário 2026-09-02, mensagem real com {{nome_contato}} literal)", () => {
+  assertEquals(
+    renderBotTemplate("Olá!{{nome_contato}} 🖐 Seja bem-vindo(a)!", { contactName: "Maria Aparecida Souza" }),
+    "Olá!Maria 🖐 Seja bem-vindo(a)!",
+  );
+});
+
+Deno.test("renderBotTemplate - sem nome do contato vira string vazia, nunca um nome inventado", () => {
+  assertEquals(renderBotTemplate("Olá!{{nome_contato}} 🖐", { contactName: null }), "Olá! 🖐");
+});
+
+Deno.test("renderBotTemplate - nome_atendente também é suportado", () => {
+  assertEquals(renderBotTemplate("Fale com {{nome_atendente}}.", { attendantName: "Bruno Silva" }), "Fale com Bruno.");
+});
+
+Deno.test("renderBotTemplate - chave desconhecida (erro de digitação do GESTOR) fica como está", () => {
+  assertEquals(renderBotTemplate("Olá {{nome_clientee}}!", { contactName: "Maria" }), "Olá {{nome_clientee}}!");
+});
+
+Deno.test("renderBotTemplate - texto sem nenhum placeholder não muda", () => {
+  assertEquals(renderBotTemplate("Mensagem fixa, sem variável.", {}), "Mensagem fixa, sem variável.");
+});
 
 function step(overrides: Partial<FlowStep>): FlowStep {
   return {

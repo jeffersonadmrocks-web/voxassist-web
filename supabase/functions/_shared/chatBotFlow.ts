@@ -169,6 +169,30 @@ export function collectRoutingDimensions(
   return { store: byDimension.STORE, warranty: byDimension.WARRANTY, brand: byDimension.BRAND };
 }
 
+// Achado do usuário em 2026-09-02: o GESTOR configurou a mensagem de
+// boas-vindas com "{{nome_contato}}" esperando substituição
+// automática -- não existia NENHUM mecanismo de template em lugar
+// nenhum, o placeholder ia pro cliente literalmente ("Olá!
+// {{nome_contato}} ..."). Substitui só as chaves conhecidas (primeiro
+// nome, mesmo critério já usado em npsWhatsapp.ts); uma chave
+// desconhecida (erro de digitação do GESTOR) fica como está -- nunca
+// finge um dado que não tem; sem o nome (contato ainda não
+// identificado, ninguém atribuído ainda), vira string vazia, nunca um
+// nome genérico inventado.
+export type BotTemplateVars = { contactName?: string | null; attendantName?: string | null };
+
+function firstNameOf(fullName: string | null | undefined): string {
+  return (fullName ?? "").trim().split(/\s+/)[0] ?? "";
+}
+
+export function renderBotTemplate(template: string, vars: BotTemplateVars): string {
+  const known: Record<string, string> = {
+    nome_contato: firstNameOf(vars.contactName),
+    nome_atendente: firstNameOf(vars.attendantName),
+  };
+  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, key) => (key in known ? known[key] : match));
+}
+
 // Casa a combinação coletada contra as regras -- maior especificidade
 // que bater em TODAS as dimensões que a regra exige (dimensão nula na
 // regra = curinga, aceita qualquer valor coletado, inclusive nenhum).

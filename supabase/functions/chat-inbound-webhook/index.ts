@@ -33,6 +33,7 @@ import {
   decideTriageStep,
   FlowStep,
   matchRoutingRules,
+  renderBotTemplate,
   resolveNextEligibleStep,
   RoutingRule,
   StepCondition,
@@ -329,6 +330,24 @@ Deno.serve(async (req) => {
         .eq("status", "PUBLICADA")
         .maybeSingle();
 
+      // Achado do usuário em 2026-09-02: o GESTOR configurou a mensagem
+      // de boas-vindas com "{{nome_contato}}" esperando substituição --
+      // não existia nenhum mecanismo de template, o placeholder ia pro
+      // cliente literalmente. Resolve o nome real (se já souber) e o
+      // nome de quem está atendendo (se já tiver alguém) uma vez só,
+      // aqui -- vale pra toda mensagem do robô desta execução.
+      const { data: convForTemplate } = await admin
+        .from("chat_conversations")
+        .select("customer_name, clients(name), profiles!chat_conversations_assigned_user_id_fkey(full_name)")
+        .eq("id", conversationId)
+        .maybeSingle();
+      // deno-lint-ignore no-explicit-any
+      const templateVars = {
+        contactName: convForTemplate?.customer_name ?? (convForTemplate as any)?.clients?.name ?? null,
+        // deno-lint-ignore no-explicit-any
+        attendantName: (convForTemplate as any)?.profiles?.full_name ?? null,
+      };
+
       const withinHours = isWithinBusinessHours(new Date());
       const awayDecision = decideAwayMessage(new Date(), lastAwaySentAt);
 
@@ -339,7 +358,7 @@ Deno.serve(async (req) => {
         // Nunca inicia/continua a triagem fora do horário (mesma
         // decisão pra CREATE e REUSE) -- só a mensagem de aviso.
         const useFlowMessage = !!publishedFlow && publishedFlow.after_hours_toggle && !!publishedFlow.after_hours_message;
-        const text2 = useFlowMessage ? publishedFlow!.after_hours_message : AWAY_MESSAGE_TEXT;
+        const text2 = renderBotTemplate(useFlowMessage ? publishedFlow!.after_hours_message : AWAY_MESSAGE_TEXT, templateVars);
         // Sem fluxo publicado, grava origin='REALTIME' -- exatamente a
         // mesma linha de sempre, comportamento visual intocado pra
         // quem nunca configurou o robô.
@@ -381,7 +400,7 @@ Deno.serve(async (req) => {
           const conditions = mapConditions(conditionsRaw ?? []);
           const firstStep = resolveNextEligibleStep(steps, {}, conditions);
           if (publishedFlow!.welcome_message) {
-            await sendBotMessage(admin, { companyId: connection.company_id, conversationId, connectionId, remoteJid: identity.remoteJid, text: publishedFlow!.welcome_message });
+            await sendBotMessage(admin, { companyId: connection.company_id, conversationId, connectionId, remoteJid: identity.remoteJid, text: renderBotTemplate(publishedFlow!.welcome_message, templateVars) });
           }
           if (firstStep) {
             const questionSent = await sendBotMessage(admin, {
@@ -389,7 +408,7 @@ Deno.serve(async (req) => {
               conversationId,
               connectionId,
               remoteJid: identity.remoteJid,
-              text: firstStep.questionText,
+              text: renderBotTemplate(firstStep.questionText, templateVars),
             });
             if (questionSent) {
               await admin.from("chat_conversation_bot_state").insert({
@@ -435,7 +454,7 @@ Deno.serve(async (req) => {
                   conversationId,
                   connectionId,
                   remoteJid: identity.remoteJid,
-                  text: publishedFlow.invalid_message,
+                  text: renderBotTemplate(publishedFlow.invalid_message, templateVars),
                 });
               }
             } else if (outcome.outcome === "RETRY_LIMIT_REACHED") {
@@ -464,7 +483,7 @@ Deno.serve(async (req) => {
                   botState.id,
                 );
                 if (canSend) {
-                  await sendBotMessage(admin, { companyId: connection.company_id, conversationId, connectionId, remoteJid: identity.remoteJid, text: next.questionText });
+                  await sendBotMessage(admin, { companyId: connection.company_id, conversationId, connectionId, remoteJid: identity.remoteJid, text: renderBotTemplate(next.questionText, templateVars) });
                 }
               } else {
                 const collected = collectRoutingDimensions(steps, newAnswers);
