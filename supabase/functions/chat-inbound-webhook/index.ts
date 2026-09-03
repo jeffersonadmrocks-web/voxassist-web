@@ -254,12 +254,25 @@ Deno.serve(async (req) => {
     const { data: connection } = await admin.from("chat_connections").select("id, company_id, status").eq("id", connectionId).maybeSingle<ConnectionRow>();
     if (!connection) return json({ ok: false, error: "connection_not_found" }, 404);
 
-    const { data: existingRows } = await admin
+    // Achado do usuário em 2026-09-03: casar conversa só por remote_jid
+    // exato fragmentava o MESMO cliente em várias conversas -- o
+    // WhatsApp pode entregar a resposta de uma pessoa ora pelo JID de
+    // telefone, ora por um LID (identidade de privacidade), mesmo já
+    // tendo conversado antes pelo outro "sabor". resolveInboundIdentity
+    // já resolve o telefone real por trás de um LID quando o Baileys
+    // souber (senderPn) -- usa esse telefone JÁ CONHECIDO também como
+    // critério de busca (nunca só o remote_jid da MENSAGEM atual), pra
+    // reaproveitar a conversa certa em vez de criar uma nova vazia e
+    // disparar o Robô de Atendimento de novo em cima de um atendimento
+    // que já estava em andamento.
+    let existingQuery = admin
       .from("chat_conversations")
       .select("id, status, last_away_sent_at, unread_count")
-      .eq("connection_id", connectionId)
-      .eq("remote_jid", identity.remoteJid)
-      .order("created_at", { ascending: false });
+      .eq("connection_id", connectionId);
+    existingQuery = identity.customerPhone
+      ? existingQuery.or(`remote_jid.eq.${identity.remoteJid},customer_phone.eq.${identity.customerPhone}`)
+      : existingQuery.eq("remote_jid", identity.remoteJid);
+    const { data: existingRows } = await existingQuery.order("created_at", { ascending: false });
     const target = decideConversationTarget((existingRows ?? []) as ConversationRow[]);
 
     let conversationId: string;
@@ -277,7 +290,13 @@ Deno.serve(async (req) => {
           last_message_preview: buildMessagePreview(text),
           // Sempre grava a resolução mais recente (não só quando nula
           // antes) -- é assim que corrige um customer_phone gravado
-          // errado (LID) em mensagens anteriores a esta correção.
+          // errado (LID) em mensagens anteriores a esta correção. Vale
+          // também pro remote_jid em si (achado 2026-09-03): a conversa
+          // pode ter sido casada agora por customer_phone com um
+          // remote_jid diferente do que estava salvo -- atualiza pro
+          // JID mais recente, é o que decide pra onde manda a próxima
+          // resposta (chat-send-message).
+          remote_jid: identity.remoteJid,
           customer_phone: identity.customerPhone,
           sender_lid: identity.senderLid,
           // Achado real (correção visual, 2026-09-01): unread_count
@@ -308,6 +327,7 @@ Deno.serve(async (req) => {
           assigned_user_id: null,
           last_message_at: new Date().toISOString(),
           last_message_preview: buildMessagePreview(text),
+          remote_jid: identity.remoteJid,
           customer_phone: identity.customerPhone,
           sender_lid: identity.senderLid,
           unread_count: 1,
