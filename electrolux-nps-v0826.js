@@ -490,6 +490,18 @@
     };
   }
 
+  // Achado do usuário 2026-09-03: isto abria o wa.me manualmente (o
+  // atendente tinha que clicar Enviar no próprio WhatsApp e depois
+  // confirmar aqui) -- construído antes de existir um jeito automático
+  // confirmado de mandar mensagem de verdade. Agora que o chat
+  // integrado existe (chat-send-message, mesmo gateway), o envio é
+  // real: acha/abre a conversa (mesma regra de "+ Nova" na Central,
+  // window.vxFindOrCreateConversation) e manda pelo pipeline de
+  // verdade -- vira uma conversa normal na Central de Conversas,
+  // qualquer atendente pode continuar se o cliente responder por ali.
+  // Mesma conexão já usada pela Central (usuário confirmou: só existe
+  // uma, pros dois). Só marca "enviado" (insertContact/patchCase) se o
+  // envio realmente foi confirmado pelo gateway -- nunca finge sucesso.
   async function sendFlow(c,ea,contactType,bg){
     if(!ea.client_phone){toast?.('Cliente sem telefone cadastrado.','err');return}
     let filial=c.filial;
@@ -500,16 +512,35 @@
       await patchCase(c,{filial},'FILIAL_DEFINIDA');
     }
     const message=buildMessage(ea.client_name,filial);
-    const link=`https://wa.me/${toDigits(ea.client_phone)}?text=${encodeURIComponent(message)}`;
-    window.open(link,'_blank','noopener');
+    const phone=window.vxNormalizePhoneFull?.(ea.client_phone);
+    if(!phone){toast?.('Telefone do cliente inválido -- confira DDD e quantidade de dígitos.','err');return}
+    if(typeof window.vxFindOrCreateConversation!=='function'){toast?.('Chat integrado indisponível no momento.','err');return}
 
-    if(!confirm('Confirma que a mensagem foi enviada pelo WhatsApp?'))return;
+    const sendBtn=bg.querySelector(contactType==='PRIMEIRO_CONTATO'?'#npsSendFirst':'#npsSendReminder');
+    if(sendBtn){sendBtn.disabled=true;sendBtn.textContent='ENVIANDO...'}
+    try{
+      const connRows=await api('chat_connections?status=eq.CONECTADO&select=id&limit=1').catch(()=>[]);
+      const connectionId=connRows?.[0]?.id;
+      if(!connectionId)throw new Error('Nenhuma conexão de WhatsApp conectada no momento.');
+      const conversationId=await window.vxFindOrCreateConversation(connectionId,phone,ea.client_name||null);
+      if(!conversationId)throw new Error('Não foi possível abrir a conversa.');
 
-    const newSituacao=contactType==='PRIMEIRO_CONTATO'?'PRIMEIRO_CONTATO_ENVIADO':'LEMBRETE_ENVIADO';
-    await insertContact(c,{contactType,phone:ea.client_phone,message,newSituacao});
-    await patchCase(c,{situacao:newSituacao},contactType==='PRIMEIRO_CONTATO'?'PRIMEIRO_CONTATO_ENVIADO':'LEMBRETE_ENVIADO');
-    toast?.('Contato registrado.');
-    bg.remove();
-    renderNpsScreen();
+      const res=await fetch(CFG.url+'/functions/v1/chat-send-message',{
+        method:'POST',headers:authHeaders(),
+        body:JSON.stringify({conversationId,body:message}),
+      });
+      const data=await res.json().catch(()=>null);
+      if(!res.ok||!data?.ok)throw new Error(data?.message||data?.error||'Falha ao enviar pelo WhatsApp.');
+
+      const newSituacao=contactType==='PRIMEIRO_CONTATO'?'PRIMEIRO_CONTATO_ENVIADO':'LEMBRETE_ENVIADO';
+      await insertContact(c,{contactType,phone:ea.client_phone,message,newSituacao});
+      await patchCase(c,{situacao:newSituacao},newSituacao);
+      toast?.('Mensagem enviada pelo WhatsApp integrado -- conversa disponível na Central de Conversas.');
+      bg.remove();
+      renderNpsScreen();
+    }catch(err){
+      toast?.('Não foi possível enviar: '+(err.message||'erro desconhecido'),'err');
+      if(sendBtn){sendBtn.disabled=false;sendBtn.textContent=contactType==='PRIMEIRO_CONTATO'?'Enviar primeiro contato':'Enviar lembrete'}
+    }
   }
 })();

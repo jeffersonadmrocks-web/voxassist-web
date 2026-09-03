@@ -797,6 +797,7 @@
     const local=normalizePhoneLocal(raw);
     return local?`55${local}`:null;
   }
+  window.vxNormalizePhoneFull=normalizePhoneFull;
   let searchDropdownWired=false;
   function ensureSearchDropdownOutsideClickHandler(){
     if(searchDropdownWired)return;
@@ -1538,6 +1539,19 @@
     bg.querySelector('#vxNovaConvForm')?.addEventListener('submit',e=>handleNovaConversa(e,close));
   }
 
+  // Achado do usuário 2026-09-03: extraído de handleNovaConversa (abaixo)
+  // pra virar o único ponto de "encontrar ou abrir uma conversa" reusável
+  // por outras telas (ex. envio de NPS Electrolux via chat integrado,
+  // electrolux-nps-v0826.js) -- nunca duplicar esta regra em paralelo.
+  // phone já deve vir normalizado (normalizePhoneFull).
+  async function findOrCreateConversation(connectionId,phone,name){
+    const existing=await api(`chat_conversations?connection_id=eq.${connectionId}&customer_phone=eq.${phone}&status=in.(ABERTA,EM_ATENDIMENTO,AGUARDANDO_CLIENTE)&select=id&limit=1`).catch(()=>[]);
+    if(existing&&existing.length)return existing[0].id;
+    const created=await api('chat_conversations',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({company_id:state.profile.active_company_id,connection_id:connectionId,customer_phone:phone,customer_name:name||null,status:'ABERTA',assigned_user_id:myUserId()})});
+    return created?.[0]?.id||null;
+  }
+  window.vxFindOrCreateConversation=findOrCreateConversation;
+
   async function handleNovaConversa(e,close){
     e.preventDefault();
     const f=new FormData(e.target);
@@ -1550,12 +1564,7 @@
     const btn=e.target.querySelector('button[type=submit]');
     btn.disabled=true;
     try{
-      const existing=await api(`chat_conversations?connection_id=eq.${connectionId}&customer_phone=eq.${phone}&status=in.(ABERTA,EM_ATENDIMENTO,AGUARDANDO_CLIENTE)&select=id&limit=1`).catch(()=>[]);
-      let convId=existing&&existing.length?existing[0].id:null;
-      if(!convId){
-        const created=await api('chat_conversations',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({company_id:state.profile.active_company_id,connection_id:connectionId,customer_phone:phone,customer_name:name,status:'ABERTA',assigned_user_id:myUserId()})});
-        convId=created?.[0]?.id;
-      }
+      const convId=await findOrCreateConversation(connectionId,phone,name);
       close();
       await loadConversasHubData();
       renderConvList();
