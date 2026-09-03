@@ -24,7 +24,17 @@
     try{
       const r=await api('rpc/advance_service_order_status',{method:'POST',body:JSON.stringify({p_service_order_id:id})});
       const result=Array.isArray(r)?r[0]:r;
-      if(!result||result.error||!result.changed)return result;
+      if(!result||result.error)return result;
+      // Achado do usuário em 2026-09-03: uma OS com orçamento já
+      // lançado (peça/valor) parecia travada em "Aguardando Análise"
+      // -- o motor estava certo (técnico/defeito constatado/serviço
+      // também são exigidos), só ninguém avisava o que faltava fora
+      // do botão SALVAR global. Agora QUALQUER chamador (incluir
+      // peça, editar financeiro, etc.) mostra o mesmo aviso.
+      if(!result.changed){
+        if(result.missing?.length)toast?.('A OS não avançou de situação. Falta: '+result.missing.join(' • ')+'.','err');
+        return result;
+      }
       const o=state.activeOs;
       if(o&&String(o.id)===String(id)){
         o.status=result.final_status;

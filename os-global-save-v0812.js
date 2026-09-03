@@ -44,37 +44,11 @@
   // service_order_status_automation.sql). Removido -- SALVAR agora só
   // salva os campos e chama o motor único (window.vxAdvanceOsStatus,
   // os-status-engine-v0903.js), igual a todo outro ponto que grava um
-  // campo do fluxo. missingFor() continua existindo só como AJUDA
-  // informativa (texto pro usuário), nunca decide nem grava nada.
-  function missingFor(status,o,orderBody,financialBody){
-    const s=norm(status),missing=[];
-    const get=(name)=>orderBody[name]??o[name]??q(`[data-entity="order"][data-name="${name}"]`)?.value;
-    const f=(name)=>financialBody[name]??q(`[data-entity="financial"][data-name="${name}"]`)?.value;
-    if(s==='AGUARDANDO ANALISE'){
-      if(!get('technician_id'))missing.push('Técnico responsável');
-      if(!String(get('diagnosed_defect')||'').trim())missing.push('Defeito constatado');
-      if(!String(get('technical_service')||'').trim())missing.push('Serviço');
-      const money=['labor_value','freight_value','auxiliary_material_value','technical_report_value'].reduce((t,n)=>t+(Number(String(f(n)||0).replace(',','.'))||0),0);
-      const hasParts=qa('#vx-orcamento table tbody tr').some(tr=>tr.querySelectorAll('td').length>1&&!/NENHUMA|INFORME/.test(tr.textContent.toUpperCase()));
-      if(money<=0&&!hasParts)missing.push('Valor do orçamento / peças');
-    }else if(s==='AGUARDANDO APROVACAO'){
-      const d=String(get('approval_decision')||'').trim();
-      if(!d)missing.push('Decisão do orçamento (Aprovado ou Recusado)');
-      if(d==='APROVADO'&&!get('approval_date'))missing.push('Data da aprovação');
-      if(d==='RECUSADO'&&!String(get('rejection_reason')||'').trim())missing.push('Motivo da recusa');
-    }else if(s==='AGUARDANDO CONSERTO'){
-      if(!get('repair_started_at'))missing.push('Data/hora de início do conserto');
-    }else if(s==='EM CONSERTO'){
-      if(!get('ready_at'))missing.push('Data/hora de pronto');
-    }else if(s==='PRONTO PARA ENTREGA'){
-      if(!get('delivery_at'))missing.push('Data/hora de entrega/saída');
-    }else if(s==='ORCAMENTO RECUSADO'){
-      if(!get('ready_at'))missing.push('Equipamento preparado/remontado (pronto para retirada)');
-    }else if(s==='ORCAMENTO RECUSADO DISPONIVEL PARA RETIRADA'){
-      if(!get('delivery_at'))missing.push('Data/hora de retirada pelo cliente');
-    }
-    return missing;
-  }
+  // campo do fluxo. missingFor() (a versão client-side de "o que
+  // falta") foi removida em 2026-09-03: o próprio RPC agora devolve
+  // "missing" (migration 20260903050000) -- duplicar essa lista aqui
+  // de novo é exatamente o que a migration anterior já pedia pra nunca
+  // fazer.
 
   async function saveAll(){
     const o=state?.activeOs;if(!o?.id||saving)return;const b=btn();saving=true;if(b)b.disabled=true;setDirty(dirty);
@@ -88,14 +62,13 @@
       await Promise.all(jobs);Object.assign(o,orderBody);if(o.equipments&&typeof o.equipments==='object')Object.assign(o.equipments,equipmentBody);if(o.clients&&typeof o.clients==='object')Object.assign(o.clients,clientBody);
       if(typeof window.vxUpdateBudgetTotal==='function')window.vxUpdateBudgetTotal();
       setDirty(false);
-      const statusBefore=o.status;
       const result=await window.vxAdvanceOsStatus?.(o.id);
-      if(result?.changed){
-        // vxAdvanceOsStatus já mostrou o toast de avanço -- nada a fazer.
-      }else{
-        const missing=missingFor(statusBefore,o,orderBody,financialBody);
-        toast(missing.length?('Dados salvos. A OS não avançou. Falta: '+missing.join(' • ')):'Alterações da OS salvas com sucesso.');
-      }
+      // Achado do usuário em 2026-09-03: vxAdvanceOsStatus agora mostra
+      // seu próprio aviso (avançou, ou "falta: ...") pra QUALQUER
+      // chamador -- mostrar de novo aqui duplicaria o toast. Só fala
+      // "salvo com sucesso" quando não há nada pendente pro status
+      // avançar (ex.: OS já numa etapa sem mais exigência do operador).
+      if(!result?.changed&&!(result?.missing?.length))toast('Alterações da OS salvas com sucesso.');
     }catch(err){setDirty(true);toast('Falha ao salvar alterações da OS: '+err.message,'err');}
     finally{saving=false;if(b)b.disabled=false;setDirty(dirty);}
   }
