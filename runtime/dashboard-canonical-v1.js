@@ -164,7 +164,7 @@
       source('Peças','parts_requests?select=*&order=created_at.desc&limit=200',[]),
       source('Financeiro','os_financial?select=*&limit=1000',[]),
       source('Pagamentos','payments?select=*&order=paid_at.desc.nullslast&limit=1500',[]),
-      source('Técnicos','profiles?select=id,full_name,role,store_id&active=eq.true&order=full_name',[]),
+      source('Técnicos','profiles?select=id,full_name,role,store_id,external_schedule_enabled&active=eq.true&order=full_name',[]),
       source('Histórico de status',`os_status_history?select=*,service_orders(os_number,store_id,technician_id)&changed_at=gte.${isoDate(prevMonth0)}&order=changed_at.desc&limit=400`,[]),
       // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
       // "lojas autorizadas" é o mecanismo real já usado em
@@ -318,7 +318,14 @@
     const ticketMedioRecebido=paidThisMonthOrderIds.size?receivedMonth/paidThisMonthOrderIds.size:0;
     const oportunidadeFaturamento=repair.reduce((s,o)=>s+budget(finMap.get(String(o.id))),0);
     const failures=results.filter(r=>!r.ok).map(r=>r.label);
-    const techs=safe(by['Técnicos'].data).filter(t=>norm(t.role)==='TECNICO');
+    // Achado do usuário 2026-09-03: filtro estrito role==='TECNICO'
+    // escondia quem acumula outro papel (ex.: GESTOR) mas também atende
+    // campo de verdade -- some da Agenda E da Produtividade assim que
+    // o papel muda, mesmo com OS/atendimentos reais atribuídos a ele.
+    // Mesmo critério já usado em field-agenda-complete-v0813.js e
+    // electrolux-agenda-bridge-v0825.js (external_schedule_enabled),
+    // nunca um critério novo.
+    const techs=safe(by['Técnicos'].data).filter(t=>norm(t.role)==='TECNICO'||t.external_schedule_enabled);
     const history=safe(by['Histórico de status'].data);
 
     // clientes com mais de 1 OS ativa -- usa oppScope (Oportunidades/
@@ -490,11 +497,19 @@
       const partsHtml=a.partsLabel?`<span class="vx-c-appt-parts">🔧 ${E(a.partsLabel)}</span>`:'';
       return `<div class="vx-c-appt"><b>${E(a.equipmentLabel)}</b>${srcTag}<span>${E(a.location)}${a.location&&a.defect?' · ':''}${E(a.defect)}</span>${partsHtml}</div>`;
     }
+    // Achado do usuário 2026-09-03: promover alguém de TECNICO pra
+    // GESTOR (ex.: acumula os dois papéis de verdade) fazia "Minha
+    // Agenda" virar "Agenda dos Técnicos" sem nenhum atalho pra achar
+    // de novo só os próprios atendimentos -- em vez de criar um perfil
+    // novo (mexeria em RLS de OS/financeiro/tarefas/peças em cascata),
+    // reaproveita o MESMO seletor de técnico que já existe aqui.
+    function meAsFieldTech(){return techs.find(t=>String(t.id)===String(me())&&(norm(t.role)==='TECNICO'||t.external_schedule_enabled))}
     function agendaSectionHtml(techFilterId){
       const isTecnico=role()==='TECNICO';
       const currentDays=buildAgendaDays(techFilterId);
       const idx=techFilterId?techs.findIndex(t=>String(t.id)===String(techFilterId)):-1;
       const title=isTecnico?'Minha Agenda':'Agenda dos Técnicos';
+      const meTech=!isTecnico?meAsFieldTech():null;
       const grid=`<div class="vx-c-agenda5-grid">${currentDays.map(d=>{
         const manha=d.rows.filter(a=>norm(a.period)!=='TARDE'), tarde=d.rows.filter(a=>norm(a.period)==='TARDE');
         return `<div class="vx-c-agenda5-day"><div class="vx-c-agenda5-day-head"><strong>${E(d.label)}</strong><span>${d.count}</span></div>
@@ -512,8 +527,9 @@
         </select>
         <button type="button" id="vxAgendaTechNext" ${idx>=0&&idx>=techs.length-1?'disabled':''} title="Próximo técnico">›</button>
       </div>`;
+      const meTechBtn=meTech&&String(techFilterId)!==String(meTech.id)?`<button type="button" id="vxAgendaMeuBtn" class="vx-c-agenda5-me-btn">Meus atendimentos</button>`:'';
       return `<section class="vx-c-agenda5-card" id="vxAgendaCard">
-        <div class="vx-c-title"><h3>◷ ${title} — Próximos 5 dias</h3><a href="#" id="vxAgendaFull">Ver agenda completa</a></div>
+        <div class="vx-c-title"><h3>◷ ${title} — Próximos 5 dias</h3><span style="display:flex;gap:10px;align-items:center">${meTechBtn}<a href="#" id="vxAgendaFull">Ver agenda completa</a></span></div>
         ${techNav}
         ${grid}
       </section>`;
@@ -524,6 +540,10 @@
         window.__vxAgendaTechFilter=agendaSelectedTechId||null;
         if(typeof window.render==='function')window.render('agenda');
       };
+      document.getElementById('vxAgendaMeuBtn')?.addEventListener('click',()=>{
+        const mine=meAsFieldTech();
+        if(mine){agendaSelectedTechId=mine.id;renderAgendaCardOnly()}
+      });
       document.getElementById('vxAgendaTechSelect')?.addEventListener('change',e=>{agendaSelectedTechId=e.target.value||null;renderAgendaCardOnly()});
       document.getElementById('vxAgendaTechPrev')?.addEventListener('click',()=>{
         const idx=techs.findIndex(t=>String(t.id)===String(agendaSelectedTechId));
