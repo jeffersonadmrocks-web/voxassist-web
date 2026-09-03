@@ -56,6 +56,50 @@ function json(body: Record<string, unknown>, status: number) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+// Mídia recebida (achado do usuário 2026-09-03: foto/áudio recebidos
+// ficavam "[sem texto]" -- nem o gateway nem este webhook nunca
+// trataram mídia de entrada). Reaproveita EXATAMENTE a mesma
+// infraestrutura já construída pra mídia de SAÍDA (bucket privado
+// chat-media, path company_id/conversation_id/arquivo, campos
+// message_type/media_status/media_storage_path/media_mime_type/
+// media_size_bytes -- migration 20260901320000_chat_media_bucket.sql,
+// mesmo trigger de limite real por tipo). Nunca inventa um bucket/
+// contrato novo. O gateway manda a mídia em base64 já com um teto de
+// tamanho (ver inboundForwarder.ts) -- payloads maiores que isso
+// chegam aqui SEM mediaBase64, e viram só um aviso em texto (nunca um
+// erro que derruba a mensagem inteira).
+const MEDIA_TYPE_LABEL: Record<string, string> = { IMAGE: "Imagem", AUDIO: "Áudio", VIDEO: "Vídeo", DOCUMENT: "Documento" };
+
+function base64ToBytes(base64: string): Uint8Array {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function uploadInboundMedia(
+  admin: SupaAdmin,
+  args: { companyId: string; conversationId: string; mediaType: string; mediaBase64: string; mediaMimeType: string | null; mediaFileName: string | null },
+): Promise<{ path: string; sizeBytes: number } | null> {
+  try {
+    const bytes = base64ToBytes(args.mediaBase64);
+    const safeName = (args.mediaFileName || `${args.mediaType.toLowerCase()}-${Date.now()}`).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `${args.companyId}/${args.conversationId}/inbound-${Date.now()}-${safeName}`;
+    const { error } = await admin.storage.from("chat-media").upload(path, bytes, {
+      contentType: args.mediaMimeType || "application/octet-stream",
+      upsert: false,
+    });
+    if (error) {
+      console.error("[chat-inbound-webhook] falha ao subir mídia recebida pro Storage:", error.message ?? error);
+      return null;
+    }
+    return { path, sizeBytes: bytes.length };
+  } catch (e) {
+    console.error("[chat-inbound-webhook] erro ao processar mídia recebida:", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 // Despacha uma mensagem do robô (boas-vindas/pergunta/fora do
 // horário) pelo MESMO gateway já usado em chat-send-message e na
 // mensagem de ausência -- nenhum contrato novo. Grava a linha
@@ -174,6 +218,10 @@ Deno.serve(async (req) => {
     const senderLid = typeof body?.senderLid === "string" && body.senderLid ? body.senderLid : null;
     const text = typeof body?.body === "string" ? body.body : "";
     const externalMessageId = typeof body?.externalMessageId === "string" && body.externalMessageId ? body.externalMessageId : null;
+    const mediaType = typeof body?.mediaType === "string" && ["IMAGE", "AUDIO", "VIDEO", "DOCUMENT"].includes(body.mediaType) ? body.mediaType : null;
+    const mediaBase64 = typeof body?.mediaBase64 === "string" && body.mediaBase64 ? body.mediaBase64 : null;
+    const mediaMimeType = typeof body?.mediaMimeType === "string" && body.mediaMimeType ? body.mediaMimeType : null;
+    const mediaFileName = typeof body?.mediaFileName === "string" && body.mediaFileName ? body.mediaFileName : null;
     if (!connectionId) {
       // Achado do usuário em 2026-09-02 (pacote P0): nenhum dos dois
       // 400 abaixo logava nada, então uma rejeição real nunca deixava
@@ -296,14 +344,46 @@ Deno.serve(async (req) => {
       conversationId = created.id;
     }
 
-    const { error: msgError } = await admin.from("chat_messages").insert({
+    let messageInsert: Record<string, unknown> = {
       company_id: connection.company_id,
       conversation_id: conversationId,
       direction: "INBOUND",
       body: text || null,
       external_message_id: externalMessageId,
       status: "ENVIADA",
-    });
+    };
+    if (mediaType && mediaBase64) {
+      const uploaded = await uploadInboundMedia(admin, {
+        companyId: connection.company_id,
+        conversationId,
+        mediaType,
+        mediaBase64,
+        mediaMimeType,
+        mediaFileName,
+      });
+      if (uploaded) {
+        messageInsert = {
+          ...messageInsert,
+          message_type: mediaType,
+          media_status: "DISPONIVEL",
+          media_storage_path: uploaded.path,
+          media_mime_type: mediaMimeType,
+          media_size_bytes: uploaded.sizeBytes,
+        };
+      } else {
+        // Upload falhou (Storage fora do ar, etc.) -- nunca perde a
+        // mensagem inteira por causa disso, só perde o anexo, com aviso
+        // honesto no lugar de "[sem texto]".
+        messageInsert.body = text || `[${MEDIA_TYPE_LABEL[mediaType]} recebido — não foi possível processar o anexo]`;
+      }
+    } else if (mediaType && !mediaBase64) {
+      // Mídia grande demais pro teto do gateway, ou falha ao baixar do
+      // WhatsApp (ver inboundForwarder.ts) -- nunca inventa um anexo
+      // vazio, só avisa com texto o que realmente aconteceu.
+      messageInsert.body = text || `[${MEDIA_TYPE_LABEL[mediaType]} recebido — arquivo não suportado nesta versão (abra no celular)]`;
+    }
+
+    const { error: msgError } = await admin.from("chat_messages").insert(messageInsert);
     if (msgError) {
       // 23505 = unique_violation no índice de dedup -- reentrega do
       // Baileys da mesma mensagem, não é erro real.
