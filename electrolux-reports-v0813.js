@@ -204,6 +204,19 @@
       .vx-elx-board-head h2{font-size:19px;margin:8px 0 0;color:#101b2b}
       .vx-elx-back{border:1px solid #bac4cf;background:#eef1f4;color:#23364e;padding:6px 12px;font-size:11px;cursor:pointer}
       @media(max-width:900px){.vx-elx-filterbar{grid-template-columns:1fr 1fr!important}}
+      .vx-elx-nps-mini{display:inline-block;border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;background:#eef2f6;color:#516375}
+      .vx-elx-nps-mini.ok{background:#e7f5ec;color:#176a38}
+      .vx-elx-nps-mini.warn{background:#fde8e8;color:#b3261e}
+      .vx-elx-nps-mini.muted{background:#eef2f6;color:#8fa3b6}
+      .vx-elx-search-row{padding:9px 10px;border:1px solid #e3e8ed;border-radius:7px;margin-bottom:7px;cursor:pointer;transition:background .12s ease}
+      .vx-elx-search-row:hover{background:#f4f7fa}
+      .vx-elx-search-row small{color:#65788b}
+      .vx-elx-search-group-label{font-size:10px;font-weight:700;color:#73869a;text-transform:uppercase;letter-spacing:.03em;margin:10px 0 6px}
+      .vx-elx-search-group-label:first-child{margin-top:0}
+      #vxElxMetrics .desk-metric{cursor:pointer;transition:box-shadow .12s ease,transform .12s ease}
+      #vxElxMetrics .desk-metric:hover{box-shadow:0 3px 10px rgba(15,42,68,.12)}
+      #vxElxMetrics .desk-metric.vx-elx-metric-active{background:var(--metric);box-shadow:inset 0 0 0 2px rgba(0,0,0,.06)}
+      #vxElxMetrics .desk-metric.vx-elx-metric-active span,#vxElxMetrics .desk-metric.vx-elx-metric-active b,#vxElxMetrics .desk-metric.vx-elx-metric-active small{color:#fff}
     `;
     document.head.appendChild(s);
   }
@@ -222,8 +235,11 @@
     btn.onclick=()=>window.render(VIEW);
   }
 
-  function metricCard(label,value,color){
-    return `<button class="desk-metric" style="--metric:${color};cursor:default"><span>${label}</span><b>${value==null?'—':value}</b></button>`;
+  function metricCard(label,value,color,opts){
+    opts=opts||{};
+    const active=opts.active?' vx-elx-metric-active':'';
+    const attr=opts.key?` data-metric="${opts.key}"`:'';
+    return `<button class="desk-metric${active}" style="--metric:${color}"${attr}><span>${label}</span><b>${value==null?'—':value}</b></button>`;
   }
 
   function svoBadgeClass(name){return String(name||'').normalize('NFKD').replace(/\p{Diacritic}/gu,'').toLowerCase().replace(/[^a-z0-9]/g,'');}
@@ -248,15 +264,28 @@
       &&(!elx.agingFilter||so.agingDays>elx.agingFilter));
   }
 
+  const METRIC_AGING_THRESHOLD=7;
   function renderMetrics(){
     const box=document.getElementById('vxElxMetrics');if(!box)return;
-    const list=filteredOrders();
-    const total=elx.orders.length?list.length:null;
-    const acima7=elx.orders.length?list.filter(so=>so.agingDays>7).length:null;
-    const stale=elx.orders.length?list.filter(so=>daysSinceUpdate(so)>=2).length:null;
-    box.innerHTML=metricCard('SVOs NESTA VISÃO',total,'#1876d2')
-      +metricCard('ATRASADAS (>7 DIAS)',acima7,acima7?'#cf3542':'#8fa3b6')
-      +metricCard('SEM ALTERAÇÃO HÁ +2 DIAS',stale,stale?'#ef8500':'#8fa3b6');
+    // Cada card conta em cima do filtro dos OUTROS dois (busca/período/status/tipo/grupo
+    // seguem valendo), nunca em cima do próprio -- senão o card mostra sempre 100% do que
+    // já está filtrado por ele mesmo, e o número deixa de significar algo clicável. Achado
+    // do usuário 2026-09-03: os cards mostravam um número mas clicar neles não fazia nada.
+    const baseList=elx.orders.filter(so=>matchesSearch(so,elx.search)&&matchesDateFilter(so,elx.dateFilter)&&matchesStatusFilter(so,elx.statusFilter)&&matchesOrderTypeFilter(so,elx.orderTypeFilter)&&(!elx.activeGroupKey||groupFor(so.status)===elx.activeGroupKey));
+    const total=elx.orders.length?filteredOrders().length:null;
+    const acima7=elx.orders.length?baseList.filter(so=>so.agingDays>METRIC_AGING_THRESHOLD).length:null;
+    const stale=elx.orders.length?baseList.filter(so=>daysSinceUpdate(so)>=2).length:null;
+    const atrasadaAtiva=elx.agingFilter===METRIC_AGING_THRESHOLD;
+    box.innerHTML=metricCard('SVOs NESTA VISÃO',total,'#1876d2',{key:'total',active:!atrasadaAtiva&&!elx.staleFilter})
+      +metricCard('ATRASADAS (>7 DIAS)',acima7,acima7?'#cf3542':'#8fa3b6',{key:'atrasadas',active:atrasadaAtiva})
+      +metricCard('SEM ALTERAÇÃO HÁ +2 DIAS',stale,stale?'#ef8500':'#8fa3b6',{key:'stale',active:!!elx.staleFilter});
+    box.querySelectorAll('[data-metric]').forEach(btn=>btn.onclick=()=>{
+      const key=btn.dataset.metric;
+      if(key==='total'){elx.agingFilter=null;elx.staleFilter=false;}
+      else if(key==='atrasadas'){elx.agingFilter=atrasadaAtiva?null:METRIC_AGING_THRESHOLD;}
+      else if(key==='stale'){elx.staleFilter=!elx.staleFilter;}
+      renderDynamic();
+    });
   }
 
   function renderBoard(){
@@ -369,7 +398,10 @@
     elx.selected=so;elx.detail=null;renderModal();
   }
 
-  function rerender(){if(elx.screen==='board')renderDynamic();else renderHome();}
+  // 'closed' fica de fora de propósito -- não usa elx.orders (fonte é
+  // Supabase, não o poll da Electrolux), então um tick do poll não pode
+  // arrancar o usuário da tela de Encerradas de volta pro Início.
+  function rerender(){if(elx.screen==='board')renderDynamic();else if(elx.screen!=='closed')renderHome();}
 
   async function refresh(){
     elx.loading=elx.orders.length===0;rerender();
@@ -388,6 +420,14 @@
   }
 
   function stopPoll(){if(elx.pollTimer){clearInterval(elx.pollTimer);elx.pollTimer=null;}}
+  // Achado do usuário 2026-09-03: NPS Electrolux (electrolux-nps-v0826.js,
+  // window.vxOpenNpsScreen) troca #app SEM passar por window.render(), então
+  // state.view continua 'electrolux' -- o poll deste módulo (15s) seguia
+  // rodando e, a cada tick, chamava renderHome() por baixo do usuário,
+  // chutando ele de volta pro Início do Electrolux enquanto olhava o NPS.
+  // Exposto pra NPS parar o poll ao entrar; "Voltar" já chama
+  // window.render('electrolux') -> renderPage() -> startPoll() de novo.
+  window.vxElxStopPoll=stopPoll;
   function startPoll(){
     stopPoll();
     elx.pollTimer=setInterval(()=>{if(state.view!==VIEW){stopPoll();return;}refresh();},POLL_MS);
@@ -449,6 +489,201 @@
     </div>`;
   }
 
+  /* ---------- Encerradas + Consulta geral de OS (achado do usuário 2026-09-03) ----------
+     fetchServiceOrders() (GET /api/dashboard/service-orders) exclui
+     Encerrada/Cancelada da listagem viva -- confirmado na auditoria de NPS
+     desta sessão (sync-electrolux-agenda, mesmo comentário). Pra OS já
+     encerrada, a fonte é a cópia local já sincronizada em
+     external_appointments (Supabase, origin=ELECTROLUX) -- nunca inventa
+     endpoint novo. "Encerradas" mostra só o que ainda está dentro da
+     janela em que a Electrolux mantém a SVO disponível (~60 dias,
+     mesma janela usada em sync-electrolux-nps) -- passado isso a origem
+     já não tem mais o registro, então não faz sentido listar como "ainda
+     disponível na busca". A consulta geral une abertas (em memória) e
+     encerradas (Supabase) numa busca só, porque o usuário pode não saber
+     ainda em qual das duas a OS está. */
+  const CLOSED_WINDOW_DAYS=60;
+  const CLOSED_STATUS_LABEL={CONCLUIDO:'Concluído',CANCELADO:'Cancelado'};
+  const NPS_SIT_LABEL_MINI={
+    AGUARDANDO_ENCERRAMENTO:'NPS: aguardando',AGUARDANDO_PRAZO_NPS:'NPS: em carência',AGUARDANDO_CONTATO:'NPS: aguardando contato',
+    PRIMEIRO_CONTATO_ENVIADO:'NPS: contatado',AGUARDANDO_RESPOSTA:'NPS: aguardando resposta',LEMBRETE_ENVIADO:'NPS: lembrete enviado',
+    CLIENTE_CONFIRMOU_RESPOSTA:'NPS: cliente confirmou',CLIENTE_NAO_RECEBEU:'NPS: não recebeu',CLIENTE_NAO_RESPONDEU:'NPS: não respondeu',
+    CLIENTE_NAO_DESEJA_CONTATO:'NPS: sem contato',CASO_DE_ATENCAO:'NPS: caso de atenção',FINALIZADO:'NPS: não elegível',RESPONDIDO:'NPS respondido',
+  };
+  let closedCache=null; // {rows, filialById, npsByAppointmentId}
+
+  async function fetchFilialMap(){
+    const rows=await api('electrolux_connections?select=id,filial').catch(()=>[]);
+    return Object.fromEntries(rows.map(c=>[c.id,c.filial]));
+  }
+
+  async function fetchClosedAppointments(){
+    const windowStart=new Date(Date.now()-CLOSED_WINDOW_DAYS*86400000).toISOString();
+    const [rows,filialById]=await Promise.all([
+      api(`external_appointments?select=id,external_id,external_order_number,client_name,client_phone,status,concluded_at,notes,connection_id&origin=eq.ELECTROLUX&status=in.(CONCLUIDO,CANCELADO)&concluded_at=gte.${windowStart}&order=concluded_at.desc.nullslast&limit=300`).catch(()=>[]),
+      fetchFilialMap(),
+    ]);
+    const ids=rows.map(r=>r.id);
+    let npsByAppointmentId={};
+    if(ids.length){
+      const cases=await api(`nps_cases?select=external_appointment_id,situacao,nps_score&external_appointment_id=in.(${ids.join(',')})`).catch(()=>[]);
+      npsByAppointmentId=Object.fromEntries(cases.map(c=>[c.external_appointment_id,c]));
+    }
+    return {rows,filialById,npsByAppointmentId};
+  }
+
+  async function ensureClosedCache(force){
+    if(closedCache&&!force)return closedCache;
+    closedCache=await fetchClosedAppointments();
+    return closedCache;
+  }
+
+  function npsBadge(npsCase){
+    if(!npsCase)return '<span class="vx-elx-nps-mini muted">Sem NPS</span>';
+    const cls=npsCase.situacao==='RESPONDIDO'?'ok':(npsCase.situacao==='CASO_DE_ATENCAO'?'warn':'');
+    const label=(npsCase.situacao==='RESPONDIDO'&&npsCase.nps_score!=null)?`NPS ${npsCase.nps_score}/10`:(NPS_SIT_LABEL_MINI[npsCase.situacao]||npsCase.situacao);
+    return `<span class="vx-elx-nps-mini ${cls}">${esc(label)}</span>`;
+  }
+
+  function filialLabel(f){return f==='SERRA'?'Serra':(f==='VITORIA'?'Vitória':'—');}
+
+  async function fetchClosedDetail(externalId){
+    if(!window.CFG||!state.session?.access_token)return null;
+    try{
+      const res=await fetch(`${CFG.url}/functions/v1/get-electrolux-appointment-detail`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${state.session.access_token}`,apikey:CFG.key},
+        body:JSON.stringify({externalId})
+      });
+      if(!res.ok)return null;
+      return res.json();
+    }catch{return null;}
+  }
+
+  function closedDetailModal(row,filial,npsCase){
+    const wrap=document.createElement('div');
+    wrap.className='vx-elx-modal-wrap';
+    wrap.onclick=e=>{if(e.target===wrap)wrap.remove();};
+    wrap.innerHTML=`<div class="vx-elx-modal">
+      <div class="vx-elx-modal-head"><div><h3>${esc(row.external_order_number||row.external_id)}</h3><small>${esc(CLOSED_STATUS_LABEL[row.status]||row.status)}${filial?' · '+esc(filialLabel(filial)):''}</small></div><button class="vx-elx-modal-close">✕</button></div>
+      <div class="vx-elx-modal-body">
+        <div class="vx-elx-kv"><b>NPS</b><span>${npsBadge(npsCase)}</span></div>
+        ${detailKv('Cliente',row.client_name)}
+        ${detailKv('Telefone',row.client_phone)}
+        ${detailKv('Encerrada em',row.concluded_at?new Date(row.concluded_at).toLocaleString('pt-BR'):'—')}
+        ${detailKv('Observação',row.notes)}
+        <div class="vx-elx-modal-section" id="vxElxClosedExtra"><small>Carregando endereço…</small></div>
+      </div>
+    </div>`;
+    document.body.appendChild(wrap);
+    wrap.querySelector('.vx-elx-modal-close').onclick=()=>wrap.remove();
+    fetchClosedDetail(row.external_id).then(detail=>{
+      const box=wrap.querySelector('#vxElxClosedExtra');
+      if(!box)return;
+      box.innerHTML=detail?.address
+        ?`<h4>Endereço</h4><p style="margin:0;font-size:12px;color:#17324d">${esc([detail.address.street,detail.address.neighborhood,detail.address.city,detail.address.state].filter(Boolean).join(', ')||'Não informado')}</p>`
+        :`<small>Não foi possível carregar o endereço agora (SVO pode já ter saído da janela de ~${CLOSED_WINDOW_DAYS} dias na origem).</small>`;
+    });
+  }
+
+  function matchesClosedSearch(row,query){
+    const trimmed=(query||'').trim();if(!trimmed)return true;
+    const digitsQuery=trimmed.replace(/\D/g,'');
+    if(digitsQuery.length>=4&&row.client_phone&&String(row.client_phone).includes(digitsQuery))return true;
+    return normalizeSearchText([row.external_order_number,row.client_name].filter(Boolean).join(' ')).includes(normalizeSearchText(trimmed));
+  }
+
+  function renderClosedScreen(){
+    elx.screen='closed';
+    const app=document.querySelector('#app');if(!app)return;
+    app.innerHTML=`<div class="vx-elx-page">
+      <div class="vx-elx-board-head">
+        <div><button type="button" class="vx-elx-back" id="vxElxClosedBack">← VOLTAR</button><h2>OS Encerradas</h2></div>
+        <span style="color:#60728a;font-size:11px">Ainda disponíveis na origem (~${CLOSED_WINDOW_DAYS} dias após o encerramento)</span>
+      </div>
+      <div class="vx-elx-error" id="vxElxClosedError" style="display:none"></div>
+      <div class="desktop-filterbar vx-elx-filterbar" style="grid-template-columns:1fr auto!important">
+        <label>BUSCAR<input id="vxElxClosedSearch" placeholder="SVO, cliente ou telefone..."></label>
+        <span class="vx-elx-filtercount" id="vxElxClosedCount"></span>
+      </div>
+      <div id="vxElxClosedBody"><div class="vx-elx-empty-board">Carregando OS encerradas…</div></div>
+    </div>`;
+    document.getElementById('vxElxClosedBack').onclick=()=>renderHome();
+    let query='';
+    const renderRows=()=>{
+      const body=document.getElementById('vxElxClosedBody');
+      const countEl=document.getElementById('vxElxClosedCount');
+      if(!body)return;
+      if(!closedCache){body.innerHTML=`<div class="vx-elx-empty-board">Carregando OS encerradas…</div>`;return;}
+      const {rows,filialById,npsByAppointmentId}=closedCache;
+      const filtered=rows.filter(r=>matchesClosedSearch(r,query));
+      if(countEl)countEl.textContent=`${filtered.length} de ${rows.length} OS encerrada(s)`;
+      if(!filtered.length){body.innerHTML=`<div class="vx-elx-empty-board">Nenhuma OS encerrada encontrada nessa janela.</div>`;return;}
+      body.innerHTML=`<div class="desktop-table-wrap"><table class="desktop-table"><thead><tr>
+        <th>SVO</th><th>CLIENTE</th><th>TELEFONE</th><th>FILIAL</th><th>SITUAÇÃO</th><th>ENCERRADA EM</th><th>NPS</th>
+        </tr></thead><tbody>${filtered.map(r=>{
+          const filial=r.connection_id?filialById[r.connection_id]:null;
+          return `<tr data-closed="${esc(r.id)}">
+            <td><b>${esc(r.external_order_number||r.external_id)}</b></td>
+            <td>${esc(r.client_name||'—')}</td>
+            <td>${esc(r.client_phone||'—')}</td>
+            <td>${esc(filialLabel(filial))}</td>
+            <td><span class="vx-elx-status-pill">${esc(CLOSED_STATUS_LABEL[r.status]||r.status)}</span></td>
+            <td>${r.concluded_at?new Date(r.concluded_at).toLocaleString('pt-BR'):'—'}</td>
+            <td>${npsBadge(npsByAppointmentId[r.id])}</td>
+          </tr>`;
+        }).join('')}</tbody></table></div>`;
+      body.querySelectorAll('[data-closed]').forEach(tr=>tr.onclick=()=>{
+        const row=rows.find(r=>String(r.id)===tr.dataset.closed);
+        if(row)closedDetailModal(row,row.connection_id?filialById[row.connection_id]:null,npsByAppointmentId[row.id]);
+      });
+    };
+    document.getElementById('vxElxClosedSearch').oninput=e=>{query=e.target.value;renderRows();};
+    ensureClosedCache().then(renderRows).catch(()=>{
+      const err=document.getElementById('vxElxClosedError');
+      if(err){err.textContent='Não foi possível carregar as OS encerradas.';err.style.display='block';}
+    });
+  }
+
+  function generalSearchModal(){
+    const wrap=document.createElement('div');
+    wrap.className='vx-elx-modal-wrap';
+    wrap.onclick=e=>{if(e.target===wrap)wrap.remove();};
+    wrap.innerHTML=`<div class="vx-elx-modal">
+      <div class="vx-elx-modal-head"><div><h3>Consultar OS</h3><small>Busca em abertas e encerradas, sem precisar saber a situação antes</small></div><button class="vx-elx-modal-close">✕</button></div>
+      <div class="vx-elx-modal-body">
+        <label>Nº da SVO, cliente ou telefone<input id="vxElxGeneralSearchInput" placeholder="Digite para buscar..."></label>
+        <div id="vxElxGeneralSearchResults"><small style="color:#73869a">Digite ao menos 2 caracteres.</small></div>
+      </div>
+    </div>`;
+    document.body.appendChild(wrap);
+    wrap.querySelector('.vx-elx-modal-close').onclick=()=>wrap.remove();
+    const input=wrap.querySelector('#vxElxGeneralSearchInput');
+    const resultsBox=wrap.querySelector('#vxElxGeneralSearchResults');
+    input.focus();
+    let debounceTimer=null;
+    const runSearch=async()=>{
+      const q=input.value.trim();
+      if(q.length<2){resultsBox.innerHTML=`<small style="color:#73869a">Digite ao menos 2 caracteres.</small>`;return;}
+      resultsBox.innerHTML=`<small>Buscando…</small>`;
+      const openMatches=elx.orders.filter(so=>matchesSearch(so,q));
+      let cache=null;
+      try{cache=await ensureClosedCache();}catch{}
+      const closedMatches=cache?cache.rows.filter(r=>matchesClosedSearch(r,q)):[];
+      if(!openMatches.length&&!closedMatches.length){resultsBox.innerHTML=`<small>Nenhuma OS encontrada, aberta ou encerrada.</small>`;return;}
+      const openHtml=openMatches.length?`<div class="vx-elx-search-group-label">Em aberto (${openMatches.length})</div>${openMatches.map(so=>`<div class="vx-elx-search-row" data-open="${esc(so.id)}"><b>${esc(so.svoNumber)}</b> <span class="vx-elx-status-pill">${esc(so.status)}</span><br><small>${esc(so.clientName||'—')}</small></div>`).join('')}`:'';
+      const closedHtml=closedMatches.length?`<div class="vx-elx-search-group-label">Encerradas (${closedMatches.length})</div>${closedMatches.map(r=>`<div class="vx-elx-search-row" data-closed="${esc(r.id)}"><b>${esc(r.external_order_number||r.external_id)}</b> <span class="vx-elx-status-pill">${esc(CLOSED_STATUS_LABEL[r.status]||r.status)}</span><br><small>${esc(r.client_name||'—')}</small></div>`).join('')}`:'';
+      resultsBox.innerHTML=openHtml+closedHtml;
+      resultsBox.querySelectorAll('[data-open]').forEach(el=>el.onclick=()=>{wrap.remove();openDetail(el.dataset.open);});
+      resultsBox.querySelectorAll('[data-closed]').forEach(el=>el.onclick=()=>{
+        if(!cache)return;
+        const row=cache.rows.find(r=>String(r.id)===el.dataset.closed);
+        if(row){wrap.remove();closedDetailModal(row,row.connection_id?cache.filialById[row.connection_id]:null,cache.npsByAppointmentId[row.id]);}
+      });
+    };
+    input.oninput=()=>{clearTimeout(debounceTimer);debounceTimer=setTimeout(runSearch,250);};
+  }
+
   /* ---------- Tela inicial: hub no padrão dos demais módulos (module-summary-card +
      module-action-card, ver all-menus-layout.js / atendimento(), oficina() etc.) ---------- */
   function renderHome(){
@@ -479,8 +714,10 @@
         <div><h2>Electrolux</h2><p>PAINEL DE TRIAGEM • SVOs SAE ELECTROLUX</p></div>
         <div class="module-head-actions">
           <span id="vxElxLastSync" style="align-self:center;color:#60728a;font-size:11px;margin-right:2px"></span>
+          <button class="gray" id="vxElxGeneralSearch">🔍 CONSULTAR OS</button>
           <button class="blue" id="vxElxSync">↻ SINCRONIZAR AGORA</button>
           <button class="gray" id="vxElxViewAll">VER TODAS AS SVOs</button>
+          <button class="gray" id="vxElxClosedBtn">✔ ENCERRADAS</button>
         </div>
       </div>
       <div class="vx-elx-error" id="vxElxError" style="display:none"></div>
@@ -515,6 +752,8 @@
       renderHome();
     });
     document.getElementById('vxElxViewAll').onclick=()=>renderBoardScreen({label:'Todas as SVOs',...homeFilterToBoardOpts()});
+    document.getElementById('vxElxClosedBtn').onclick=()=>renderClosedScreen();
+    document.getElementById('vxElxGeneralSearch').onclick=()=>generalSearchModal();
     document.getElementById('vxElxSync').onclick=async()=>{
       const btn=document.getElementById('vxElxSync');if(btn){btn.disabled=true;btn.textContent='SINCRONIZANDO…';}
       try{await triggerSyncNow();await refresh();}catch(e){toast?.(e.message,'err');}

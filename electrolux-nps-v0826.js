@@ -131,6 +131,12 @@
 
   /* ---------- navegação ---------- */
   async function openNpsScreen(){
+    // Achado do usuário 2026-09-03: esta tela substitui #app sem passar por
+    // window.render(), então o poll de 15s do módulo Electrolux
+    // (electrolux-reports-v0813.js) continuava rodando e chutava o usuário
+    // de volta pro Início a cada tick. "Voltar" (goBack -> window.render
+    // ('electrolux')) já reinicia o poll normalmente.
+    window.vxElxStopPoll?.();
     const app=document.querySelector('#app');
     if(!app)return;
     app.innerHTML='<div class="vx-nps"><div class="vx-loading">Carregando Gestão de NPS…</div></div>';
