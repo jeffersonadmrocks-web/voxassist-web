@@ -1160,7 +1160,7 @@
       :`<div class="vx-cc-ctx-card"><h3>Cliente</h3><p class="vx-cc-ctx-unmatched-label">Contato não vinculado</p>
       <div class="vx-cc-ctx-edit-fields">
         <label>Nome<input type="text" id="vxCtxEditName" value="${E(conv.customer_name||'')}" placeholder="Nome do contato" maxlength="120"></label>
-        <label>Telefone<input type="text" id="vxCtxEditPhone" value="${E(conv.customer_phone||'')}" placeholder="Com DDD, ex.: 27999998888" inputmode="numeric" maxlength="20"></label>
+        <label>Telefone<input type="text" id="vxCtxEditPhone" value="${E(normalizePhoneLocal(conv.customer_phone||'')||String(conv.customer_phone||'').replace(/\D/g,''))}" placeholder="Com DDD, ex.: 27999998888" inputmode="numeric" maxlength="20"></label>
         <button type="button" id="vxCtxEditSave" class="vx-cc-ctx-link-btn">Salvar nome/telefone</button>
       </div>
       <input id="vxCtxClientSearch" class="vx-cc-ctx-search" placeholder="Buscar cliente por nome ou telefone…"><div id="vxCtxClientResults" class="vx-cc-ctx-client-results"></div></div>`;
