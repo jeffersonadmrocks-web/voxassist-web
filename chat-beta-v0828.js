@@ -1605,12 +1605,28 @@
   // Contexto ficava "Nenhuma OS vinculada"). Só PREENCHE quando a
   // conversa ainda não tem OS nenhuma vinculada -- nunca troca um
   // vínculo já existente por outro.
+  // Achado do usuário em 2026-09-03: buscava só ABERTA/EM_ATENDIMENTO/
+  // AGUARDANDO_CLIENTE -- uma conversa já ENCERRADA com o mesmo cliente
+  // nunca era reaproveitada, fragmentando o mesmo contato em várias
+  // linhas na lista (ex.: abrir o Chat por duas O.S.'s diferentes do
+  // mesmo cliente, em dias diferentes, virava duas conversas). O
+  // WhatsApp de verdade é sempre UMA thread por contato -- ENCERRADA
+  // agora é reaberta (mesma filosofia já usada quando o CLIENTE escreve
+  // de novo, chat-inbound-webhook REOPEN), nunca duplicada. ARQUIVADA
+  // fica de fora de propósito -- é um descarte deliberado do GESTOR,
+  // não deveria ressuscitar sozinho.
   async function findOrCreateConversation(connectionId,phone,name,serviceOrderId){
-    const existing=await api(`chat_conversations?connection_id=eq.${connectionId}&customer_phone=eq.${phone}&status=in.(ABERTA,EM_ATENDIMENTO,AGUARDANDO_CLIENTE)&select=id,service_order_id&limit=1`).catch(()=>[]);
+    const existing=await api(`chat_conversations?connection_id=eq.${connectionId}&customer_phone=eq.${phone}&status=in.(ABERTA,EM_ATENDIMENTO,AGUARDANDO_CLIENTE,FINALIZADA)&select=id,service_order_id,status&order=created_at.desc&limit=1`).catch(()=>[]);
     if(existing&&existing.length){
       const conv=existing[0];
-      if(serviceOrderId&&!conv.service_order_id){
-        await api(`chat_conversations?id=eq.${conv.id}`,{method:'PATCH',body:JSON.stringify({service_order_id:serviceOrderId})}).catch(()=>{});
+      const patch={};
+      if(serviceOrderId&&!conv.service_order_id)patch.service_order_id=serviceOrderId;
+      if(conv.status==='FINALIZADA'){patch.status='ABERTA';patch.assigned_user_id=myUserId();}
+      if(Object.keys(patch).length){
+        await api(`chat_conversations?id=eq.${conv.id}`,{method:'PATCH',body:JSON.stringify(patch)}).catch(()=>{});
+        if(patch.status==='ABERTA'){
+          await api('chat_conversation_events',{method:'POST',body:JSON.stringify({company_id:state.profile.active_company_id,conversation_id:conv.id,action:'REABERTA_PELO_ATENDENTE',previous_data:{status:'FINALIZADA'},new_data:{status:'ABERTA'},changed_by:myUserId()})}).catch(()=>{});
+        }
       }
       return conv.id;
     }
