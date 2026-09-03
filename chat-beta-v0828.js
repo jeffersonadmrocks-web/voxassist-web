@@ -991,8 +991,23 @@
   window.vxOpenChatWithDraft=async(conversationId,draftText)=>{
     if(!document.querySelector('.vx-chatbeta'))await openConversasScreen();
     window.vxOpenChatConversation(conversationId);
-    await new Promise(r=>setTimeout(r,120));
-    const input=document.querySelector('#vxMsgForm textarea[name=body]');
+    // Achado do usuário em 2026-09-03 (NPS Electrolux "Enviar primeiro
+    // contato"): um único palpite de tempo fixo (120ms) parava de
+    // funcionar sempre que selectConversa ficasse mais pesado (ex.: a
+    // busca de OS's do cliente pro card "Ordem de Serviço", adicionada
+    // nesta mesma sessão) -- em vez de adivinhar um número, espera de
+    // verdade até a conversa CERTA estar selecionada e o campo existir
+    // (nunca escreve no campo errado se houver troca de conversa no
+    // meio do caminho), com um teto de segurança pra nunca travar.
+    const deadline=Date.now()+3000;
+    let input=null;
+    while(Date.now()<deadline){
+      if(String(hubState.selectedId)===String(conversationId)){
+        input=document.querySelector('#vxMsgForm textarea[name=body]');
+        if(input)break;
+      }
+      await new Promise(r=>setTimeout(r,60));
+    }
     if(input){input.value=draftText;input.focus()}
   };
 
