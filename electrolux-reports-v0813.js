@@ -213,6 +213,10 @@
       .vx-elx-search-row small{color:#65788b}
       .vx-elx-search-group-label{font-size:10px;font-weight:700;color:#73869a;text-transform:uppercase;letter-spacing:.03em;margin:10px 0 6px}
       .vx-elx-search-group-label:first-child{margin-top:0}
+      .vx-elx-home-search-bar{grid-template-columns:1fr!important}
+      .vx-elx-home-search-bar label{position:relative}
+      .vx-elx-search-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;max-height:360px;overflow:auto;background:#fff;border:1px solid #aeb5bc;box-shadow:0 10px 22px rgba(15,42,68,.16);z-index:40;padding:8px;font-weight:400}
+      .vx-elx-search-dropdown[hidden]{display:none}
       #vxElxMetrics .desk-metric{cursor:pointer;transition:box-shadow .12s ease,transform .12s ease}
       #vxElxMetrics .desk-metric:hover{box-shadow:0 3px 10px rgba(15,42,68,.12)}
       #vxElxMetrics .desk-metric.vx-elx-metric-active{background:var(--metric);box-shadow:inset 0 0 0 2px rgba(0,0,0,.06)}
@@ -645,43 +649,37 @@
     });
   }
 
-  function generalSearchModal(){
-    const wrap=document.createElement('div');
-    wrap.className='vx-elx-modal-wrap';
-    wrap.onclick=e=>{if(e.target===wrap)wrap.remove();};
-    wrap.innerHTML=`<div class="vx-elx-modal">
-      <div class="vx-elx-modal-head"><div><h3>Consultar OS</h3><small>Busca em abertas e encerradas, sem precisar saber a situação antes</small></div><button class="vx-elx-modal-close">✕</button></div>
-      <div class="vx-elx-modal-body">
-        <label>Nº da SVO, cliente ou telefone<input id="vxElxGeneralSearchInput" placeholder="Digite para buscar..."></label>
-        <div id="vxElxGeneralSearchResults"><small style="color:#73869a">Digite ao menos 2 caracteres.</small></div>
-      </div>
-    </div>`;
-    document.body.appendChild(wrap);
-    wrap.querySelector('.vx-elx-modal-close').onclick=()=>wrap.remove();
-    const input=wrap.querySelector('#vxElxGeneralSearchInput');
-    const resultsBox=wrap.querySelector('#vxElxGeneralSearchResults');
-    input.focus();
-    let debounceTimer=null;
+  // Achado do usuário 2026-09-03: a ideia não é um botão que abre um campo
+  // pra digitar -- é o campo já estar ali, digitável direto, igual ao
+  // BUSCAR do quadro (renderBoardScreen). Substituído o modal por uma
+  // barra de busca fixa no topo do Início, com resultado em dropdown.
+  function bindHomeSearch(){
+    const input=document.getElementById('vxElxHomeSearch');
+    const box=document.getElementById('vxElxHomeSearchResults');
+    if(!input||!box)return;
+    let debounceTimer=null,cache=null;
+    const hide=()=>{box.hidden=true;box.innerHTML='';};
     const runSearch=async()=>{
       const q=input.value.trim();
-      if(q.length<2){resultsBox.innerHTML=`<small style="color:#73869a">Digite ao menos 2 caracteres.</small>`;return;}
-      resultsBox.innerHTML=`<small>Buscando…</small>`;
+      if(q.length<2){hide();return;}
+      box.hidden=false;box.innerHTML=`<small style="padding:6px 4px;display:block">Buscando…</small>`;
       const openMatches=elx.orders.filter(so=>matchesSearch(so,q));
-      let cache=null;
       try{cache=await ensureClosedCache();}catch{}
       const closedMatches=cache?cache.rows.filter(r=>matchesClosedSearch(r,q)):[];
-      if(!openMatches.length&&!closedMatches.length){resultsBox.innerHTML=`<small>Nenhuma OS encontrada, aberta ou encerrada.</small>`;return;}
+      if(!openMatches.length&&!closedMatches.length){box.innerHTML=`<small style="padding:6px 4px;display:block">Nenhuma OS encontrada, aberta ou encerrada.</small>`;return;}
       const openHtml=openMatches.length?`<div class="vx-elx-search-group-label">Em aberto (${openMatches.length})</div>${openMatches.map(so=>`<div class="vx-elx-search-row" data-open="${esc(so.id)}"><b>${esc(so.svoNumber)}</b> <span class="vx-elx-status-pill">${esc(so.status)}</span><br><small>${esc(so.clientName||'—')}</small></div>`).join('')}`:'';
       const closedHtml=closedMatches.length?`<div class="vx-elx-search-group-label">Encerradas (${closedMatches.length})</div>${closedMatches.map(r=>`<div class="vx-elx-search-row" data-closed="${esc(r.id)}"><b>${esc(r.external_order_number||r.external_id)}</b> <span class="vx-elx-status-pill">${esc(CLOSED_STATUS_LABEL[r.status]||r.status)}</span><br><small>${esc(r.client_name||'—')}</small></div>`).join('')}`:'';
-      resultsBox.innerHTML=openHtml+closedHtml;
-      resultsBox.querySelectorAll('[data-open]').forEach(el=>el.onclick=()=>{wrap.remove();openDetail(el.dataset.open);});
-      resultsBox.querySelectorAll('[data-closed]').forEach(el=>el.onclick=()=>{
+      box.innerHTML=openHtml+closedHtml;
+      box.querySelectorAll('[data-open]').forEach(el=>el.onclick=()=>{hide();input.value='';openDetail(el.dataset.open);});
+      box.querySelectorAll('[data-closed]').forEach(el=>el.onclick=()=>{
         if(!cache)return;
         const row=cache.rows.find(r=>String(r.id)===el.dataset.closed);
-        if(row){wrap.remove();closedDetailModal(row,row.connection_id?cache.filialById[row.connection_id]:null,cache.npsByAppointmentId[row.id]);}
+        if(row){hide();input.value='';closedDetailModal(row,row.connection_id?cache.filialById[row.connection_id]:null,cache.npsByAppointmentId[row.id]);}
       });
     };
     input.oninput=()=>{clearTimeout(debounceTimer);debounceTimer=setTimeout(runSearch,250);};
+    input.onfocus=()=>{if(input.value.trim().length>=2)runSearch();};
+    document.addEventListener('click',e=>{if(!e.target.closest('#vxElxHomeSearchBar'))hide();});
   }
 
   /* ---------- Tela inicial: hub no padrão dos demais módulos (module-summary-card +
@@ -714,11 +712,13 @@
         <div><h2>Electrolux</h2><p>PAINEL DE TRIAGEM • SVOs SAE ELECTROLUX</p></div>
         <div class="module-head-actions">
           <span id="vxElxLastSync" style="align-self:center;color:#60728a;font-size:11px;margin-right:2px"></span>
-          <button class="gray" id="vxElxGeneralSearch">🔍 CONSULTAR OS</button>
           <button class="blue" id="vxElxSync">↻ SINCRONIZAR AGORA</button>
           <button class="gray" id="vxElxViewAll">VER TODAS AS SVOs</button>
           <button class="gray" id="vxElxClosedBtn">✔ ENCERRADAS</button>
         </div>
+      </div>
+      <div class="desktop-filterbar vx-elx-home-search-bar" id="vxElxHomeSearchBar">
+        <label>BUSCAR OS (ABERTAS E ENCERRADAS)<input id="vxElxHomeSearch" placeholder="SVO, cliente ou telefone..." autocomplete="off"><div class="vx-elx-search-dropdown" id="vxElxHomeSearchResults" hidden></div></label>
       </div>
       <div class="vx-elx-error" id="vxElxError" style="display:none"></div>
       <div class="module-summary vx-elx-summary-5">
@@ -753,7 +753,7 @@
     });
     document.getElementById('vxElxViewAll').onclick=()=>renderBoardScreen({label:'Todas as SVOs',...homeFilterToBoardOpts()});
     document.getElementById('vxElxClosedBtn').onclick=()=>renderClosedScreen();
-    document.getElementById('vxElxGeneralSearch').onclick=()=>generalSearchModal();
+    bindHomeSearch();
     document.getElementById('vxElxSync').onclick=async()=>{
       const btn=document.getElementById('vxElxSync');if(btn){btn.disabled=true;btn.textContent='SINCRONIZANDO…';}
       try{await triggerSyncNow();await refresh();}catch(e){toast?.(e.message,'err');}
