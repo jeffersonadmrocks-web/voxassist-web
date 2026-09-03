@@ -227,10 +227,20 @@ Deno.serve(async (req) => {
     // listagem barata (usada acima) não traz endereço nem peças -- só o
     // detalhe por id traz. Busca só pra SVOs com compromisso dentro da
     // janela de agenda relevante (achado 2026-09-03 -- entra
-    // proximamente na "Agenda dos Técnicos") que ainda não têm bairro
-    // capturado, com throttle -- nunca reconsulta tudo a cada ciclo, e
-    // nunca inventa endereço/peça: se a Electrolux não tiver, o campo
-    // continua null.
+    // proximamente na "Agenda dos Técnicos"), com throttle -- nunca
+    // reconsulta tudo a cada ciclo, e nunca inventa endereço/peça: se a
+    // Electrolux não tiver, o campo continua null.
+    //
+    // Bug real corrigido em 2026-09-03 (achado do usuário, SVO-20475981):
+    // a condição original também exigia address_neighborhood IS NULL --
+    // depois do primeiro enriquecimento bem-sucedido (bairro capturado),
+    // a linha saía da consulta PRA SEMPRE, mesmo com o throttle abaixo
+    // liberando reconsulta. Uma peça adicionada no portal Electrolux
+    // DEPOIS desse primeiro enriquecimento nunca era vista -- o técnico
+    // ia pro atendimento sem saber que já tinha peça cadastrada. Detalhe
+    // (endereço + peças) de compromisso ainda ABERTO/AGENDADO dentro da
+    // janela agora é sempre revisitado a cada ciclo de throttle, não só
+    // uma vez.
     const enrichWindowEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const enrichThrottleCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     let enriched = 0;
@@ -238,7 +248,7 @@ Deno.serve(async (req) => {
       .from("external_appointments")
       .select("id, external_id, detail_checked_at")
       .eq("origin", "ELECTROLUX")
-      .is("address_neighborhood", null)
+      .in("status", ["ABERTO", "AGENDADO"])
       .not("appointment_date", "is", null)
       .lte("appointment_date", enrichWindowEnd)
       .or(`detail_checked_at.is.null,detail_checked_at.lt.${enrichThrottleCutoff}`)
