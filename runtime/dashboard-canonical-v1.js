@@ -50,7 +50,12 @@
   // por técnico) e o TÉCNICO continuam vendo só o que é deles, pra não
   // confundir quem só deveria agir no que é seu.
   const scope=rows=>role()==='TECNICO'?rows.filter(o=>o.technician_id===me()):rows;
-  const budget=f=>Math.max(0,Number(f?.labor_value||0)+Number(f?.freight_value||0)+Number(f?.auxiliary_material_value||0)+Number(f?.technical_report_value||0)-Number(f?.discount_value||0));
+  // Achado do usuário em 2026-09-03: faltava somar as peças do
+  // orçamento (os_parts) -- só mão de obra/frete/material/laudo/
+  // desconto entravam aqui, subestimando todo valor de OS com peça
+  // lançada. partsTotal é opcional (0 por padrão) só pra não quebrar
+  // quem já chama budget() sem essa informação disponível.
+  const budget=(f,partsTotal=0)=>Math.max(0,Number(partsTotal||0)+Number(f?.labor_value||0)+Number(f?.freight_value||0)+Number(f?.auxiliary_material_value||0)+Number(f?.technical_report_value||0)-Number(f?.discount_value||0));
   const startOfMonth=d=>new Date(d.getFullYear(),d.getMonth(),1);
   const withTimeout=(promise,ms,label)=>Promise.race([promise,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+' excedeu '+ms+'ms')),ms))]);
   const pct=(part,total)=>total>0?Math.round((part/total)*100):0;
@@ -116,7 +121,7 @@
     bg.onclick=e=>{if(e.target===bg)bg.remove();};
   }
 
-  function orderValue(o,finMap){const direct=Number(o.total_amount||o.budget_total||o.valor_total||o.total||o.amount||0);if(direct)return direct;return budget(finMap.get(String(o.id)))}
+  function orderValue(o,finMap){const direct=Number(o.total_amount||o.budget_total||o.valor_total||o.total||o.amount||0);if(direct)return direct;return budget(finMap.get(String(o.id)),partsTotalMap?.get(String(o.id)))}
 
   // Pluralização mínima pra "N geladeiras do mesmo modelo" -- só os
   // tipos de produto já vistos no restante do app; fallback genérico
@@ -163,6 +168,17 @@
       source('Agenda 5 dias Electrolux',`external_appointments?select=technician_id,appointment_date,period,external_order_number,client_name,notes,product_name,parts,address_neighborhood,address_city&appointment_date=gte.${isoDate(today)}&appointment_date=lte.${isoDate(agendaEnd)}&status=neq.CANCELADO&order=appointment_date.asc,period.asc&limit=300`,[]),
       source('Peças','parts_requests?select=*&order=created_at.desc&limit=200',[]),
       source('Financeiro','os_financial?select=*&limit=1000',[]),
+      // Achado do usuário em 2026-09-03: "Orçamentos (Mês)" mostrava só
+      // a mão de obra (ex.: R$550,00 numa OS de R$1.650,00 -- faltavam
+      // as peças, R$1.100,00) -- budget() somava só os campos de
+      // os_financial (mão de obra/frete/material/laudo/desconto),
+      // NUNCA os_parts (peças do orçamento, mesma tabela que a tela da
+      // OS usa pro total real -- ver os-detail-v0812.js budgetPanel()).
+      // "Peças" (acima) é parts_requests, uma tabela DIFERENTE (pedido
+      // de compra/estoque, sem valor unitário) -- nunca serviu pra
+      // valor de orçamento, por isso ninguém tinha notado que faltava
+      // buscar os_parts aqui.
+      source('Peças do Orçamento','os_parts?select=service_order_id,quantity,unit_value',[]),
       source('Pagamentos','payments?select=*&order=paid_at.desc.nullslast&limit=1500',[]),
       source('Técnicos','profiles?select=id,full_name,role,store_id,external_schedule_enabled&active=eq.true&order=full_name',[]),
       source('Histórico de status',`os_status_history?select=*,service_orders(os_number,store_id,technician_id)&changed_at=gte.${isoDate(prevMonth0)}&order=changed_at.desc&limit=400`,[]),
@@ -285,6 +301,11 @@
     const partsAtrasadas=partsAll.filter(p=>p.expected_date&&new Date(p.expected_date)<today&&!norm(p.status).includes('RECEBID'));
     const partsRecebidasHoje=partsAll.filter(p=>norm(p.status).includes('RECEBID')&&p.updated_at&&isoDate(new Date(p.updated_at))===isoDate(today));
     const finMap=new Map(safe(by['Financeiro'].data).map(f=>[String(f.service_order_id),f]));
+    const partsTotalMap=new Map();
+    safe(by['Peças do Orçamento'].data).forEach(p=>{
+      const key=String(p.service_order_id);
+      partsTotalMap.set(key,(partsTotalMap.get(key)||0)+Number(p.quantity||0)*Number(p.unit_value||0));
+    });
     const validPayments=safe(by['Pagamentos'].data).filter(p=>p.paid_at&&!['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA'].includes(norm(p.status)));
     const receivedMonth=validPayments.filter(p=>new Date(p.paid_at)>=month0).reduce((s,p)=>s+Number(p.amount||0),0);
 
@@ -320,13 +341,13 @@
     const paidByOrder=new Map();
     validPayments.forEach(p=>{const k=String(p.service_order_id);paidByOrder.set(k,(paidByOrder.get(k)||0)+Number(p.amount||0))});
     const aReceber=orders.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA').reduce((s,o)=>{
-      const bud=budget(finMap.get(String(o.id))), paid=paidByOrder.get(String(o.id))||0;
+      const bud=budget(finMap.get(String(o.id)),partsTotalMap.get(String(o.id))), paid=paidByOrder.get(String(o.id))||0;
       return s+Math.max(0,bud-paid);
     },0);
     const mediaDiaria=receivedMonth/Math.max(1,today.getDate());
     const paidThisMonthOrderIds=new Set(validPayments.filter(p=>new Date(p.paid_at)>=month0).map(p=>String(p.service_order_id)));
     const ticketMedioRecebido=paidThisMonthOrderIds.size?receivedMonth/paidThisMonthOrderIds.size:0;
-    const oportunidadeFaturamento=repair.reduce((s,o)=>s+budget(finMap.get(String(o.id))),0);
+    const oportunidadeFaturamento=repair.reduce((s,o)=>s+budget(finMap.get(String(o.id)),partsTotalMap.get(String(o.id))),0);
     const failures=results.filter(r=>!r.ok).map(r=>r.label);
     // Achado do usuário 2026-09-03: filtro estrito role==='TECNICO'
     // escondia quem acumula outro papel (ex.: GESTOR) mas também atende
@@ -394,7 +415,7 @@
     function monthTransitions(statusLabel,from,to){
       const ids=new Set(history.filter(h=>norm(h.new_status)===statusLabel&&new Date(h.changed_at)>=from&&new Date(h.changed_at)<to).map(h=>h.service_order_id));
       const rows=orders.filter(o=>ids.has(o.id));
-      return {count:ids.size,value:rows.reduce((s,o)=>s+budget(finMap.get(String(o.id))),0),rows};
+      return {count:ids.size,value:rows.reduce((s,o)=>s+budget(finMap.get(String(o.id)),partsTotalMap.get(String(o.id))),0),rows};
     }
     const monthEnd=new Date(month0.getFullYear(),month0.getMonth()+1,1);
     const orcamentosMes=monthTransitions('AGUARDANDO APROVACAO',month0,monthEnd);
