@@ -1,0 +1,4 @@
+/* VoxAssist Web V0.8.13 -- feedback visual de arrastar guia pra reordenar */
+.tab[draggable="true"]{cursor:grab}
+.tab-dragging{opacity:.4}
+.tab-drag-over{box-shadow:inset 2px 0 0 #1976d2}
