@@ -153,6 +153,14 @@
       source('Casos de atenção','dashboard_cases?select=*&order=created_at.desc&limit=200',[]),
       source('Destinatários de casos','dashboard_case_recipients?select=case_id,user_id,role',[]),
       source('Agenda 5 dias',`appointments?select=*,service_orders(os_number,reported_defect,client_id,clients(neighborhood,city),equipments(product_type,brand,model))&appointment_date=gte.${isoDate(today)}&appointment_date=lte.${isoDate(agendaEnd)}&order=appointment_date.asc,period.asc,start_time.asc&limit=300`,[]),
+      // Achado do usuário em 2026-09-03: o card "Agenda dos Técnicos"
+      // só lia a tabela nativa `appointments` -- com o volume real de
+      // atendimento vindo hoje quase todo de external_appointments
+      // (Electrolux, sincronizado por sync-electrolux-agenda), o card
+      // aparecia vazio mesmo com a Agenda de verdade cheia. Mesma
+      // fonte/janela de datas já usada pela ponte real da Agenda
+      // (electrolux-agenda-bridge-v0825.js).
+      source('Agenda 5 dias Electrolux',`external_appointments?select=technician_id,appointment_date,period,external_order_number,client_name,notes,address_neighborhood,address_city&appointment_date=gte.${isoDate(today)}&appointment_date=lte.${isoDate(agendaEnd)}&status=neq.CANCELADO&order=appointment_date.asc,period.asc&limit=300`,[]),
       source('Peças','parts_requests?select=*&order=created_at.desc&limit=200',[]),
       source('Financeiro','os_financial?select=*&limit=1000',[]),
       source('Pagamentos','payments?select=*&order=paid_at.desc.nullslast&limit=1500',[]),
@@ -321,9 +329,37 @@
     const repeatClientOrders=oppScope.filter(o=>o.client_id&&byClient.get(o.client_id)>1);
 
     // retiradas previstas pra hoje = compromisso de hoje numa OS já pronta
+    // (só faz sentido pra agenda NATIVA -- Electrolux não tem OS/pronto
+    // pra entrega neste sistema, é outro ciclo de status, ver
+    // sync-electrolux-nps).
     const agenda=safe(by['Agenda 5 dias'].data);
     const readyIds=new Set(oppReady.map(o=>o.id));
     const retiradasHoje=agenda.filter(a=>a.appointment_date===isoDate(today)&&readyIds.has(a.service_order_id)).length;
+
+    // Card "Agenda dos Técnicos" (widget, achado 2026-09-03): une a
+    // agenda nativa com a Electrolux, normalizadas no mesmo formato --
+    // nunca mistura no `agenda` acima (que alimenta retiradasHoje, uma
+    // conta que só vale pra OS nativa).
+    const agendaWidgetRows=[
+      ...agenda.map(a=>{
+        const eq=a.service_orders?.equipments||{};
+        const modelKey=[eq.product_type,eq.brand,eq.model].filter(Boolean).join('|')||null;
+        return {
+          technician_id:a.technician_id,appointment_date:a.appointment_date,period:a.period,
+          equipmentLabel:[eq.product_type,eq.brand,eq.model].filter(Boolean).join(' · ')||'Equipamento',
+          modelKey,productType:eq.product_type||null,
+          location:a.service_orders?.clients?.neighborhood||a.service_orders?.clients?.city||'',
+          defect:a.service_orders?.reported_defect||'',source:'NATIVO',
+        };
+      }),
+      ...safe(by['Agenda 5 dias Electrolux'].data).map(a=>({
+        technician_id:a.technician_id,appointment_date:a.appointment_date,period:a.period,
+        equipmentLabel:a.external_order_number?`OS ${a.external_order_number}`:'Electrolux',
+        modelKey:null,productType:null,
+        location:a.address_neighborhood||a.address_city||'',
+        defect:a.notes||'',source:'ELECTROLUX',
+      })),
+    ];
 
     // Orçamentos/Entregues do mês, via os_status_history (data real da
     // transição, não opened_at/updated_at da OS).
@@ -411,7 +447,7 @@
     // renderAgendaCardOnly() re-renderizar só o card).
     const weekdayShort=['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
     function buildAgendaDays(techFilterId){
-      const filtered=techFilterId?agenda.filter(a=>String(a.technician_id)===String(techFilterId)):agenda;
+      const filtered=techFilterId?agendaWidgetRows.filter(a=>String(a.technician_id)===String(techFilterId)):agendaWidgetRows;
       return [0,1,2,3,4].map(off=>{
         const d=new Date(today);d.setDate(d.getDate()+off);
         const iso=isoDate(d);
@@ -419,15 +455,12 @@
         const label=off===0?'Hoje':off===1?'Amanhã':`${weekdayShort[d.getDay()]} ${String(d.getDate()).padStart(2,'0')}`;
         const byModel=new Map(),byRegion=new Map();
         rows.forEach(a=>{
-          const eq=a.service_orders?.equipments;if(!eq)return;
-          const modelKey=[eq.product_type,eq.brand,eq.model].filter(Boolean).join('|');
-          if(modelKey)byModel.set(modelKey,(byModel.get(modelKey)||[]).concat(a));
-          const region=a.service_orders?.clients?.neighborhood||a.service_orders?.clients?.city;
-          if(region&&eq.product_type){const k=eq.product_type+'|'+region;byRegion.set(k,(byRegion.get(k)||[]).concat(a))}
+          if(a.modelKey)byModel.set(a.modelKey,(byModel.get(a.modelKey)||[]).concat(a));
+          if(a.location&&a.productType){const k=a.productType+'|'+a.location;byRegion.set(k,(byRegion.get(k)||[]).concat(a))}
         });
         let dupWarning='';
         const modelDup=[...byModel.entries()].find(([,v])=>v.length>1);
-        if(modelDup){const eq=modelDup[1][0].service_orders.equipments;dupWarning=`${modelDup[1].length} ${plural(eq.product_type)} do mesmo modelo`}
+        if(modelDup){dupWarning=`${modelDup[1].length} ${plural(modelDup[1][0].productType)} do mesmo modelo`}
         else{const regionDup=[...byRegion.entries()].find(([,v])=>v.length>1);if(regionDup){const [type]=regionDup[0].split('|');dupWarning=`${regionDup[1].length} ${plural(type)} na mesma região`}}
         return {label,iso,rows,count:rows.length,dupWarning};
       });
@@ -442,9 +475,8 @@
     // aqui -- reportado no fechamento).
     let agendaSelectedTechId=role()==='TECNICO'?me():null;
     function apptCard(a){
-      const eq=a.service_orders?.equipments||{};
-      const loc=a.service_orders?.clients?.neighborhood||a.service_orders?.clients?.city||'';
-      return `<div class="vx-c-appt"><b>${E([eq.product_type,eq.brand,eq.model].filter(Boolean).join(' · ')||'Equipamento')}</b><span>${E(loc)}${loc&&a.service_orders?.reported_defect?' · ':''}${E(a.service_orders?.reported_defect||'')}</span></div>`;
+      const srcTag=a.source==='ELECTROLUX'?'<small class="vx-c-appt-src">Electrolux</small>':'';
+      return `<div class="vx-c-appt"><b>${E(a.equipmentLabel)}</b>${srcTag}<span>${E(a.location)}${a.location&&a.defect?' · ':''}${E(a.defect)}</span></div>`;
     }
     function agendaSectionHtml(techFilterId){
       const isTecnico=role()==='TECNICO';
