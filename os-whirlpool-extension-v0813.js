@@ -58,6 +58,11 @@
       if(importId)await api(`manufacturer_imports?id=eq.${importId}`,{method:'PATCH',body:JSON.stringify({extracted_data:{...(await api(`manufacturer_imports?id=eq.${importId}&select=extracted_data`))?.[0]?.extracted_data,...data},updated_at:new Date().toISOString()})});
       else await api('manufacturer_imports',{method:'POST',body:JSON.stringify({company_id:o.company_id,manufacturer:norm(o.manufacturer)||'WHIRLPOOL',service_order_id:id,extracted_data:data,import_status:'MANUAL',created_by:state.session?.user?.id})});
       toast('Modo Whirlpool salvo. A OS principal continua vinculada ao Dashboard e à Agenda.');state.activeOs={...state.activeOs,reported_defect:data.defeitoReclamado,diagnosed_defect:data.defeitoConstatado,technical_service:data.laudoTecnico};
+      // Achado do usuário em 2026-09-03: este salvamento gravava defeito
+      // constatado/laudo técnico (exatamente os campos que faltavam pra
+      // AGUARDANDO ANALISE avançar) mas nunca chamava o motor de status
+      // -- OS Whirlpool nunca avançava sozinha, mesmo com tudo certo.
+      await window.vxAdvanceOsStatus?.(id);
     }catch(e){toast('Falha ao salvar modo Whirlpool: '+e.message,'err')}
   }
 

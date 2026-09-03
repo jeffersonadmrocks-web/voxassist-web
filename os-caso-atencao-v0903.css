@@ -1,0 +1,51 @@
+/* VoxAssist Web V0.9.03 -- redesenho do modal "Novo caso de atenção"
+   (referência visual aprovada pelo usuário 2026-09-03). Escopado em
+   .vx-caso-modal-v2 pra não afetar nenhum outro consumidor de
+   .vx-modal-bg/.vx-modal já existente no app. */
+.vx-caso-modal-v2{width:min(920px,96vw);padding:0;overflow:hidden;border-radius:16px}
+.vx-caso-head{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #eef1f4}
+.vx-caso-head h3{margin:0;font-size:16px;display:flex;align-items:center;gap:8px;flex:1}
+.vx-caso-warn{color:#e0432b}
+.vx-caso-head-os{color:#1976d2;font-weight:700;font-size:13px}
+.vx-caso-close{border:0;background:none;font-size:20px;line-height:1;cursor:pointer;color:#64748b;padding:2px 6px}
+.vx-caso-close:hover{color:#0f172a}
+.vx-caso-body{display:grid;grid-template-columns:1.15fr 1fr;gap:20px;padding:18px 20px;max-height:70vh;overflow:auto}
+@media(max-width:760px){.vx-caso-body{grid-template-columns:1fr}}
+.vx-caso-form .vx-field{margin-bottom:13px}
+.vx-caso-form label{font-size:12px;font-weight:700;color:#334155;display:block;margin-bottom:4px}
+.vx-caso-form input,.vx-caso-form select,.vx-caso-form textarea{width:100%;border:1px solid #d7dee6;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box}
+.vx-caso-form textarea{resize:vertical}
+.vx-caso-counter{display:block;text-align:right;color:#94a3b8;font-size:11px;margin-top:2px}
+.vx-caso-relate{display:flex;gap:8px}
+.vx-caso-relate button{flex:1;border:1px solid #d7dee6;background:#fff;border-radius:8px;padding:9px 10px;font-size:13px;font-weight:600;cursor:pointer;color:#334155}
+.vx-caso-relate button.active{background:#0b2b4a;border-color:#0b2b4a;color:#fff}
+.vx-caso-priority{display:flex;gap:8px}
+.vx-caso-priority button{flex:1;border:1px solid #d7dee6;background:#fff;border-radius:8px;padding:9px 6px;font-size:13px;font-weight:700;cursor:pointer;color:#334155}
+.vx-caso-priority .vx-caso-prio-high.active{background:#fde8e6;border-color:#e0432b;color:#c22a13}
+.vx-caso-priority .vx-caso-prio-med.active{background:#fef3e2;border-color:#d98a1f;color:#a1590b}
+.vx-caso-priority .vx-caso-prio-low.active{background:#e7f6ec;border-color:#2f9e58;color:#1f7a41}
+.vx-caso-visible{border:1px solid #d7dee6;border-radius:8px}
+.vx-caso-visible summary{padding:8px 10px;font-size:13px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;color:#334155}
+.vx-caso-visible summary::after{content:'▾';color:#94a3b8;margin-left:8px}
+.vx-caso-visible summary::-webkit-details-marker{display:none}
+.vx-caso-recipients-panel{padding:8px 10px 10px;border-top:1px solid #eef1f4;display:flex;gap:16px;flex-wrap:wrap;max-height:160px;overflow:auto}
+.vx-caso-recipients-group{min-width:120px}
+.vx-caso-recipients-group b{display:block;font-size:11px;color:#94a3b8;text-transform:uppercase;margin-bottom:4px}
+.vx-caso-recipient-item{display:block;font-size:12.5px;padding:2px 0;color:#334155}
+.vx-caso-recipients-empty{font-size:12px;color:#94a3b8}
+
+.vx-caso-side{background:#f7f9fb;border-radius:12px;padding:14px;align-self:start}
+.vx-caso-side-title{font-size:12px;font-weight:700;color:#475569;margin-bottom:8px}
+.vx-caso-preview-card{background:#fff;border:1px solid #e5e9ee;border-radius:10px;padding:12px}
+.vx-caso-preview-badge{display:inline-block;background:#fde8e6;color:#c22a13;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px}
+.vx-caso-preview-title{display:block;margin-top:8px;font-size:13.5px;color:#0f172a}
+.vx-caso-preview-desc{margin:4px 0 8px;font-size:12.5px;color:#64748b;line-height:1.4}
+.vx-caso-preview-meta{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:#94a3b8}
+.vx-caso-preview-new{background:#e6f0fb;color:#1976d2;font-weight:700;padding:2px 8px;border-radius:10px}
+.vx-caso-info{background:#e6f0fb;color:#1e4f82;font-size:12px;border-radius:8px;padding:9px 10px;margin-top:12px;line-height:1.4}
+.vx-caso-tips{margin-top:12px;font-size:12.5px;color:#475569}
+.vx-caso-tips b{display:block;margin-bottom:6px;color:#334155}
+.vx-caso-tips div{padding:2px 0}
+
+.vx-caso-actions{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-top:1px solid #eef1f4;margin:0}
+.vx-caso-repeat{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#64748b}

@@ -5,7 +5,12 @@
   // coluna service_orders.status de sempre (texto livre, sem CHECK) --
   // só mais 2 valores no vocabulário, nada de segunda tabela.
   const FLOW=[['AGUARDANDO ANALISE','Aguardando Análise'],['AGUARDANDO APROVACAO','Aguardando Aprovação'],['AGUARDANDO CONSERTO','Aguardando Conserto'],['EM CONSERTO','Em Conserto'],['PRONTO PARA ENTREGA','Pronto para Entrega'],['ORCAMENTO RECUSADO','Orçamento Recusado'],['ORCAMENTO RECUSADO DISPONIVEL PARA RETIRADA','Orçamento Recusado / Disponível para Retirada'],['ORCAMENTO RECUSADO ENCERRADO','Orçamento Recusado / Encerrado'],['FINALIZADA','Finalizada']];
-  const labelOf=s=>FLOW.find(x=>x[0]===String(s||'').replaceAll('_',' '))?.[1]||String(s||'').replaceAll('_',' ');
+  // Achado do usuário em 2026-09-03: window.vxOsStatusLabel
+  // (os-status-engine-v0903.js) já é o mapa completo (inclui
+  // CANCELADA, que FLOW não tem) -- reaproveita quando disponível,
+  // sem duplicar rótulo. FLOW continua só pra ordem/índices do
+  // picker (needsReason() depende da posição no array).
+  const labelOf=s=>window.vxOsStatusLabel?window.vxOsStatusLabel(s):(FLOW.find(x=>x[0]===String(s||'').replaceAll('_',' '))?.[1]||String(s||'').replaceAll('_',' '));
   const roleAllowed=()=>!['TECNICO','ESTOQUE'].includes(String(state?.profile?.role||'').toUpperCase());
   const closeModal=()=>document.querySelector('#vxStatusModal')?.remove();
 

@@ -24,6 +24,13 @@
   // entrada e estava quebrada, não existia forma nenhuma de criar um
   // caso de atenção de verdade. Popup novo, vinculado à OS aberta.
   const CASO_ROLE_GROUPS=[['GESTOR','Gestores'],['ATENDENTE','Atendentes'],['TECNICO','Técnicos'],['FINANCEIRO','Financeiro'],['ESTOQUE','Estoque']];
+  // Achado do usuário em 2026-09-03 (referência visual aprovada):
+  // redesenho do modal com "Tipo de atenção", escolha entre vincular à
+  // OS atual ou ao cliente, prioridade em pills e pré-visualização ao
+  // vivo de como o caso aparece no Dashboard. client_id/case_type são
+  // colunas novas e aditivas (migration 20260903060000).
+  const CASO_TYPES=[['INFO','🚩','Informação importante'],['RECLAMACAO','⚠','Reclamação do cliente'],['ATRASO','⏰','Atraso no atendimento'],['CANCELAMENTO','🔁','Risco de cancelamento'],['FINANCEIRO','💰','Pendência financeira'],['OUTRO','📌','Outro']];
+  const CASO_PRIORITIES=[['ALTA','Alta','high'],['MEDIA','Média','med'],['BAIXA','Baixa','low']];
   window.vxOpenCasoAtencaoModal=async function(){
     const o=ctx?.o;if(!o)return;
     document.querySelector('#vxCasoAtencaoModal')?.remove();
@@ -39,36 +46,118 @@
     // nenhum destinatário marcado, comportamento de sempre: visível
     // pra empresa toda.
     const people=await api(`profiles?select=id,full_name,role&active=eq.true&order=full_name`).catch(()=>[]);
-    bg.innerHTML=`<div class="vx-modal">
-      <h3>Novo caso de atenção — OS ${val(o.os_number)}</h3>
-      <div class="vx-field"><label>Título *</label><input id="vxCasoTitle" maxlength="140" placeholder="Ex.: Cliente insatisfeito com o prazo"></div>
-      <div class="vx-field"><label>Descrição</label><textarea id="vxCasoMessage" maxlength="500" rows="3"></textarea></div>
-      <div class="vx-field"><label>Prioridade</label><select id="vxCasoPriority"><option value="NORMAL">Normal</option><option value="ALTA">Alta</option><option value="URGENTE">Urgente</option></select></div>
-      <div class="vx-field"><label>Enviar para (opcional -- vazio = visível pra empresa toda)</label>
-        <div class="vx-caso-recipients" id="vxCasoRecipients">
-          <div class="vx-caso-recipients-group"><b>Grupos</b>${CASO_ROLE_GROUPS.map(([v,l])=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="role:${v}">${val(l)}</label>`).join('')}</div>
-          <div class="vx-caso-recipients-group"><b>Pessoas</b>${people.length?people.map(p=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="user:${val(p.id)}">${val(p.full_name)}</label>`).join(''):'<span class="vx-caso-recipients-empty">Nenhum usuário ativo.</span>'}</div>
+    const clientName=o.clients?.name||'Cliente';
+    bg.innerHTML=`<div class="vx-modal vx-caso-modal-v2">
+      <div class="vx-caso-head">
+        <h3><span class="vx-caso-warn">⚠</span> Novo caso de atenção</h3>
+        <span class="vx-caso-head-os">OS ${val(o.os_number)}</span>
+        <button type="button" class="vx-caso-close" data-cancel>×</button>
+      </div>
+      <div class="vx-caso-body">
+        <div class="vx-caso-form">
+          <div class="vx-field"><label>Título do caso *</label><input id="vxCasoTitle" maxlength="140" placeholder="Ex.: Cliente solicitou ligar antes da visita"></div>
+          <div class="vx-field"><label>Tipo de atenção *</label><select id="vxCasoType">${CASO_TYPES.map(([v,ic,l])=>`<option value="${v}">${ic} ${val(l)}</option>`).join('')}</select></div>
+          <div class="vx-field"><label>Relacionado à</label>
+            <div class="vx-caso-relate" id="vxCasoRelate">
+              <button type="button" class="active" data-relate="os">Esta OS (${val(o.os_number)})</button>
+              <button type="button" data-relate="client">Cliente</button>
+            </div>
+          </div>
+          <div class="vx-field"><label>Descrição *</label><textarea id="vxCasoMessage" maxlength="300" rows="3" placeholder="Detalhe as informações importantes que todos devem saber sobre este atendimento."></textarea><small class="vx-caso-counter" id="vxCasoCounter">0/300</small></div>
+          <div class="vx-field"><label>Prioridade</label>
+            <div class="vx-caso-priority" id="vxCasoPriority">${CASO_PRIORITIES.map(([v,l,tone],i)=>`<button type="button" class="vx-caso-prio-${tone}${i===0?' active':''}" data-priority="${v}">${l}</button>`).join('')}</div>
+          </div>
+          <div class="vx-field"><label>Visível para</label>
+            <details class="vx-caso-visible" id="vxCasoRecipients">
+              <summary id="vxCasoRecipientsSummary">Todos os usuários da loja</summary>
+              <div class="vx-caso-recipients-panel">
+                <div class="vx-caso-recipients-group"><b>Grupos</b>${CASO_ROLE_GROUPS.map(([v,l])=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="role:${v}">${val(l)}</label>`).join('')}</div>
+                <div class="vx-caso-recipients-group"><b>Pessoas</b>${people.length?people.map(p=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="user:${val(p.id)}">${val(p.full_name)}</label>`).join(''):'<span class="vx-caso-recipients-empty">Nenhum usuário ativo.</span>'}</div>
+              </div>
+            </details>
+          </div>
+        </div>
+        <div class="vx-caso-side">
+          <div class="vx-caso-side-title">Como será exibido</div>
+          <div class="vx-caso-preview-card">
+            <div class="vx-caso-preview-top"><span class="vx-caso-preview-badge" id="vxCasoPreviewBadge">⚠ ATENÇÃO • Alta prioridade</span></div>
+            <b class="vx-caso-preview-title" id="vxCasoPreviewTitle">Título do caso</b>
+            <p class="vx-caso-preview-desc" id="vxCasoPreviewDesc">Detalhe as informações importantes que todos devem saber sobre este atendimento.</p>
+            <div class="vx-caso-preview-meta"><span id="vxCasoPreviewMeta">OS ${val(o.os_number)} • Agora há pouco</span><span class="vx-caso-preview-new">Novo</span></div>
+          </div>
+          <div class="vx-caso-info">ⓘ Este caso ficará visível no card "Casos de Atenção" do Dashboard e para todos os usuários selecionados.</div>
+          <div class="vx-caso-tips"><b>Dicas</b>
+            <div>✓ Use um título claro e objetivo</div>
+            <div>✓ Informe o que é importante e por quê</div>
+            <div>✓ Mantenha a descrição curta e direta</div>
+          </div>
         </div>
       </div>
-      <div class="vx-modal-actions"><button type="button" data-cancel>Cancelar</button><button type="button" class="primary" data-save>Criar caso</button></div>
+      <div class="vx-modal-actions vx-caso-actions">
+        <label class="vx-caso-repeat"><input type="checkbox" id="vxCasoRepeat"> Criar outro caso após salvar</label>
+        <div>
+          <button type="button" data-cancel>Cancelar</button>
+          <button type="button" class="primary" data-save>💾 Salvar caso</button>
+        </div>
+      </div>
     </div>`;
     document.body.appendChild(bg);
     const close=()=>bg.remove();
     bg.querySelector('[data-cancel]').onclick=close;
+    bg.querySelector('.vx-caso-close').onclick=close;
     bg.addEventListener('click',e=>{if(e.target===bg)close()});
+
+    let relateTo='os';
+    const titleEl=bg.querySelector('#vxCasoTitle'),msgEl=bg.querySelector('#vxCasoMessage'),counterEl=bg.querySelector('#vxCasoCounter');
+    const badgeEl=bg.querySelector('#vxCasoPreviewBadge'),prevTitleEl=bg.querySelector('#vxCasoPreviewTitle'),prevDescEl=bg.querySelector('#vxCasoPreviewDesc'),prevMetaEl=bg.querySelector('#vxCasoPreviewMeta');
+    function currentPriority(){return bg.querySelector('.vx-caso-priority [data-priority].active')?.dataset.priority||'ALTA'}
+    function priorityLabel(v){return CASO_PRIORITIES.find(p=>p[0]===v)?.[1]||'Alta'}
+    function updatePreview(){
+      const title=titleEl.value.trim();
+      const msg=msgEl.value.trim();
+      badgeEl.textContent=`⚠ ATENÇÃO • ${priorityLabel(currentPriority())} prioridade`;
+      prevTitleEl.textContent=title||'Título do caso';
+      prevDescEl.textContent=msg||'Detalhe as informações importantes que todos devem saber sobre este atendimento.';
+      prevMetaEl.textContent=(relateTo==='client'?`Cliente ${clientName}`:`OS ${o.os_number}`)+' • Agora há pouco';
+      counterEl.textContent=`${msg.length}/300`;
+    }
+    titleEl.oninput=updatePreview;
+    msgEl.oninput=updatePreview;
+    bg.querySelectorAll('.vx-caso-priority [data-priority]').forEach(btn=>btn.onclick=()=>{
+      bg.querySelectorAll('.vx-caso-priority [data-priority]').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      updatePreview();
+    });
+    bg.querySelectorAll('#vxCasoRelate [data-relate]').forEach(btn=>btn.onclick=()=>{
+      relateTo=btn.dataset.relate;
+      bg.querySelectorAll('#vxCasoRelate [data-relate]').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      updatePreview();
+    });
+    const recipientsSummary=bg.querySelector('#vxCasoRecipientsSummary');
+    bg.querySelectorAll('#vxCasoRecipients input[type="checkbox"]').forEach(chk=>chk.onchange=()=>{
+      const n=bg.querySelectorAll('#vxCasoRecipients input:checked').length;
+      recipientsSummary.textContent=n?`${n} selecionado${n===1?'':'s'}`:'Todos os usuários da loja';
+    });
+    updatePreview();
+
     bg.querySelector('[data-save]').onclick=async()=>{
-      const title=bg.querySelector('#vxCasoTitle').value.trim();
+      const title=titleEl.value.trim();
+      const message=msgEl.value.trim();
       if(!title){toast?.('Informe um título pro caso.','err');return}
+      if(!message){toast?.('Informe uma descrição pro caso.','err');return}
       const btn=bg.querySelector('[data-save]');btn.disabled=true;
       const myId=state.session?.user?.id||state.profile?.id||null;
       const companyId=state.profile?.active_company_id;
       const recipients=[...bg.querySelectorAll('#vxCasoRecipients input:checked')].map(el=>el.value);
       try{
         const created=await api('dashboard_cases',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
-          service_order_id:o.id,
+          service_order_id:relateTo==='os'?o.id:null,
+          client_id:relateTo==='client'?o.client_id:null,
+          case_type:bg.querySelector('#vxCasoType').value,
           title,
-          message:bg.querySelector('#vxCasoMessage').value.trim()||null,
-          priority:bg.querySelector('#vxCasoPriority').value,
+          message,
+          priority:currentPriority(),
           status:'NOVO',
           source:'MANUAL',
           created_by:myId,
@@ -82,7 +171,11 @@
           }))}).catch(err=>toast?.('Caso criado, mas não foi possível salvar os destinatários: '+err.message,'err'));
         }
         toast?.('Caso de atenção criado.');
-        close();
+        if(bg.querySelector('#vxCasoRepeat').checked){
+          titleEl.value='';msgEl.value='';updatePreview();btn.disabled=false;titleEl.focus();
+        }else{
+          close();
+        }
       }catch(err){toast?.('Não foi possível criar o caso: '+(err.message||'erro desconhecido'),'err');btn.disabled=false}
     };
   };

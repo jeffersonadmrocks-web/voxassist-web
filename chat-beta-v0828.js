@@ -1805,11 +1805,21 @@
     if(!conversaAtualId)return;
     const list=document.getElementById('vxMsgList');
     if(!list)return stopConversaPoll();
+    // Achado do usuário em 2026-09-03: o poll re-renderizava a lista e
+    // forçava scrollTop=scrollHeight sempre, mesmo quando o operador
+    // tinha subido pra ler mensagens antigas -- a barra "voltava
+    // sozinha" a cada tick. Só força ir pro fim quando já estava perto
+    // do fim antes de recarregar; senão preserva a posição (as
+    // mensagens existentes não mudam de altura, só novas são
+    // acrescentadas no final, então o scrollTop absoluto continua
+    // apontando pro mesmo lugar).
+    const wasNearBottom=(list.scrollHeight-list.scrollTop-list.clientHeight)<120;
+    const prevScrollTop=list.scrollTop;
     const msgs=await loadMensagens(conversaAtualId);
     const deletedBefore=(hubState.currentMessages||[]).filter(m=>m.deleted_at).length;
     hubState.currentMessages=msgs;
     list.innerHTML=msgs.length?msgs.map(mensagemRow).join(''):'<p class="vx-chatbeta-sub">Nenhuma mensagem ainda.</p>';
-    list.scrollTop=list.scrollHeight;
+    list.scrollTop=wasNearBottom?list.scrollHeight:prevScrollTop;
     list.querySelectorAll('[data-reply]').forEach(btn=>btn.onclick=()=>startReply(btn.dataset.reply));
     list.querySelectorAll('[data-delete-msg]').forEach(btn=>btn.onclick=()=>deleteMensagemWhatsapp(btn.dataset.deleteMsg,btn));
     wireMediaElements(list);

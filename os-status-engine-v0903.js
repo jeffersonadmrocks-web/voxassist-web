@@ -13,6 +13,34 @@
     'ORCAMENTO RECUSADO ENCERRADO':'Orçamento Recusado / Encerrado','FINALIZADA':'Finalizada','CANCELADA':'Cancelada',
   };
   const labelOf=s=>STATUS_LABEL[String(s||'').replaceAll('_',' ')]||String(s||'').replaceAll('_',' ');
+  const E=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  // Achado do usuário em 2026-09-03: uma OS com orçamento já lançado
+  // (peça/valor) mas travada em "Aguardando Análise" só mostrava um
+  // toast de erro -- fácil de não ver/ignorar (foi exatamente o que
+  // parece ter acontecido com a OS #03I26G57). Agora é um modal de
+  // verdade (mesmo padrão .vx-modal-bg/.vx-modal já usado no resto do
+  // app), com a lista do que falta (texto já vem pronto de
+  // compute_missing_for_status via result.missing) e um atalho pro
+  // picker manual de situação que já existe (manual-status-v0812.js).
+  function openMissingStatusModal(result,id){
+    document.querySelector('#vxMissingStatusModal')?.remove();
+    const bg=document.createElement('div');
+    bg.id='vxMissingStatusModal';
+    bg.className='vx-modal-bg';
+    bg.innerHTML=`<div class="vx-modal">
+      <h3>⚠ Esta OS não avançou de situação</h3>
+      <p>Situação atual: <strong>${E(labelOf(result.initial_status))}</strong></p>
+      <p>Falta preencher:</p>
+      <ul class="vx-missing-status-list">${(result.missing||[]).map(m=>`<li>🔴 ${E(m)}</li>`).join('')}</ul>
+      <div class="vx-modal-actions"><button type="button" data-close>Entendi, revisar depois</button><button type="button" class="primary" data-manual>Alterar situação manualmente</button></div>
+    </div>`;
+    document.body.appendChild(bg);
+    const close=()=>bg.remove();
+    bg.querySelector('[data-close]').onclick=close;
+    bg.addEventListener('click',e=>{if(e.target===bg)close()});
+    bg.querySelector('[data-manual]').onclick=()=>{close();window.manualStatus?.();};
+  }
 
   // Chamado depois que um campo/evento que participa do fluxo já foi salvo
   // com sucesso (diagnóstico, orçamento, peça, decisão do cliente, início/
@@ -25,14 +53,14 @@
       const r=await api('rpc/advance_service_order_status',{method:'POST',body:JSON.stringify({p_service_order_id:id})});
       const result=Array.isArray(r)?r[0]:r;
       if(!result||result.error)return result;
-      // Achado do usuário em 2026-09-03: uma OS com orçamento já
-      // lançado (peça/valor) parecia travada em "Aguardando Análise"
-      // -- o motor estava certo (técnico/defeito constatado/serviço
-      // também são exigidos), só ninguém avisava o que faltava fora
-      // do botão SALVAR global. Agora QUALQUER chamador (incluir
-      // peça, editar financeiro, etc.) mostra o mesmo aviso.
+      // Uma OS com orçamento já lançado (peça/valor) mas travada em
+      // "Aguardando Análise" -- o motor está certo (técnico/defeito
+      // constatado/serviço também são exigidos), só faltava avisar de
+      // forma que não passasse despercebido. Agora QUALQUER chamador
+      // (incluir peça, editar financeiro, modo Whirlpool etc.) abre o
+      // mesmo modal.
       if(!result.changed){
-        if(result.missing?.length)toast?.('A OS não avançou de situação. Falta: '+result.missing.join(' • ')+'.','err');
+        if(result.missing?.length)openMissingStatusModal(result,id);
         return result;
       }
       const o=state.activeOs;
