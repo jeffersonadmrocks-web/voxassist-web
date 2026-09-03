@@ -45,13 +45,15 @@
   // Elegível ou ainda em carência -- nunca foi contatado.
   const PENDING_SITUACOES=['AGUARDANDO_ENCERRAMENTO','AGUARDANDO_PRAZO_NPS','AGUARDANDO_CONTATO'];
   function isAttention(c){return c.classification==='ATENCAO'||c.situacao==='CASO_DE_ATENCAO'}
-  // Achado do usuário em 2026-09-02: a API real da Electrolux
-  // (_shared/electrolux.ts, GET /api/dashboard/service-orders) não
-  // devolve nota/status/data de resposta de NPS -- confirmado com o
-  // usuário que isso só existe no PAINEL VISUAL da própria Electrolux,
-  // sem rota de API por trás. Não existe reconciliação automática
-  // possível hoje -- RESPONDIDO só é alcançado por registro manual de
-  // quem viu o resultado lá (ver #npsMarkResponded), nunca por sync.
+  // Correção 2026-09-03: a premissa de 2026-09-02 estava errada -- o
+  // endpoint de detalhe (GET /api/dashboard/service-orders/{id}) sempre
+  // devolveu nota/status/data de resposta de NPS, pra SVO aberta ou
+  // encerrada. sync-electrolux-nps agora reconcilia isso automaticamente
+  // (ver supabase/functions/sync-electrolux-nps/index.ts), revisitando
+  // periodicamente enquanto a SVO segue disponível na origem (~60 dias).
+  // #npsMarkResponded continua existindo como registro manual pra quando
+  // o gestor/atendente já viu o resultado e não quer esperar o próximo
+  // ciclo do sync -- os dois caminhos gravam o mesmo situacao=RESPONDIDO.
   function isResponded(c){return c.situacao==='RESPONDIDO'}
 
   /* ---------- entrada na tela real do NPS ----------
