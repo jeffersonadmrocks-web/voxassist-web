@@ -22,6 +22,19 @@
 (function(){
   const E=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
+  // Achado do usuário em 2026-09-03: a guia de navegador (tabs-final-
+  // fix.js) mostrava "Início" quando a Central de Conversas estava
+  // aberta -- o botão do menu chamava openConversasScreen() direto,
+  // nunca window.render(), então state.view/openTabs nunca sabiam que
+  // o Chat tinha sido aberto. Registra 'chat' em navMap (mesmo padrão
+  // já usado por electrolux-reports-v0813.js: navMap[VIEW]='Electrolux')
+  // -- é a fonte real do nome de cada view, lida por tabs-final-fix.js.
+  try{ if(typeof navMap!=='undefined') navMap['chat']='Chat'; }catch(_e){}
+  // Exposto pro wrapper de window.render (tabs-chat-view-v0813.js)
+  // conseguir chamar a renderização real do Chat -- função hoisted,
+  // definida mais abaixo neste mesmo arquivo.
+  window.openConversasScreen=()=>openConversasScreen();
+
   function role(){return state.profile?.role||'GESTOR'}
   function isGestor(){return role()==='GESTOR'}
   // Achado do usuário em 2026-09-02: o menu lateral da Central de
@@ -74,7 +87,7 @@
     btn.onclick=()=>{
       document.querySelectorAll('.nav').forEach(b=>b.classList.remove('active'));
       document.querySelector('[data-chat-beta-entry]')?.classList.add('active');
-      openConversasScreen();
+      window.render('chat');
     };
     menu.appendChild(btn);
   }

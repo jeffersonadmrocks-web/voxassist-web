@@ -14,7 +14,14 @@
     if(String(v).startsWith('guide:')) return 'Início';
     if(String(v).startsWith('feature:')) return String(v).slice(8).replaceAll('-',' ').replace(/\b\w/g,c=>c.toUpperCase());
     if(String(v).startsWith('op:')) return labels[String(v).slice(3)]||fallback||String(v).slice(3);
-    return labels[v]||fallback||v;
+    // Achado do usuário em 2026-09-03: labels era uma lista fixa --
+    // qualquer módulo que se registra depois (ex.: electrolux-reports-
+    // v0813.js faz navMap['electrolux']='Electrolux') tinha view real,
+    // rastreada certinho em state.view/openTabs, mas a guia mostrava a
+    // CHAVE crua ("electrolux") por não estar nessa lista. navMap já é
+    // a fonte real do nome de cada view (usado pro próprio menu lateral)
+    // -- cai nele antes de desistir e mostrar a chave crua.
+    return labels[v]||(typeof navMap!=='undefined'&&navMap[v])||fallback||v;
   }
 
   function replaceActiveTab(next){
