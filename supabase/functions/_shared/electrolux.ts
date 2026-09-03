@@ -89,6 +89,50 @@ export function resolveConcludedAt(
   return null;
 }
 
+// Campos de NPS do endpoint de detalhe (GET /api/dashboard/service-orders/{id})
+// -- existem pra qualquer SVO, aberta ou encerrada (confirmado ao vivo,
+// auditoria 2026-09-03). npsValue é a nota 0-10 do cliente;
+// npsTechnicianValue é a nota do técnico na mesma pesquisa, quando a
+// Electrolux separa os dois. npsScore (0/100 por resposta) não é usado --
+// é uma derivação da própria Electrolux, não a nota que nps_cases guarda.
+export type ElectroluxNpsDetail = {
+  npsStatus?: string | null;
+  npsValue?: number | null;
+  npsComments?: string | null;
+  npsDateAnswer?: string | null;
+  npsTechnicianValue?: number | null;
+};
+
+export type NpsResponseParsed = {
+  responded: boolean;
+  score: number | null;
+  technicianScore: number | null;
+  comment: string | null;
+  respondedAt: string | null;
+};
+
+export function parseNpsResponse(detail: ElectroluxNpsDetail): NpsResponseParsed {
+  const responded =
+    detail.npsStatus === "Respondido" &&
+    typeof detail.npsValue === "number" &&
+    detail.npsValue >= 0 &&
+    detail.npsValue <= 10;
+  if (!responded) {
+    return { responded: false, score: null, technicianScore: null, comment: null, respondedAt: null };
+  }
+  const technicianScore =
+    typeof detail.npsTechnicianValue === "number" && detail.npsTechnicianValue >= 0 && detail.npsTechnicianValue <= 10
+      ? detail.npsTechnicianValue
+      : null;
+  return {
+    responded: true,
+    score: detail.npsValue as number,
+    technicianScore,
+    comment: detail.npsComments || null,
+    respondedAt: detail.npsDateAnswer || null,
+  };
+}
+
 const DIACRITICS_PATTERN = new RegExp("[\\u0300-\\u036f]", "g");
 
 export function normalizeName(name: string): string {

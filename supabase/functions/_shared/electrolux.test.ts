@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { deriveStatus, derivePeriod, normalizeName, mapOrderToRow, resolveConcludedAt, effectiveScheduledAt } from "./electrolux.ts";
+import { deriveStatus, derivePeriod, normalizeName, mapOrderToRow, resolveConcludedAt, effectiveScheduledAt, parseNpsResponse } from "./electrolux.ts";
 
 Deno.test("deriveStatus - Cancelada vira CANCELADO mesmo com data futura", () => {
   assertEquals(
@@ -131,4 +131,45 @@ Deno.test("resolveConcludedAt - não seta pra status que não é CONCLUIDO", () 
   assertEquals(resolveConcludedAt("ABERTO", null), null);
   assertEquals(resolveConcludedAt("AGENDADO", null), null);
   assertEquals(resolveConcludedAt("CANCELADO", null), null);
+});
+
+// Casos reais confirmados ao vivo (somente leitura, auditoria 2026-09-03)
+// contra 3 SVOs Electrolux já encerradas -- o formato exato devolvido pelo
+// endpoint de detalhe pra pesquisas já respondidas.
+Deno.test("parseNpsResponse - Respondido com nota e data real vira responded=true", () => {
+  const parsed = parseNpsResponse({
+    npsStatus: "Respondido",
+    npsValue: 10,
+    npsComments: null,
+    npsDateAnswer: "2026-09-02T23:38:34.000Z",
+    npsTechnicianValue: 5,
+  });
+  assertEquals(parsed, { responded: true, score: 10, technicianScore: 5, comment: null, respondedAt: "2026-09-02T23:38:34.000Z" });
+});
+
+Deno.test("parseNpsResponse - nota do técnico ausente não impede capturar a nota do cliente", () => {
+  const parsed = parseNpsResponse({ npsStatus: "Respondido", npsValue: 8, npsComments: null, npsDateAnswer: "2026-09-02T21:10:49.000Z", npsTechnicianValue: null });
+  assertEquals(parsed.responded, true);
+  assertEquals(parsed.score, 8);
+  assertEquals(parsed.technicianScore, null);
+});
+
+Deno.test("parseNpsResponse - comentário real é preservado quando presente", () => {
+  const parsed = parseNpsResponse({ npsStatus: "Respondido", npsValue: 9, npsComments: "Ótimo atendimento", npsDateAnswer: "2026-09-01T10:00:00.000Z" });
+  assertEquals(parsed.comment, "Ótimo atendimento");
+});
+
+Deno.test("parseNpsResponse - status diferente de Respondido nunca captura nota (pesquisa ainda pendente na Electrolux)", () => {
+  const parsed = parseNpsResponse({ npsStatus: "Pendente", npsValue: null, npsComments: null, npsDateAnswer: null });
+  assertEquals(parsed, { responded: false, score: null, technicianScore: null, comment: null, respondedAt: null });
+});
+
+Deno.test("parseNpsResponse - npsStatus Respondido mas sem npsValue numérico não inventa nota", () => {
+  const parsed = parseNpsResponse({ npsStatus: "Respondido", npsValue: null, npsComments: null, npsDateAnswer: null });
+  assertEquals(parsed.responded, false);
+});
+
+Deno.test("parseNpsResponse - nota fora de 0-10 nunca é aceita mesmo com status Respondido", () => {
+  assertEquals(parseNpsResponse({ npsStatus: "Respondido", npsValue: 100 }).responded, false);
+  assertEquals(parseNpsResponse({ npsStatus: "Respondido", npsValue: -1 }).responded, false);
 });

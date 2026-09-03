@@ -31,9 +31,28 @@ import {
   ELIGIBILITY_GATE_HOURS,
   FOLLOW_UP_WINDOW_DAYS,
 } from "../_shared/npsClassification.ts";
+import { parseNpsResponse, type ElectroluxNpsDetail } from "../_shared/electrolux.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// Mesma origem já usada por sync-electrolux-agenda/get-electrolux-appointment-detail
+// -- reconciliação de resposta de NPS bate no mesmo endpoint de detalhe, nunca
+// um endpoint paralelo (achado do usuário 2026-09-03: a API já devolve os
+// campos de NPS, ninguém nunca tinha consultado isso).
+const ELECTROLUX_API_URL = Deno.env.get("ELECTROLUX_API_URL")!;
+const ELECTROLUX_API_USER = Deno.env.get("ELECTROLUX_API_USER")!;
+const ELECTROLUX_API_PASSWORD = Deno.env.get("ELECTROLUX_API_PASSWORD")!;
+// SVO encerrada continua disponível na origem por ~60 dias (achado do
+// usuário) -- depois disso não vale mais a pena consultar.
+const RECONCILIATION_WINDOW_DAYS = 60;
+// Throttle: não revisita o mesmo caso antes desse intervalo, e limita
+// quantas chamadas HTTP a Electrolux recebe por execução do cron.
+const RECONCILIATION_MIN_INTERVAL_HOURS = 3;
+const RECONCILIATION_BATCH_LIMIT = 40;
+// Situações em que o caso já tem um desfecho definido -- resposta captada
+// automaticamente não sobrescreve o desfecho, só preenche a nota (histórico
+// preserva o que aconteceu).
+const SITUACOES_COM_DESFECHO_PROPRIO = new Set(["CASO_DE_ATENCAO", "CLIENTE_NAO_DESEJA_CONTATO"]);
 // Deploy com --no-verify-jwt (o chamador é o pg_cron, não um usuário
 // VoxAssist com sessão) -- a autenticação real é este token, guardado
 // só no Supabase Vault e nunca em texto aberto em cron.job (ver
@@ -76,6 +95,9 @@ Deno.serve(async (req) => {
   let failed = 0;
   let promoted = 0;
   let promoteFailed = 0;
+  let reconciliationChecked = 0;
+  let reconciliationResponded = 0;
+  let reconciliationFailed = 0;
   const failedDetails: FailedDetail[] = [];
 
   try {
@@ -215,6 +237,90 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Reconciliação automática da resposta de NPS (correção 2026-09-03,
+    // achado do usuário: a premissa de que não existe API pra isso estava
+    // errada). Revisita casos ainda não resolvidos, dentro da janela em que
+    // a SVO encerrada continua disponível na origem (~60 dias), consultando
+    // o MESMO endpoint de detalhe já usado por sync-electrolux-agenda --
+    // nunca uma origem/endpoint paralelo. Idempotente por natureza: só
+    // atualiza a linha de nps_cases já existente (nunca insere), então
+    // revisitar a mesma SVO várias vezes nunca duplica nada.
+    const windowStart = new Date(Date.now() - RECONCILIATION_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const throttleCutoff = new Date(Date.now() - RECONCILIATION_MIN_INTERVAL_HOURS * 60 * 60 * 1000).toISOString();
+
+    const { data: reconcileCandidatesRaw } = await supabase
+      .from("nps_cases")
+      .select("id, situacao, last_electrolux_check_at, external_appointments!inner(external_id, concluded_at)")
+      .not("situacao", "in", "(RESPONDIDO,FINALIZADO)")
+      .gte("external_appointments.concluded_at", windowStart)
+      .or(`last_electrolux_check_at.is.null,last_electrolux_check_at.lt.${throttleCutoff}`)
+      .order("last_electrolux_check_at", { ascending: true, nullsFirst: true })
+      .limit(RECONCILIATION_BATCH_LIMIT);
+
+    type ReconcileCandidate = {
+      id: string;
+      situacao: string;
+      last_electrolux_check_at: string | null;
+      external_appointments: { external_id: string; concluded_at: string | null } | { external_id: string; concluded_at: string | null }[];
+    };
+    const reconcileCandidates = (reconcileCandidatesRaw || []) as ReconcileCandidate[];
+    const basicAuth = "Basic " + btoa(`${ELECTROLUX_API_USER}:${ELECTROLUX_API_PASSWORD}`);
+
+    for (const candidate of reconcileCandidates) {
+      const ea = Array.isArray(candidate.external_appointments) ? candidate.external_appointments[0] : candidate.external_appointments;
+      if (!ea?.external_id) continue;
+      reconciliationChecked++;
+      const checkedAt = new Date().toISOString();
+
+      try {
+        const detailRes = await fetch(`${ELECTROLUX_API_URL}/api/dashboard/service-orders/${ea.external_id}`, {
+          headers: { Authorization: basicAuth },
+        });
+        if (!detailRes.ok) throw new Error(`HTTP ${detailRes.status}`);
+        const detail = (await detailRes.json()) as ElectroluxNpsDetail;
+        const parsed = parseNpsResponse(detail);
+
+        if (!parsed.responded) {
+          await supabase.from("nps_cases").update({ last_electrolux_check_at: checkedAt }).eq("id", candidate.id);
+          continue;
+        }
+
+        const keepsOwnOutcome = SITUACOES_COM_DESFECHO_PROPRIO.has(candidate.situacao);
+        const previousSituacao = candidate.situacao;
+        const patch: Record<string, unknown> = {
+          nps_score: parsed.score,
+          technician_nps_score: parsed.technicianScore,
+          response_comment: parsed.comment,
+          responded_at: parsed.respondedAt,
+          last_electrolux_check_at: checkedAt,
+          updated_at: checkedAt,
+        };
+        if (!keepsOwnOutcome) patch.situacao = "RESPONDIDO";
+
+        const { error: updateError } = await supabase.from("nps_cases").update(patch).eq("id", candidate.id);
+        if (updateError) throw new Error(updateError.message);
+
+        reconciliationResponded++;
+        await supabase.from("nps_case_history").insert({
+          nps_case_id: candidate.id,
+          action: keepsOwnOutcome ? "NPS_RESPOSTA_CAPTURADA" : "RESPONDIDO",
+          previous_data: { situacao: previousSituacao },
+          new_data: {
+            situacao: keepsOwnOutcome ? previousSituacao : "RESPONDIDO",
+            nps_score: parsed.score,
+            technician_nps_score: parsed.technicianScore,
+            responded_at: parsed.respondedAt,
+          },
+          changed_by: null,
+        });
+      } catch {
+        reconciliationFailed++;
+        // Falha de rede/HTTP com a Electrolux não pode travar o throttle --
+        // sem carimbar last_electrolux_check_at aqui, o próximo ciclo (15-30min)
+        // tenta de novo naturalmente por já estar no topo da ordenação.
+      }
+    }
+
     const hadUnexpectedFailure = failed > 0 || promoteFailed > 0;
     await supabase.from("integration_sync_runs").insert({
       origin: "ELECTROLUX_NPS",
@@ -231,7 +337,18 @@ Deno.serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ ok: true, processed, promoted, skipped, failed, promoteFailed, followUpWindowDays: FOLLOW_UP_WINDOW_DAYS }),
+      JSON.stringify({
+        ok: true,
+        processed,
+        promoted,
+        skipped,
+        failed,
+        promoteFailed,
+        followUpWindowDays: FOLLOW_UP_WINDOW_DAYS,
+        reconciliationChecked,
+        reconciliationResponded,
+        reconciliationFailed,
+      }),
       { headers: { "Content-Type": "application/json" } }
     );
   } catch (e) {
