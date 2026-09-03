@@ -476,7 +476,8 @@
       const num=h.service_orders?.os_number||'—';
       const ns=norm(h.new_status);
       if(!h.previous_status)return `Nova OS #${num} criada`;
-      if(ns==='AGUARDANDO APROVACAO')return `Orçamento enviado para cliente — OS #${num}`;
+      if(ns==='AGUARDANDO APROVACAO')return `Orçamento gerado — OS #${num}`;
+      if(norm(h.previous_status)==='AGUARDANDO APROVACAO'&&ns==='AGUARDANDO CONSERTO')return `Orçamento aprovado — OS #${num}`;
       if(ns==='EM CONSERTO'||ns==='AGUARDANDO CONSERTO')return `OS #${num} entrou em conserto`;
       if(ns==='PRONTO PARA ENTREGA')return `OS #${num} pronta para entrega`;
       if(ns==='FINALIZADA')return `OS #${num} marcada como concluída`;
