@@ -171,6 +171,15 @@
       // user-access-management-v0813.js (admin_update_user_access) --
       // reaproveitado aqui, nenhuma tabela nova.
       source('Lojas autorizadas',`user_store_access?user_id=eq.${me()}&active=eq.true&select=store_id`,[]),
+      // Achado do usuário em 2026-09-03: a permissão "agenda.view_all"
+      // ("Visualizar todas as agendas") já existia no catálogo e já
+      // tinha sido concedida por um GESTOR pra um técnico específico
+      // (via tela de permissões) -- mas nada nunca lia essa permissão,
+      // então o Dashboard continuava restringindo esse técnico à
+      // própria agenda mesmo com a permissão marcada. RLS de
+      // appointments/external_appointments já foi ampliada (migration
+      // 20260903040000) pra respeitar essa mesma permissão.
+      source('Permissão agenda.view_all',`user_permissions?user_id=eq.${me()}&permission_key=eq.agenda.view_all&allowed=eq.true&select=id&limit=1`,[]),
     ]);
     const by=Object.fromEntries(results.map(r=>[r.label,r]));
     // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
@@ -183,6 +192,7 @@
     const orders=safe(by['Ordens'].data), active=orders.filter(isOpen);
     const myStoreIds=new Set(safe(by['Lojas autorizadas'].data).map(r=>String(r.store_id)));
     const hasStoreRestriction=myStoreIds.size>0;
+    const hasAgendaViewAll=safe(by['Permissão agenda.view_all'].data).length>0;
     const storeAuthorized=storeId=>!hasStoreRestriction||myStoreIds.has(String(storeId));
     const ordersById=new Map(orders.map(o=>[String(o.id),o]));
     // Reaproveitado por Casos/Tarefas/Peças/Produtividade/Feed -- decide
@@ -491,7 +501,7 @@
     // não existe hoje nenhuma restrição adicional por loja pra
     // ATENDENTE em lugar nenhum deste arquivo, então não inventei uma
     // aqui -- reportado no fechamento).
-    let agendaSelectedTechId=role()==='TECNICO'?me():null;
+    let agendaSelectedTechId=(role()==='TECNICO'&&!hasAgendaViewAll)?me():null;
     function apptCard(a){
       const srcTag=a.source==='ELECTROLUX'?'<small class="vx-c-appt-src">Electrolux</small>':'';
       const partsHtml=a.partsLabel?`<span class="vx-c-appt-parts">🔧 ${E(a.partsLabel)}</span>`:'';
@@ -505,7 +515,7 @@
     // reaproveita o MESMO seletor de técnico que já existe aqui.
     function meAsFieldTech(){return techs.find(t=>String(t.id)===String(me())&&(norm(t.role)==='TECNICO'||t.external_schedule_enabled))}
     function agendaSectionHtml(techFilterId){
-      const isTecnico=role()==='TECNICO';
+      const isTecnico=role()==='TECNICO'&&!hasAgendaViewAll;
       const currentDays=buildAgendaDays(techFilterId);
       const idx=techFilterId?techs.findIndex(t=>String(t.id)===String(techFilterId)):-1;
       const title=isTecnico?'Minha Agenda':'Agenda dos Técnicos';
