@@ -85,6 +85,8 @@
 .vx-msg-out .vx-msg-tag-import{background:rgba(255,255,255,.2);color:#fff}
 .vx-msg-tag-bot{background:var(--cc-info-bg,#e9eff6);color:var(--cc-info-ink,#2f6bab)}
 .vx-msg-out .vx-msg-tag-bot{background:rgba(255,255,255,.2);color:#fff}
+.vx-msg-tag-attendant{background:var(--cc-info-bg,#e9eff6);color:var(--cc-info-ink,#2f6bab)}
+.vx-msg-out .vx-msg-tag-attendant{background:rgba(255,255,255,.2);color:#fff}
 .vx-msg-bubble-bot{border-left:3px solid var(--cc-info-ink,#2f6bab)}
 .vx-msg-out.vx-msg-row .vx-msg-bubble-bot{border-left:none;border-right:3px solid rgba(255,255,255,.5)}
 .vx-msg-deleted .vx-msg-bubble{opacity:.75;font-style:italic}

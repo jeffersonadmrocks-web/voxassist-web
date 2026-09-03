@@ -1627,10 +1627,16 @@
     const deletedLabel=isDeleted?'<span class="vx-msg-deleted-label">🗑 Apagada no WhatsApp — mantida aqui como registro</span>':'';
     const importTag=isImport?'<span class="vx-msg-tag vx-msg-tag-import">Histórico</span>':'';
     const botTag=isBot?'<span class="vx-msg-tag vx-msg-tag-bot">🤖 Robô</span>':'';
+    // Achado do usuário 2026-09-03: mensagem enviada por um atendente
+    // real não mostrava quem respondeu -- só o Robô tinha selo. O nome
+    // já vem carregado pelo mesmo embed usado na nota interna
+    // (profiles!chat_messages_sender_user_id_fkey), só faltava exibir.
+    const attendantName=(!isBot&&!isImport&&m.direction==='OUTBOUND'&&m.profiles?.full_name)?m.profiles.full_name:null;
+    const attendantTag=attendantName?`<span class="vx-msg-tag vx-msg-tag-attendant">👤 ${E(attendantName)}</span>`:'';
     const replyBtn=isDeleted?'':`<button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button>`;
     const isMedia=m.message_type&&m.message_type!=='TEXT'&&m.media_storage_path;
     const bodyHtml=isMedia?mediaBodyHtml(m):`<span>${E(m.body||'[sem texto]')}</span>`;
-    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}" data-msg-body="${E((m.body||'').toLowerCase())}"><div class="vx-msg-bubble${isBot?' vx-msg-bubble-bot':''}">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}${botTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}</div>`;
+    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}" data-msg-body="${E((m.body||'').toLowerCase())}"><div class="vx-msg-bubble${isBot?' vx-msg-bubble-bot':''}">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}${botTag}${attendantTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}</div>`;
   }
   function renderReplyBanner(){
     const el=document.getElementById('vxReplyBanner');
