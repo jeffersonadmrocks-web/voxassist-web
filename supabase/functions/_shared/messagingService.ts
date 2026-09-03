@@ -67,15 +67,18 @@ export function resolveInboundIdentity(input: InboundIdentityInput): InboundIden
   return { remoteJid: input.remoteJid, customerPhone, senderLid };
 }
 
-export type OutboundValidationInput = { body: string | null | undefined; connectionStatus: string };
+export type OutboundValidationInput = { body: string | null | undefined; connectionStatus: string; hasDocument?: boolean };
 export type OutboundValidationResult = { ok: true } | { ok: false; error: string };
 
 // Nunca deixa enviar mensagem vazia nem por uma conexão que não está
 // CONECTADO — o próprio schema já força status default DESCONECTADO em
 // toda conexão nova, então esta checagem é a segunda linha de defesa
-// (a primeira é o provider real recusar, quando existir).
+// (a primeira é o provider real recusar, quando existir). hasDocument
+// (achado do usuário 2026-09-03, envio de OS/orçamento em PDF): um
+// documento sem legenda é uma mensagem válida -- só texto puro vazio
+// que continua proibido.
 export function validateOutboundMessage(input: OutboundValidationInput): OutboundValidationResult {
-  if (!input.body || !input.body.trim()) return { ok: false, error: "Mensagem vazia." };
+  if (!input.hasDocument && (!input.body || !input.body.trim())) return { ok: false, error: "Mensagem vazia." };
   if (input.connectionStatus !== "CONECTADO") return { ok: false, error: "A conexão selecionada não está CONECTADO." };
   return { ok: true };
 }

@@ -75,6 +75,16 @@ Deno.test("validateOutboundMessage - corpo preenchido + CONECTADO é válido", (
   assertEquals(r.ok, true);
 });
 
+Deno.test("validateOutboundMessage - corpo vazio COM documento é válido (PDF sem legenda)", () => {
+  const r = validateOutboundMessage({ body: "", connectionStatus: "CONECTADO", hasDocument: true });
+  assertEquals(r.ok, true);
+});
+
+Deno.test("validateOutboundMessage - corpo vazio SEM documento continua inválido", () => {
+  const r = validateOutboundMessage({ body: "", connectionStatus: "CONECTADO", hasDocument: false });
+  assertEquals(r.ok, false);
+});
+
 Deno.test("decideConversationTarget - nenhuma conversa existente -> CREATE", () => {
   assertEquals(decideConversationTarget([]), { action: "CREATE" });
 });

@@ -21,6 +21,11 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GATEWAY_URL = Deno.env.get("CHAT_GATEWAY_URL");
 const GATEWAY_SERVICE_TOKEN = Deno.env.get("CHAT_GATEWAY_SERVICE_TOKEN");
 const TIMEOUT_MS = 15000;
+// Documento de saída (achado do usuário 2026-09-03: enviar O.S./
+// orçamento em PDF pro cliente). Mesmo teto usado pra mídia de ENTRADA
+// (MAX_INLINE_MEDIA_BYTES, gateway) -- um PDF de orçamento é sempre
+// pequeno (poucas páginas de texto), nunca precisa de mais que isso.
+const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
 
 type ConversationRow = {
   id: string;
@@ -74,6 +79,26 @@ Deno.serve(async (req) => {
       return respond({ ok: false, error: "missing_conversation_id" }, 400);
     }
 
+    // Documento de saída (achado do usuário 2026-09-03): mesmo padrão de
+    // validação de tipo/tamanho já usado pra mídia de entrada
+    // (chat-inbound-webhook) -- nunca confia no mimeType/tamanho
+    // declarado pelo frontend sem checar de novo aqui.
+    const docRaw = body?.document;
+    let documentPayload: { base64: string; mimeType: string; fileName: string } | null = null;
+    if (docRaw && typeof docRaw === "object") {
+      const base64 = typeof docRaw.base64 === "string" ? docRaw.base64 : "";
+      const mimeType = typeof docRaw.mimeType === "string" ? docRaw.mimeType : "";
+      const fileName = typeof docRaw.fileName === "string" && docRaw.fileName.trim() ? docRaw.fileName.trim() : "documento.pdf";
+      if (!base64 || mimeType !== "application/pdf") {
+        return respond({ ok: false, error: "invalid_document" }, 400);
+      }
+      const approxBytes = Math.floor((base64.length * 3) / 4);
+      if (approxBytes > MAX_DOCUMENT_BYTES) {
+        return respond({ ok: false, error: "document_too_large" }, 400);
+      }
+      documentPayload = { base64, mimeType, fileName };
+    }
+
     const { data: conversation } = await userClient
       .from("chat_conversations")
       .select("id, connection_id, customer_phone, remote_jid, chat_connections(status)")
@@ -104,7 +129,7 @@ Deno.serve(async (req) => {
     }
 
     const connectionStatus = conversation.chat_connections?.status ?? "DESCONECTADO";
-    const validation = validateOutboundMessage({ body: text, connectionStatus });
+    const validation = validateOutboundMessage({ body: text, connectionStatus, hasDocument: !!documentPayload });
     if (!validation.ok) {
       return respond({ ok: false, error: "invalid_message", message: validation.error }, 400);
     }
@@ -141,7 +166,7 @@ Deno.serve(async (req) => {
       const gatewayRes = await fetch(`${GATEWAY_URL}/connections/${conversation.connection_id}/send`, {
         method: "POST",
         headers: { Authorization: `Bearer ${GATEWAY_SERVICE_TOKEN}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ to, body: text }),
+        body: JSON.stringify({ to, body: text, document: documentPayload }),
         signal: controller.signal,
       });
       const data = await gatewayRes.json().catch(() => null);
@@ -159,16 +184,48 @@ Deno.serve(async (req) => {
     // nunca finge que mandou algo que o gateway rejeitou.
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     const { data: companyRow } = await admin.from("chat_conversations").select("company_id").eq("id", conversation.id).maybeSingle<{ company_id: string }>();
-    await admin.from("chat_messages").insert({
+    let messageInsert: Record<string, unknown> = {
       company_id: companyRow?.company_id,
       conversation_id: conversation.id,
       direction: "OUTBOUND",
       sender_user_id: user.id,
-      body: text,
+      body: text || null,
       external_message_id: gatewayResult.externalMessageId ?? null,
       status: "ENVIADA",
       reply_to_message_id: replyToMessageId,
-    });
+    };
+    if (documentPayload && companyRow?.company_id) {
+      // Salva o mesmo PDF já confirmado como enviado, no MESMO bucket
+      // privado já usado pra mídia recebida (chat-media, migration
+      // 20260901320000) -- só pro histórico mostrar o documento de
+      // verdade, nunca decide o envio real (isso já aconteceu acima).
+      try {
+        const bin = atob(documentPayload.base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const safeName = documentPayload.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const path = `${companyRow.company_id}/${conversation.id}/outbound-${Date.now()}-${safeName}`;
+        const { error: uploadError } = await admin.storage.from("chat-media").upload(path, bytes, {
+          contentType: documentPayload.mimeType,
+          upsert: false,
+        });
+        if (!uploadError) {
+          messageInsert = {
+            ...messageInsert,
+            message_type: "DOCUMENT",
+            media_status: "DISPONIVEL",
+            media_storage_path: path,
+            media_mime_type: documentPayload.mimeType,
+            media_size_bytes: bytes.length,
+          };
+        } else {
+          console.error("[chat-send-message] falha ao salvar cópia do documento enviado:", uploadError.message ?? uploadError);
+        }
+      } catch (e) {
+        console.error("[chat-send-message] erro ao processar documento enviado:", e instanceof Error ? e.message : e);
+      }
+    }
+    await admin.from("chat_messages").insert(messageInsert);
     // unread_count volta a 0 quando o atendente responde -- mesma
     // correção do achado real em chat-inbound-webhook (a coluna nunca
     // era incrementada nem resetada; o filtro "Não lidas" era cosmético).
