@@ -1,0 +1,124 @@
+/* VoxAssist — rodada visual consolidada 03/09/2026
+ * SOMENTE apresentação. Não altera regras, RLS, banco, gateway ou cálculos.
+ * Escopo: Central de Conversas, Conexões, Monitor e Dashboard.
+ */
+:root{
+  --vx-ui-navy:#0b365b;
+  --vx-ui-blue:#1767d9;
+  --vx-ui-bg:#f3f6fa;
+  --vx-ui-line:#d9e1eb;
+  --vx-ui-text:#172b3f;
+  --vx-ui-muted:#68798b;
+  --vx-ui-shadow:0 8px 24px rgba(16,48,78,.07);
+}
+
+/* CENTRAL DE CONVERSAS — mais área útil, hierarquia e contraste */
+.vx-cc-wrap{max-width:none!important;padding:12px 14px 10px!important;gap:9px!important;background:var(--vx-ui-bg)!important}
+.vx-cc-tabbar{max-width:none!important;padding:0!important}
+.vx-cc-top{background:#fff;border:1px solid var(--vx-ui-line);border-radius:14px;padding:9px 12px;box-shadow:0 2px 8px rgba(16,48,78,.04)}
+.vx-cc-title-block h1{font-size:20px!important;color:var(--vx-ui-navy)!important}
+.vx-cc-title-block p{font-size:11px!important}
+.vx-cc-top-actions{border:0!important;background:#f4f7fb!important;padding:3px!important}
+.vx-cc-settings-btn{padding:5px 9px!important;border-radius:9px!important}
+.vx-cc-settings-btn-ic{width:29px!important;height:29px!important}
+.vx-cc-board{grid-template-columns:minmax(290px,24%) minmax(500px,1fr) minmax(285px,23%)!important;gap:10px!important}
+.vx-cc-pane{border-color:var(--vx-ui-line)!important;border-radius:14px!important;box-shadow:var(--vx-ui-shadow)!important}
+.vx-cc-pane-head{padding:12px!important;background:linear-gradient(180deg,#fff,#fbfcfe)}
+.vx-cc-pane-head-row h2,.vx-cc-pane-head h2{color:var(--vx-ui-navy)!important}
+.vx-cc-search input,.vx-cc-filter-selects select{border-color:#ccd6e2!important;background:#f7f9fc!important}
+.vx-cc-chip{background:#fff!important;border-color:#d5dde7!important}
+.vx-cc-chip.active{background:var(--vx-ui-blue)!important;border-color:var(--vx-ui-blue)!important;color:#fff!important;box-shadow:0 2px 5px rgba(23,103,217,.18)}
+.vx-cc-row{padding:10px 9px!important;margin-bottom:2px;border-radius:10px!important}
+.vx-cc-row.active{background:#e8f0fb!important;border-left-color:var(--vx-ui-blue)!important}
+.vx-cc-avatar,.vx-cc-thread-avatar{background:var(--vx-ui-navy)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
+.vx-cc-thread-head{background:#fff;padding:11px 14px!important}
+.vx-cc-thread-toolbar{background:#fbfcfe!important;padding:7px 14px!important}
+.vx-cc-pane-thread .vx-msg-list{background:#f4f7fa!important;padding:18px!important}
+.vx-cc-pane-thread .vx-msg-bubble{border-radius:12px!important;box-shadow:0 1px 3px rgba(20,45,75,.08)!important}
+.vx-cc-pane-thread .vx-msg-out .vx-msg-bubble{background:#2469b2!important;border-color:#2469b2!important}
+.vx-cc-composer{background:#fff!important;padding:10px 12px!important}
+.vx-cc-composer input{background:#f7f9fc!important;border-color:#ccd6e2!important}
+.vx-cc-send-btn,.vx-cc-new-btn{background:var(--vx-ui-blue)!important;box-shadow:0 2px 6px rgba(23,103,217,.2)}
+.vx-cc-ctx-body{background:#fbfcfe!important;padding:11px!important}
+.vx-cc-ctx-card{border-color:#dbe3ed!important;box-shadow:0 1px 2px rgba(16,48,78,.03)}
+.vx-cc-ctx-card h3{color:var(--vx-ui-navy)!important}
+.vx-cc-statusbar{max-width:none!important;border-color:var(--vx-ui-line)!important;border-radius:10px!important;padding:7px 13px!important;background:#fff!important}
+
+/* CONEXÕES — vira painel de configuração, sem aparência de formulário solto */
+.vx-chatbeta.vx-chatbeta-wide{max-width:1180px!important;margin:0 auto!important;padding:18px 18px 38px!important;gap:14px!important}
+.vx-chatbeta-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:14px!important;background:linear-gradient(135deg,#0c3b63,#0a2d4b)!important;color:#fff!important;border-radius:16px!important;padding:16px 18px!important;box-shadow:0 8px 24px rgba(8,40,68,.16)}
+.vx-chatbeta-head h2{color:#fff!important;font-size:19px!important;margin:3px 0!important}
+.vx-chatbeta-head small{color:#c8d9e9!important}
+.vx-chatbeta-head button#conexoesBack,.vx-chatbeta-head button#importBack,.vx-chatbeta-head button#importPickBack{color:#fff!important;opacity:.9!important}
+.vx-chatbeta-head .vx-hours-badge{background:rgba(255,255,255,.12)!important;color:#fff!important;border:1px solid rgba(255,255,255,.14)}
+.vx-chatbeta-card{border-color:var(--vx-ui-line)!important;border-radius:14px!important;padding:17px!important;box-shadow:var(--vx-ui-shadow)!important}
+.vx-chatbeta-card h3{font-size:14px!important;color:var(--vx-ui-navy)!important}
+.vx-conn-new-form{align-items:center!important}
+.vx-conn-new-form input,.vx-conn-new-form select{height:42px!important;border-color:#ccd6e2!important;background:#f8fafc!important}
+.vx-conn-new-form button.primary{height:42px!important;border-radius:9px!important;padding:0 16px!important}
+.vx-conn-grid{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))!important;gap:14px!important}
+.vx-conn-card{border-color:#d5dee9!important;border-radius:14px!important;padding:16px!important;box-shadow:var(--vx-ui-shadow)!important;border-top:3px solid #b7c7d8!important}
+.vx-conn-card:has(.vx-conn-badge-ok){border-top-color:#2f8a56!important}
+.vx-conn-card:has(.vx-conn-badge-warn){border-top-color:#c28a19!important}
+.vx-conn-card:has(.vx-conn-badge-err){border-top-color:#b94a46!important}
+.vx-conn-card-head{padding-bottom:9px!important;border-bottom:1px solid #edf1f5!important}
+.vx-conn-card-head b{font-size:14px!important}
+.vx-conn-card-body{gap:0!important}
+.vx-conn-card-body div{padding:7px 0!important;border-bottom:1px solid #f0f3f6!important}
+.vx-conn-card-actions{padding-top:5px!important}
+.vx-conn-card-actions button{min-height:36px!important;border-radius:8px!important}
+.vx-conn-help{background:#eef5fb!important;border-color:#d2e1ef!important;border-radius:14px!important;padding:16px 18px!important}
+.vx-conn-help h4{font-size:13px!important}
+
+/* MONITOR — leitura executiva, KPIs fortes sem poluição */
+.vx-mon-wrap{max-width:1280px!important;padding:16px 18px 40px!important;gap:12px!important;background:var(--vx-ui-bg)!important}
+.vx-mon-head{background:#fff;border:1px solid var(--vx-ui-line);border-radius:14px;padding:12px 14px;box-shadow:0 2px 8px rgba(16,48,78,.04)}
+.vx-mon-head-title h1{font-size:20px!important;color:var(--vx-ui-navy)!important}
+.vx-mon-period-tabs{background:#f4f7fb;padding:3px;border-radius:9px}
+.vx-mon-period-tabs button{border-color:transparent!important;background:transparent!important}
+.vx-mon-period-tabs button.active{background:var(--vx-ui-blue)!important;color:#fff!important;box-shadow:0 2px 5px rgba(23,103,217,.18)}
+.vx-mon-metrics{gap:9px!important}
+.vx-mon-kpi{border-color:#d5dee9!important;border-top-width:3px!important;border-radius:12px!important;padding:12px!important;box-shadow:var(--vx-ui-shadow)!important}
+.vx-mon-kpi-ic{width:38px!important;height:38px!important;border-radius:10px!important}
+.vx-mon-kpi-body b{font-size:23px!important;color:var(--vx-ui-navy)!important}
+.vx-mon-card{border-color:#d5dee9!important;border-radius:14px!important;box-shadow:var(--vx-ui-shadow)!important}
+.vx-mon-card h3{color:var(--vx-ui-navy)!important}
+.vx-mon-card-alert{border-left:4px solid var(--cc-warn-ink)!important}
+.vx-mon-alert-list li{border:1px solid #efdba8!important}
+.vx-mon-table th{background:#f6f8fb!important;padding:8px!important}
+.vx-mon-table td{padding:9px 8px!important}
+
+/* DASHBOARD — menos cinza, cards mais definidos e leitura por blocos */
+.vx-canonical{background:var(--vx-ui-bg)!important;gap:13px!important;padding:14px 16px 24px!important}
+.vx-c-hero{border-radius:16px!important;padding:17px 20px!important;background:linear-gradient(125deg,#174d78 0%,#0a2f50 100%)!important;box-shadow:0 8px 24px rgba(5,25,43,.16)!important}
+.vx-c-kpirow{gap:10px!important}
+.vx-c-kpi{border-color:#d3dce7!important;border-radius:12px!important;padding:12px!important;box-shadow:var(--vx-ui-shadow)!important;border-top:3px solid #7fa2c4!important}
+.vx-c-kpi:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(8,40,68,.10)!important}
+.vx-c-grid-2>section,.vx-c-grid-3>section,.vx-c-gv-card,.vx-c-agenda5-card{border-color:#d3dce7!important;border-radius:14px!important;box-shadow:var(--vx-ui-shadow)!important}
+.vx-c-title{margin-bottom:11px!important;padding-bottom:9px!important;border-bottom-color:#e5eaf0!important}
+.vx-c-title h3{font-size:12px!important;color:#0b365b!important}
+.vx-c-cases-card{border-left:4px solid var(--vx-risk)!important;border-top-color:#efb4b1!important;background:#fff7f7!important}
+.vx-c-cases-row>div{border:1px solid #f0d7d5!important}
+.vx-c-opp-card{border-left:4px solid var(--vx-opp)!important}
+.vx-c-gv-card{border-left:4px solid var(--vx-info)!important}
+.vx-c-list-tasks{border-left:4px solid var(--vx-info)!important}
+.vx-c-list-parts{border-left:4px solid var(--vx-warn)!important}
+.vx-c-list-exception{border-left:4px solid var(--vx-risk)!important}
+.vx-c-feed-card{border-left:4px solid var(--vx-info)!important}
+.vx-c-prod-table-card{border-left:4px solid var(--vx-opp)!important}
+.vx-c-fin-card{border-left:4px solid var(--vx-ok)!important}
+.vx-c-agenda5-card{border-left:4px solid var(--vx-info)!important}
+.vx-c-fin-grid>div{background:#f8fafc!important;border-color:#dce4ed!important}
+.vx-c-gv-panel{background:#fbfcfe!important;border-color:#dce4ed!important}
+
+@media(max-width:1200px){
+  .vx-cc-board{grid-template-columns:280px minmax(430px,1fr)!important}
+  .vx-cc-pane-ctx{display:none!important}
+  .vx-mon-metrics{grid-template-columns:repeat(3,1fr)!important}
+}
+@media(max-width:780px){
+  .vx-cc-board{grid-template-columns:1fr!important}
+  .vx-cc-wrap{height:auto!important}
+  .vx-cc-top-actions{width:100%;overflow:auto}
+  .vx-mon-metrics{grid-template-columns:1fr!important}
+}
