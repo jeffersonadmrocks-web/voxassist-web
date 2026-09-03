@@ -147,7 +147,20 @@ Deno.serve(async (req) => {
     // JID original exato (com o domínio real, telefone ou LID) e é
     // sempre o destino usado; customer_phone só entra como fallback pra
     // conversas de antes desta correção que ainda não têm remote_jid.
-    const to = conversation.remote_jid || (conversation.customer_phone ? `${conversation.customer_phone}@s.whatsapp.net` : null);
+    //
+    // Achado do usuário em 2026-09-03: mandar DE VERDADE pra um JID
+    // @lid falha — confirmado no log do gateway, erro de ACK real do
+    // WhatsApp (código 463) numa mensagem que nunca chegou ao
+    // destinatário. LID serve pra RECEBER/identificar (não existe
+    // "confirmação de leitura" mais confiável que o telefone real pra
+    // enviar) -- quando já se sabe o telefone real por trás do LID
+    // (customer_phone, resolvido por resolveInboundIdentity a partir
+    // do senderPn do Baileys), envia pro telefone; só usa o @lid como
+    // destino quando não há telefone nenhum conhecido ainda.
+    const remoteIsLid = conversation.remote_jid?.endsWith("@lid") ?? false;
+    const to = (remoteIsLid && conversation.customer_phone)
+      ? `${conversation.customer_phone}@s.whatsapp.net`
+      : (conversation.remote_jid || (conversation.customer_phone ? `${conversation.customer_phone}@s.whatsapp.net` : null));
     if (!to) {
       return respond({ ok: false, error: "conversation_without_target" }, 400);
     }
