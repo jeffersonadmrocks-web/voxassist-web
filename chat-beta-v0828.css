@@ -364,6 +364,8 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
 .vx-msg-row:hover .vx-msg-reply-btn{opacity:1}
 .vx-msg-reply-btn{align-self:center;border:1px solid var(--cc-border);background:var(--cc-surface);color:var(--cc-ink-dim);width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:12px;opacity:0;transition:opacity .12s;margin:0 4px;flex:none}
 .vx-msg-reply-btn:hover{background:var(--cc-accent-soft);color:var(--cc-accent);opacity:1}
+.vx-msg-delete-btn:hover{background:var(--cc-warn-bg,#fdecec);color:#c0392b;opacity:1}
+.vx-msg-delete-btn:disabled{opacity:.4;cursor:default}
 .vx-msg-quote{display:block;border-left:3px solid var(--cc-accent);background:rgba(0,0,0,.05);border-radius:6px;padding:4px 8px;margin-bottom:5px;font-size:11.5px;line-height:1.3}
 .vx-msg-quote b{display:block;color:var(--cc-accent);font-size:10.5px}
 .vx-msg-out .vx-msg-quote{background:rgba(255,255,255,.14);border-left-color:rgba(255,255,255,.6)}

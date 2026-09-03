@@ -1578,7 +1578,7 @@
     // resolvendo reply_to no cliente: a mensagem citada sempre está
     // nesta mesma lista (mesma conversa, sem paginação), então um
     // lookup local id->linha substitui o embed sem depender dele.
-    const rows=await api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at,deleted_at,origin,sender_user_id,reply_to_message_id,message_type,media_status,media_storage_path,media_mime_type,media_size_bytes,profiles!chat_messages_sender_user_id_fkey(full_name)&order=created_at.asc`).catch(()=>[]);
+    const rows=await api(`chat_messages?conversation_id=eq.${conversationId}&select=id,direction,body,status,created_at,deleted_at,origin,sender_user_id,external_message_id,reply_to_message_id,message_type,media_status,media_storage_path,media_mime_type,media_size_bytes,profiles!chat_messages_sender_user_id_fkey(full_name)&order=created_at.asc`).catch(()=>[]);
     const byId=Object.fromEntries(rows.map(m=>[String(m.id),m]));
     rows.forEach(m=>{m.reply_to=m.reply_to_message_id?(byId[String(m.reply_to_message_id)]||null):null});
     return rows;
@@ -1634,9 +1634,17 @@
     const attendantName=(!isBot&&!isImport&&m.direction==='OUTBOUND'&&m.profiles?.full_name)?m.profiles.full_name:null;
     const attendantTag=attendantName?`<span class="vx-msg-tag vx-msg-tag-attendant">👤 ${E(attendantName)}</span>`:'';
     const replyBtn=isDeleted?'':`<button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button>`;
+    // Achado do usuário 2026-09-03: "apagar mensagem" tinha que revogar
+    // de verdade no WhatsApp ("apagar para todos"), nunca só esconder no
+    // VoxAssist -- e o texto continua registrado aqui mesmo depois
+    // (mesma exibição já usada pra mensagem apagada pelo cliente).
+    // Só mensagem realmente ENVIADA por nós (nunca do cliente, nunca
+    // nota interna/histórico importado) pode ser revogada.
+    const canDelete=!isDeleted&&!isImport&&m.origin!=='INTERNAL'&&m.direction==='OUTBOUND'&&!!m.external_message_id;
+    const deleteBtn=canDelete?`<button type="button" class="vx-msg-reply-btn vx-msg-delete-btn" data-delete-msg="${E(m.id)}" title="Apagar para todos (WhatsApp)">🗑</button>`:'';
     const isMedia=m.message_type&&m.message_type!=='TEXT'&&m.media_storage_path;
     const bodyHtml=isMedia?mediaBodyHtml(m):`<span>${E(m.body||'[sem texto]')}</span>`;
-    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}" data-msg-body="${E((m.body||'').toLowerCase())}"><div class="vx-msg-bubble${isBot?' vx-msg-bubble-bot':''}">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}${botTag}${attendantTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}</div>`;
+    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}" data-msg-body="${E((m.body||'').toLowerCase())}"><div class="vx-msg-bubble${isBot?' vx-msg-bubble-bot':''}">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}${botTag}${attendantTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}${deleteBtn}</div>`;
   }
   function renderReplyBanner(){
     const el=document.getElementById('vxReplyBanner');
@@ -1654,6 +1662,29 @@
     document.querySelector('#vxMsgForm input[name=body]')?.focus();
   }
 
+  // "Apagar para todos" (achado 2026-09-03) -- revoga de verdade no
+  // WhatsApp via chat-delete-message; o texto continua registrado aqui
+  // (nunca some do VoxAssist, mesma regra da mensagem apagada pelo
+  // cliente -- ver deletedLabel em mensagemRow).
+  async function deleteMensagemWhatsapp(messageId,btn){
+    if(!messageId)return;
+    if(!confirm('Apagar esta mensagem para todos no WhatsApp?\n\nO texto continua registrado aqui no VoxAssist, só deixa de aparecer no WhatsApp do cliente.'))return;
+    if(btn)btn.disabled=true;
+    try{
+      const res=await fetch(CFG.url+'/functions/v1/chat-delete-message',{
+        method:'POST',headers:authHeaders(),
+        body:JSON.stringify({messageId}),
+      });
+      const data=await res.json().catch(()=>null);
+      if(!res.ok||!data?.ok)throw new Error(data?.message||data?.error||'Falha ao apagar.');
+      toast?.('Mensagem apagada para todos no WhatsApp.');
+      await refreshMensagens();
+    }catch(err){
+      toast?.('Não foi possível apagar: '+err.message,'err');
+      if(btn)btn.disabled=false;
+    }
+  }
+
   async function refreshMensagens(){
     if(!conversaAtualId)return;
     const list=document.getElementById('vxMsgList');
@@ -1664,6 +1695,7 @@
     list.innerHTML=msgs.length?msgs.map(mensagemRow).join(''):'<p class="vx-chatbeta-sub">Nenhuma mensagem ainda.</p>';
     list.scrollTop=list.scrollHeight;
     list.querySelectorAll('[data-reply]').forEach(btn=>btn.onclick=()=>startReply(btn.dataset.reply));
+    list.querySelectorAll('[data-delete-msg]').forEach(btn=>btn.onclick=()=>deleteMensagemWhatsapp(btn.dataset.deleteMsg,btn));
     wireMediaElements(list);
     applyThreadSearchFilter();
     await refreshConvSummary(conversaAtualId);
