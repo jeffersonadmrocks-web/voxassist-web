@@ -157,7 +157,7 @@
       source('Tarefas','tasks?select=*&order=due_at.asc.nullslast&limit=200',state?.tasks||[]),
       source('Casos de atenção','dashboard_cases?select=*&order=created_at.desc&limit=200',[]),
       source('Destinatários de casos','dashboard_case_recipients?select=case_id,user_id,role',[]),
-      source('Agenda 5 dias',`appointments?select=*,service_orders(os_number,reported_defect,client_id,clients(neighborhood,city),equipments(product_type,brand,model))&appointment_date=gte.${isoDate(today)}&appointment_date=lte.${isoDate(agendaEnd)}&order=appointment_date.asc,period.asc,start_time.asc&limit=300`,[]),
+      source('Agenda 5 dias',`appointments?select=*,service_orders(os_number,reported_defect,order_type,client_id,clients(neighborhood,city),equipments(product_type,brand,model))&appointment_date=gte.${isoDate(today)}&appointment_date=lte.${isoDate(agendaEnd)}&order=appointment_date.asc,period.asc,start_time.asc&limit=300`,[]),
       // Achado do usuário em 2026-09-03: o card "Agenda dos Técnicos"
       // só lia a tabela nativa `appointments` -- com o volume real de
       // atendimento vindo hoje quase todo de external_appointments
@@ -387,7 +387,14 @@
           equipmentLabel:[eq.product_type,eq.brand,eq.model].filter(Boolean).join(' · ')||'Equipamento',
           modelKey,productType:eq.product_type||null,
           location:a.service_orders?.clients?.neighborhood||a.service_orders?.clients?.city||'',
-          defect:a.service_orders?.reported_defect||'',source:'NATIVO',
+          defect:a.service_orders?.reported_defect||'',
+          // Achado do usuário em 2026-09-03: tipo de atendimento
+          // (Garantia/Fora de Garantia/Seguradora/etc.) -- só existe
+          // pra OS nativa (service_orders.order_type); a agenda
+          // Electrolux não tem esse conceito na sincronização, nunca
+          // inventado aqui.
+          orderType:a.service_orders?.order_type||null,
+          source:'NATIVO',
         };
       }),
       ...safe(by['Agenda 5 dias Electrolux'].data).map(a=>{
@@ -525,8 +532,12 @@
     let agendaSelectedTechId=(role()==='TECNICO'&&!hasAgendaViewAll)?me():null;
     function apptCard(a){
       const srcTag=a.source==='ELECTROLUX'?'<small class="vx-c-appt-src">Electrolux</small>':'';
+      // Achado do usuário em 2026-09-03: tipo de atendimento (Garantia/
+      // Fora de Garantia/Seguradora/etc., service_orders.order_type) --
+      // só existe pra OS nativa, nunca inventado pra Electrolux.
+      const typeTag=a.orderType?`<small class="vx-c-appt-type">${E(a.orderType)}</small>`:'';
       const partsHtml=a.partsLabel?`<span class="vx-c-appt-parts">🔧 ${E(a.partsLabel)}</span>`:'';
-      return `<div class="vx-c-appt"><b>${E(a.equipmentLabel)}</b>${srcTag}<span>${E(a.location)}${a.location&&a.defect?' · ':''}${E(a.defect)}</span>${partsHtml}</div>`;
+      return `<div class="vx-c-appt"><b>${E(a.equipmentLabel)}</b>${srcTag}${typeTag}<span>${E(a.location)}${a.location&&a.defect?' · ':''}${E(a.defect)}</span>${partsHtml}</div>`;
     }
     // Achado do usuário 2026-09-03: promover alguém de TECNICO pra
     // GESTOR (ex.: acumula os dois papéis de verdade) fazia "Minha
