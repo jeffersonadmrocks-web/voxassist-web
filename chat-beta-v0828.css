@@ -377,7 +377,12 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
 /* ---------- Anexos (Fase 6) ---------- */
 .vx-msg-media{display:block;margin-bottom:4px}
 .vx-msg-media-image{position:relative;min-width:160px;min-height:100px}
-.vx-msg-media-image img{width:100%;max-width:260px;height:160px;max-height:260px;border-radius:8px;display:block;object-fit:cover;background:rgba(0,0,0,.06)}
+.vx-msg-media-image img{width:100%;max-width:260px;height:160px;max-height:260px;border-radius:8px;display:block;object-fit:cover;background:rgba(0,0,0,.06);cursor:zoom-in}
+/* Achado do usuário 2026-09-03: miniatura sem jeito de ampliar. */
+.vx-img-lightbox{position:fixed;inset:0;background:rgba(6,14,24,.88);z-index:20010;display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out}
+.vx-img-lightbox img{max-width:min(92vw,900px);max-height:90vh;object-fit:contain;border-radius:6px;box-shadow:0 20px 60px rgba(0,0,0,.5);cursor:default}
+.vx-img-lightbox-close{position:absolute;top:16px;right:20px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;width:36px;height:36px;border-radius:50%;font-size:16px;cursor:pointer;line-height:1}
+.vx-img-lightbox-close:hover{background:rgba(255,255,255,.22)}
 .vx-msg-media-fallback{display:block;font-size:11.5px;opacity:.7;padding:6px 0}
 .vx-msg-media-audio audio,.vx-msg-media-video video{max-width:260px}
 .vx-msg-media-video video{border-radius:8px}

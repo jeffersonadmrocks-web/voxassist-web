@@ -249,12 +249,25 @@
     }
     return'';
   }
+  // Achado do usuário 2026-09-03: imagem recebida só aparecia em
+  // miniatura fixa (260x260, object-fit:cover) -- sem jeito de ampliar
+  // pra ver de verdade. Clique abre a mesma imagem já baixada (mesmo
+  // blob URL, sem novo download) em tela cheia.
+  function openImageLightbox(url){
+    document.querySelector('.vx-img-lightbox')?.remove();
+    const bg=document.createElement('div');
+    bg.className='vx-img-lightbox';
+    bg.innerHTML=`<img src="${E(url)}" alt="Imagem ampliada"><button type="button" class="vx-img-lightbox-close" aria-label="Fechar">✕</button>`;
+    bg.addEventListener('click',e=>{if(e.target===bg||e.target.closest('.vx-img-lightbox-close'))bg.remove();});
+    document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){bg.remove();document.removeEventListener('keydown',esc)}});
+    document.body.appendChild(bg);
+  }
   function wireMediaElements(container){
     container.querySelectorAll('.vx-msg-media-image, .vx-msg-media-audio, .vx-msg-media-video').forEach(el=>{
       const path=el.dataset.mediaPath;
       if(!path)return;
       downloadChatMediaBlobUrl(path).then(url=>{
-        if(el.classList.contains('vx-msg-media-image')){const img=el.querySelector('img');if(img)img.src=url;el.querySelector('.vx-msg-media-fallback')?.remove()}
+        if(el.classList.contains('vx-msg-media-image')){const img=el.querySelector('img');if(img){img.src=url;img.onclick=()=>openImageLightbox(url)}el.querySelector('.vx-msg-media-fallback')?.remove()}
         else if(el.classList.contains('vx-msg-media-audio')){const a=el.querySelector('audio');if(a)a.src=url}
         else if(el.classList.contains('vx-msg-media-video')){const v=el.querySelector('video');if(v)v.src=url}
       }).catch(()=>{el.innerHTML='<span class="vx-msg-media-error">Falha ao carregar anexo</span>'});
