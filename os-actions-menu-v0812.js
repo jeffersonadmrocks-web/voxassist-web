@@ -20,7 +20,7 @@
       const connRows=await api('chat_connections?status=eq.CONECTADO&select=id&limit=1').catch(()=>[]);
       const connectionId=connRows?.[0]?.id;
       if(!connectionId){window.toast?.('Nenhuma conexão de WhatsApp conectada no momento.','err');return}
-      const conversationId=await window.vxFindOrCreateConversation(connectionId,phone,o?.clients?.name||null);
+      const conversationId=await window.vxFindOrCreateConversation(connectionId,phone,o?.clients?.name||null,o?.id||null);
       if(!conversationId){window.toast?.('Não foi possível abrir a conversa com o cliente.','err');return}
       await window.vxOpenChatWithDraft(conversationId,'');
     }catch(e){

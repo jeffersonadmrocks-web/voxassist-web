@@ -1562,12 +1562,24 @@
   // Achado do usuário 2026-09-03: extraído de handleNovaConversa (abaixo)
   // pra virar o único ponto de "encontrar ou abrir uma conversa" reusável
   // por outras telas (ex. envio de NPS Electrolux via chat integrado,
-  // electrolux-nps-v0826.js) -- nunca duplicar esta regra em paralelo.
-  // phone já deve vir normalizado (normalizePhoneFull).
-  async function findOrCreateConversation(connectionId,phone,name){
-    const existing=await api(`chat_conversations?connection_id=eq.${connectionId}&customer_phone=eq.${phone}&status=in.(ABERTA,EM_ATENDIMENTO,AGUARDANDO_CLIENTE)&select=id&limit=1`).catch(()=>[]);
-    if(existing&&existing.length)return existing[0].id;
-    const created=await api('chat_conversations',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({company_id:state.profile.active_company_id,connection_id:connectionId,customer_phone:phone,customer_name:name||null,status:'ABERTA',assigned_user_id:myUserId()})});
+  // electrolux-nps-v0826.js; botão "Chat com o cliente" dentro da O.S.,
+  // os-actions-menu-v0812.js). phone já deve vir normalizado
+  // (normalizePhoneFull). serviceOrderId é opcional (só o botão da O.S.
+  // manda) -- achado do usuário em 2026-09-03: abrir o chat a partir de
+  // uma O.S. não vinculava a conversa a ela ("ORDEM DE SERVIÇO" no
+  // Contexto ficava "Nenhuma OS vinculada"). Só PREENCHE quando a
+  // conversa ainda não tem OS nenhuma vinculada -- nunca troca um
+  // vínculo já existente por outro.
+  async function findOrCreateConversation(connectionId,phone,name,serviceOrderId){
+    const existing=await api(`chat_conversations?connection_id=eq.${connectionId}&customer_phone=eq.${phone}&status=in.(ABERTA,EM_ATENDIMENTO,AGUARDANDO_CLIENTE)&select=id,service_order_id&limit=1`).catch(()=>[]);
+    if(existing&&existing.length){
+      const conv=existing[0];
+      if(serviceOrderId&&!conv.service_order_id){
+        await api(`chat_conversations?id=eq.${conv.id}`,{method:'PATCH',body:JSON.stringify({service_order_id:serviceOrderId})}).catch(()=>{});
+      }
+      return conv.id;
+    }
+    const created=await api('chat_conversations',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({company_id:state.profile.active_company_id,connection_id:connectionId,customer_phone:phone,customer_name:name||null,service_order_id:serviceOrderId||null,status:'ABERTA',assigned_user_id:myUserId()})});
     return created?.[0]?.id||null;
   }
   window.vxFindOrCreateConversation=findOrCreateConversation;
