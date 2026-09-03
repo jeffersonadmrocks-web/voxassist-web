@@ -6,7 +6,6 @@
    abaixo), nunca do Supabase operacional do VoxAssist. */
 (function(){
   const VIEW='electrolux';
-  const CONFIG_KEY='voxassist_electrolux_api_url';
   const VIEW_MODE_KEY='voxassist_electrolux_view_mode';
   const SOURCE_REPO='https://github.com/jeffersonadmrocks-web/electrolux-voxanalytics';
   const POLL_MS=15000;
@@ -84,7 +83,14 @@
     screen:'home',activeGroupKey:null,staleFilter:false,agingFilter:null,homeFilter:null,
     viewMode:localStorage.getItem(VIEW_MODE_KEY)||'kanban',
     search:'',dateFilter:'all',statusFilter:new Set(),orderTypeFilter:new Set(),
-    syncing:false,lastSyncAt:null,loading:false,pollTimer:null};
+    syncing:false,lastSyncAt:null,loading:false,pollTimer:null,
+    // Achado do usuário 2026-09-03: endereço do painel Electrolux (Vox
+    // Analytics) era config por NAVEGADOR (localStorage) -- todo
+    // dispositivo novo pedia pra configurar de novo, mesmo endereço
+    // pra empresa toda. Agora vem de electrolux_panel_settings
+    // (migration 20260903030000), uma linha por empresa, visível pra
+    // todo mundo, editável só por GESTOR.
+    apiUrl:null,apiUrlLoaded:false};
 
   /* Filtro ativado pelos 5 cards de resumo do hub — fica na tela inicial (não navega pro
      board) e recalcula a contagem dos 9 cards de menu abaixo. */
@@ -103,7 +109,29 @@
     return {};
   }
 
-  function apiBase(){return (localStorage.getItem(CONFIG_KEY)||'').trim().replace(/\/+$/,'');}
+  function apiBase(){return (elx.apiUrl||'').trim().replace(/\/+$/,'');}
+  async function loadApiUrlSetting(){
+    try{
+      const rows=await api('electrolux_panel_settings?select=api_url&limit=1');
+      elx.apiUrl=rows?.[0]?.api_url||'';
+    }catch{
+      elx.apiUrl='';
+    }
+    elx.apiUrlLoaded=true;
+  }
+  async function saveApiUrlSetting(value){
+    const companyId=state.profile.active_company_id;
+    const existing=await api(`electrolux_panel_settings?company_id=eq.${companyId}&select=company_id&limit=1`).catch(()=>[]);
+    const body=JSON.stringify({company_id:companyId,api_url:value,updated_at:new Date().toISOString(),updated_by:state.session?.user?.id||null});
+    if(existing?.length)await api(`electrolux_panel_settings?company_id=eq.${companyId}`,{method:'PATCH',body});
+    else await api('electrolux_panel_settings',{method:'POST',body});
+    elx.apiUrl=value;
+  }
+  async function clearApiUrlSetting(){
+    const companyId=state.profile.active_company_id;
+    await api(`electrolux_panel_settings?company_id=eq.${companyId}`,{method:'DELETE'});
+    elx.apiUrl='';
+  }
   async function getJson(path){
     const base=apiBase(); if(!base) throw new Error('Configure o endereço da API do Electrolux abaixo.');
     let r;
@@ -437,10 +465,17 @@
     elx.pollTimer=setInterval(()=>{if(state.view!==VIEW){stopPoll();return;}refresh();},POLL_MS);
   }
 
+  // Achado do usuário 2026-09-03: só GESTOR pode configurar (RLS de
+  // electrolux_panel_settings já bloqueia escrita pra outros perfis --
+  // esconder o formulário pra eles é só clareza de UI, não a proteção
+  // real, que já está no banco).
   function apiConfigBlock(){
     const base=apiBase();
+    if(String(state?.profile?.role||'').toUpperCase()!=='GESTOR'){
+      return `<div class="vx-elx-config"><span>API Electrolux:</span><span style="color:#516375">${base?esc(base):'Nenhum endereço configurado ainda -- peça a um Gestor pra configurar.'}</span><a href="${SOURCE_REPO}" target="_blank" rel="noopener" style="margin-left:auto;color:#174f86;font-size:10.5px">Projeto no GitHub ↗</a></div>`;
+    }
     return `<div class="vx-elx-config">
-      <span>API Electrolux:</span>
+      <span>API Electrolux (empresa toda):</span>
       <input type="url" id="vxElxApiInput" placeholder="https://endereco-do-backend-electrolux" value="${esc(base)}">
       <button id="vxElxApiSave">Salvar</button>
       ${base?`<button class="secondary" id="vxElxApiClear">Remover</button>`:''}
@@ -448,14 +483,23 @@
     </div>`;
   }
   function bindApiConfig(){
-    document.getElementById('vxElxApiInput').onclick=e=>e.stopPropagation();
-    document.getElementById('vxElxApiSave').onclick=()=>{
-      const input=document.getElementById('vxElxApiInput');const value=(input.value||'').trim().replace(/\/+$/,'');
+    const input=document.getElementById('vxElxApiInput');
+    if(!input)return; // não-GESTOR: bloco é só leitura, nada pra ligar
+    input.onclick=e=>e.stopPropagation();
+    document.getElementById('vxElxApiSave').onclick=async()=>{
+      const value=(input.value||'').trim().replace(/\/+$/,'');
       if(!/^https?:\/\//.test(value)){toast?.('Informe um endereço http(s) válido.','err');return;}
-      localStorage.setItem(CONFIG_KEY,value);toast?.('Endereço salvo.');elx.orders=[];elx.error=null;renderHome();refresh();startPoll();
+      try{
+        await saveApiUrlSetting(value);
+        toast?.('Endereço salvo -- vale pra empresa toda, em qualquer dispositivo.');
+        elx.orders=[];elx.error=null;renderHome();refresh();startPoll();
+      }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');}
     };
     const clearBtn=document.getElementById('vxElxApiClear');
-    if(clearBtn)clearBtn.onclick=()=>{localStorage.removeItem(CONFIG_KEY);stopPoll();elx.orders=[];renderHome();};
+    if(clearBtn)clearBtn.onclick=async()=>{
+      try{await clearApiUrlSetting();stopPoll();elx.orders=[];renderHome();}
+      catch(err){toast?.('Não foi possível remover: '+err.message,'err');}
+    };
   }
 
   /* ---------- Card de entrada do NPS Electrolux ----------
@@ -812,12 +856,17 @@
     if(!elx.orders.length && !elx.loading && apiBase()){refresh();}
   }
 
-  function renderPage(){
+  async function renderPage(){
     installStyle();ensureNav();
     try{state.view=VIEW;if(typeof addTab==='function')addTab(VIEW,'Electrolux');}catch(_e){}
     const title=document.querySelector('#title');if(title)title.textContent='Electrolux';
     document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view===VIEW));
     try{if(typeof renderTabs==='function')renderTabs('Electrolux');}catch(_e){}
+    // Achado do usuário 2026-09-03: endereço vem do banco agora (config
+    // do sistema, não do navegador) -- carrega antes do primeiro render
+    // pra não piscar "configure abaixo" indevidamente pra quem já tem
+    // endereço salvo por outro dispositivo/usuário.
+    await loadApiUrlSetting();
     renderHome();
     if(apiBase()){startPoll();}
   }
