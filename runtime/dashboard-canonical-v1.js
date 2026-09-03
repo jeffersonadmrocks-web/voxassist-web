@@ -42,7 +42,14 @@
   const age=o=>Math.max(0,Math.floor((Date.now()-new Date(o.updated_at||o.opened_at||Date.now()).getTime())/86400000));
   const isOpen=o=>!['FINALIZADA','CANCELADA'].includes(norm(o.status));
   const safe=x=>Array.isArray(x)?x:[];
-  const scope=rows=>role()==='TECNICO'?rows.filter(o=>o.technician_id===me()):role()==='ATENDENTE'?rows.filter(o=>o.attendant_id===me()||!o.attendant_id):rows;
+  // Achado do usuário em 2026-09-02: ATENDENTE via um número diferente
+  // de GESTOR pro mesmo KPI (ex.: "OS Ativas") -- a empresa é a mesma,
+  // o número deveria ser o mesmo. Confirmado com o usuário: os
+  // indicadores do Dashboard são da empresa inteira pra todo mundo,
+  // sem escopo por atendente -- só a Agenda (tela própria, já filtrada
+  // por técnico) e o TÉCNICO continuam vendo só o que é deles, pra não
+  // confundir quem só deveria agir no que é seu.
+  const scope=rows=>role()==='TECNICO'?rows.filter(o=>o.technician_id===me()):rows;
   const budget=f=>Math.max(0,Number(f?.labor_value||0)+Number(f?.freight_value||0)+Number(f?.auxiliary_material_value||0)+Number(f?.technical_report_value||0)-Number(f?.discount_value||0));
   const startOfMonth=d=>new Date(d.getFullYear(),d.getMonth(),1);
   const withTimeout=(promise,ms,label)=>Promise.race([promise,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+' excedeu '+ms+'ms')),ms))]);
@@ -149,34 +156,83 @@
       source('Peças','parts_requests?select=*&order=created_at.desc&limit=200',[]),
       source('Financeiro','os_financial?select=*&limit=1000',[]),
       source('Pagamentos','payments?select=*&order=paid_at.desc.nullslast&limit=1500',[]),
-      source('Técnicos','profiles?select=id,full_name,role&active=eq.true&order=full_name',[]),
-      source('Histórico de status',`os_status_history?select=*,service_orders(os_number)&changed_at=gte.${isoDate(prevMonth0)}&order=changed_at.desc&limit=400`,[])
+      source('Técnicos','profiles?select=id,full_name,role,store_id&active=eq.true&order=full_name',[]),
+      source('Histórico de status',`os_status_history?select=*,service_orders(os_number,store_id,technician_id)&changed_at=gte.${isoDate(prevMonth0)}&order=changed_at.desc&limit=400`,[]),
+      // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
+      // "lojas autorizadas" é o mecanismo real já usado em
+      // user-access-management-v0813.js (admin_update_user_access) --
+      // reaproveitado aqui, nenhuma tabela nova.
+      source('Lojas autorizadas',`user_store_access?user_id=eq.${me()}&active=eq.true&select=store_id`,[]),
     ]);
     const by=Object.fromEntries(results.map(r=>[r.label,r]));
-    const orders=scope(safe(by['Ordens'].data)), active=orders.filter(isOpen);
+    // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
+    // os indicadores gerais (linha de KPIs do topo) são da EMPRESA
+    // SELECIONADA inteira pra qualquer perfil -- RLS já garante o
+    // limite de empresa (current_company_id()), sem escopo adicional
+    // por usuário aqui. O que muda por perfil é o resto dos cards
+    // (Casos/Tarefas/Peças/Produtividade/etc.), tratado card a card
+    // mais abaixo -- nunca este "active" usado no topo.
+    const orders=safe(by['Ordens'].data), active=orders.filter(isOpen);
+    const myStoreIds=new Set(safe(by['Lojas autorizadas'].data).map(r=>String(r.store_id)));
+    const hasStoreRestriction=myStoreIds.size>0;
+    const storeAuthorized=storeId=>!hasStoreRestriction||myStoreIds.has(String(storeId));
+    const ordersById=new Map(orders.map(o=>[String(o.id),o]));
+    // Reaproveitado por Casos/Tarefas/Peças/Produtividade/Feed -- decide
+    // se UM registro (de qualquer tabela) é visível pro perfil atual,
+    // dado o technician_id/store_id do próprio registro OU, quando
+    // ausente, resolvido pela OS vinculada (service_order_id).
+    function roleVisible(technicianId,storeId,linkedOrderId){
+      if(!technicianId&&!storeId&&linkedOrderId){
+        const linked=ordersById.get(String(linkedOrderId));
+        technicianId=linked?.technician_id;storeId=linked?.store_id;
+      }
+      if(role()==='TECNICO')return String(technicianId)===String(me());
+      return storeAuthorized(storeId);
+    }
     const analysis=active.filter(o=>norm(o.status)==='AGUARDANDO ANALISE');
     const approval=active.filter(o=>norm(o.status)==='AGUARDANDO APROVACAO');
     const repair=active.filter(o=>['AGUARDANDO CONSERTO','EM CONSERTO'].includes(norm(o.status)));
     const ready=active.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA');
     const overdueAnalysis=analysis.filter(o=>age(o)>3), overdueApproval=approval.filter(o=>age(o)>3), overdueRepair=repair.filter(o=>age(o)>7);
     const readyOverdue7=ready.filter(o=>age(o)>7), readyOverdue3=ready.filter(o=>age(o)>3);
+    // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
+    // "active"/"analysis"/"approval"/"ready"/"repair" acima alimentam a
+    // linha de KPIs do topo (empresa toda, sempre) -- Oportunidades do
+    // Dia e Gestão por Exceção usam a MESMA lista de status, mas
+    // escopada por perfil (lojas autorizadas/próprias). Subconjunto
+    // derivado de "active", nunca uma consulta nova.
+    const oppScope=roleVisible?active.filter(o=>roleVisible(o.technician_id,o.store_id,null)):active;
+    const oppApproval=oppScope.filter(o=>norm(o.status)==='AGUARDANDO APROVACAO');
+    const oppReady=oppScope.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA');
+    const oppAnalysis=oppScope.filter(o=>norm(o.status)==='AGUARDANDO ANALISE');
+    const oppRepair=oppScope.filter(o=>['AGUARDANDO CONSERTO','EM CONSERTO'].includes(norm(o.status)));
+    const oppReadyOverdue3=oppReady.filter(o=>age(o)>3), oppOverdueRepair=oppRepair.filter(o=>age(o)>7);
     const noTech=active.filter(o=>!o.technician_id), urgent=active.filter(o=>norm(o.priority).includes('URG'));
-    const tasks=safe(by['Tarefas'].data).filter(t=>!['CONCLUIDO','CANCELADO'].includes(norm(t.status)));
-    // Achado do usuário em 2026-09-02: caso de atenção precisa poder
-    // ser direcionado (uma ou mais pessoas, ou um grupo/papel) e só
-    // aparecer no Dashboard de quem foi selecionado -- antes todo caso
-    // aparecia pra empresa toda, sempre. Sem nenhum destinatário
-    // marcado continua visível pra empresa toda (não quebra casos
-    // antigos). GESTOR sempre vê tudo, igual ao resto do app.
+    // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
+    // "Minhas Tarefas" nunca filtrava por dono nenhum -- qualquer
+    // perfil via as tarefas de todo mundo. Matriz pede "somente dele/
+    // própria" pros 3 perfis, sem exceção nenhuma (nem GESTOR).
+    const tasks=safe(by['Tarefas'].data).filter(t=>!['CONCLUIDO','CANCELADO'].includes(norm(t.status))&&String(t.assigned_to)===String(me()));
+    // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
+    // caso de atenção é "dele, compartilhado com ele ou encaminhado pra
+    // ele" pra QUALQUER perfil agora, inclusive GESTOR -- antes GESTOR
+    // via tudo sem restrição nenhuma. A matriz não abre exceção pra
+    // caso "solto" (sem criador/atribuído/destinatário nenhum) -- regra
+    // aplicada estrita e igual pros 3 perfis; TECNICO ganha só o
+    // critério a mais de "relacionado à OS atribuída a ele".
     const caseRecipients=safe(by['Destinatários de casos'].data);
     const recipientsByCase=new Map();
     caseRecipients.forEach(r=>{if(!recipientsByCase.has(r.case_id))recipientsByCase.set(r.case_id,[]);recipientsByCase.get(r.case_id).push(r)});
     const myRole=role(),myId=me();
     function caseVisibleToMe(c){
-      if(myRole==='GESTOR')return true;
+      if(String(c.created_by)===String(myId))return true;
+      if(String(c.assigned_to)===String(myId))return true;
       const recipients=recipientsByCase.get(c.id);
-      if(!recipients||!recipients.length)return true;
-      return recipients.some(r=>(r.user_id&&String(r.user_id)===String(myId))||(r.role&&r.role===myRole));
+      if(recipients&&recipients.length){
+        return recipients.some(r=>(r.user_id&&String(r.user_id)===String(myId))||(r.role&&r.role===myRole));
+      }
+      const linked=c.service_order_id?ordersById.get(String(c.service_order_id)):null;
+      return !!linked&&String(linked.technician_id)===String(myId);
     }
     const casesAll=safe(by['Casos de atenção'].data).filter(caseVisibleToMe);
     const casesAbertos=casesAll.filter(c=>!['RESOLVIDO','CANCELADO'].includes(norm(c.status)));
@@ -194,7 +250,17 @@
     // confirmado pelo usuário em 2026-09-01 (mesma situação de Casos
     // de Atenção: sem CHECK constraint no schema, mas confirmado como
     // o vocabulário real esperado, não suposição a partir da imagem).
-    const partsAll=safe(by['Peças'].data);
+    // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
+    // Pedidos de Peças era visível por igual pra todo mundo -- matriz
+    // pede "lojas autorizadas" (ATENDENTE/GESTOR) ou "próprios/
+    // relacionados à OS atribuída" (TECNICO). requested_by/assigned_to
+    // direto no pedido conta como "próprio" antes de cair pro
+    // técnico/loja da OS vinculada.
+    function partVisible(p){
+      if(String(p.requested_by)===String(me())||String(p.assigned_to)===String(me()))return true;
+      return roleVisible(null,null,p.service_order_id);
+    }
+    const partsAll=safe(by['Peças'].data).filter(partVisible);
     const partsPendentes=partsAll.filter(p=>['PENDENTE','SOLICITADO'].includes(norm(p.status)));
     const partsCompra=partsAll.filter(p=>norm(p.status).includes('COMPRA'));
     const partsEntrega=partsAll.filter(p=>norm(p.status).includes('ENTREGA'));
@@ -247,15 +313,16 @@
     const techs=safe(by['Técnicos'].data).filter(t=>norm(t.role)==='TECNICO');
     const history=safe(by['Histórico de status'].data);
 
-    // clientes com mais de 1 OS ativa
+    // clientes com mais de 1 OS ativa -- usa oppScope (Oportunidades/
+    // Gestão por Exceção, escopado por perfil), não o "active" do topo.
     const byClient=new Map();
-    active.forEach(o=>{if(!o.client_id)return;byClient.set(o.client_id,(byClient.get(o.client_id)||0)+1)});
+    oppScope.forEach(o=>{if(!o.client_id)return;byClient.set(o.client_id,(byClient.get(o.client_id)||0)+1)});
     const repeatClients=[...byClient.values()].filter(n=>n>1).length;
-    const repeatClientOrders=active.filter(o=>o.client_id&&byClient.get(o.client_id)>1);
+    const repeatClientOrders=oppScope.filter(o=>o.client_id&&byClient.get(o.client_id)>1);
 
     // retiradas previstas pra hoje = compromisso de hoje numa OS já pronta
     const agenda=safe(by['Agenda 5 dias'].data);
-    const readyIds=new Set(ready.map(o=>o.id));
+    const readyIds=new Set(oppReady.map(o=>o.id));
     const retiradasHoje=agenda.filter(a=>a.appointment_date===isoDate(today)&&readyIds.has(a.service_order_id)).length;
 
     // Orçamentos/Entregues do mês, via os_status_history (data real da
@@ -295,7 +362,13 @@
     // drill-down -- "2 OS" era só texto estático, sem como ver quais
     // eram. Corrigido do mesmo jeito: cada célula clicável abre o
     // modal real com as OS por trás do número.
-    const prodRows=techs.map(t=>{
+    // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
+    // Produtividade era visível igual pra todo mundo -- TECNICO deve
+    // ver só a própria linha; ATENDENTE/GESTOR só técnicos das lojas
+    // autorizadas (profiles.store_id, mesmo campo usado em
+    // admin_update_user_access).
+    const prodTechs=role()==='TECNICO'?techs.filter(t=>String(t.id)===String(me())):techs.filter(t=>storeAuthorized(t.store_id));
+    const prodRows=prodTechs.map(t=>{
       const mine=orders.filter(o=>o.technician_id===t.id);
       const readyRowsMine=mine.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA');
       const finalMine=mine.filter(o=>norm(o.status)==='FINALIZADA');
@@ -317,7 +390,12 @@
       if(ns==='FINALIZADA')return `OS #${num} marcada como concluída`;
       return `OS #${num}: ${E(norm(h.previous_status))} → ${E(ns)}`;
     }
-    const feed=history.slice(0,8);
+    // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
+    // Feed em Tempo Real era visível igual pra todo mundo -- escopado
+    // pelo técnico/loja da OS vinculada (join já traz technician_id/
+    // store_id em service_orders).
+    const historyScoped=history.filter(h=>roleVisible(h.service_orders?.technician_id,h.service_orders?.store_id,null));
+    const feed=historyScoped.slice(0,8);
 
     // Agenda -- próximos 5 dias, agrupado por dia/período, com
     // detecção de aparelhos repetidos (mesmo modelo, ou mesma região).
@@ -423,7 +501,7 @@
       wireAgendaCard();
     }
 
-    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,...gvDrills,...prodDrills};
+    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,oppApproval,oppReady,oppOverdueRepair,oppOverdueApproval:oppApproval.filter(o=>age(o)>3),oppReadyOverdue3,...gvDrills,...prodDrills};
     const partsDrills={partsAll,partsPendentes,partsCompra,partsEntrega,partsAtrasadas,partsRecebidasHoje};
     const tasksDrills={tasks};
     const caseDrills={casesAbertos,casesNovos,casesAndamento,casesResolvidos};
@@ -470,24 +548,24 @@
         </section>
         <section class="vx-c-opp-card"><div class="vx-c-title"><h3>◎ Oportunidades do Dia</h3><a href="#" data-drill="ready" data-title="Oportunidades do Dia">Ver todas</a></div>
           ${oppRow('Retiradas previstas para hoje',retiradasHoje)}
-          ${oppRow('Orçamentos sem resposta',approval.length)}
-          ${oppRow('Aparelhos prontos para retirada',ready.length)}
-          ${oppRow('Prazos críticos próximos',analysis.filter(o=>age(o)===2).length+approval.filter(o=>age(o)===2).length+repair.filter(o=>age(o)===6).length)}
+          ${oppRow('Orçamentos sem resposta',oppApproval.length)}
+          ${oppRow('Aparelhos prontos para retirada',oppReady.length)}
+          ${oppRow('Prazos críticos próximos',oppAnalysis.filter(o=>age(o)===2).length+oppApproval.filter(o=>age(o)===2).length+oppRepair.filter(o=>age(o)===6).length)}
           ${oppRow('Clientes com mais de 1 OS',repeatClients)}
         </section>
       </div>
 
-      <section class="vx-c-gv-card"><div class="vx-c-title"><h3>▥ Gestão Visual <span class="vx-c-info" title="Distribuição das OS por tempo desde a última mudança de situação">ⓘ</span></h3><a href="#" data-drill="active" data-title="Gestão Visual">Ver todos</a></div>
+      ${role()==='GESTOR'?`<section class="vx-c-gv-card"><div class="vx-c-title"><h3>▥ Gestão Visual <span class="vx-c-info" title="Distribuição das OS por tempo desde a última mudança de situação">ⓘ</span></h3><a href="#" data-drill="active" data-title="Gestão Visual">Ver todos</a></div>
         <div class="vx-c-gv-grid">${gvPanel('AGUARDANDO ANÁLISE',gvAnalysis,'gvAnalysis')}${gvPanel('AGUARDANDO APROVAÇÃO',gvApproval,'gvApproval')}${gvPanel('PRONTOS PARA ENTREGA',gvReady,'gvReady')}</div>
-      </section>
+      </section>`:''}
 
       <div class="vx-c-grid-3">
         <section class="vx-c-list-card vx-c-list-tasks"><div class="vx-c-title"><h3>☑ Minhas Tarefas</h3></div>
           ${taskRow('Tirar novos casos de atenção',casesNovos.length,'cases:casesNovos')}
           ${taskRow('Retornar clientes pendentes',tasks.length,'tasks:tasks')}
-          ${taskRow('Acompanhar orçamentos sem resposta',approval.length,'approval')}
+          ${taskRow('Acompanhar orçamentos sem resposta',oppApproval.length,'oppApproval')}
           ${taskRow('Aprovar pedidos de peças',partsPendentes.length,'parts:partsPendentes')}
-          ${taskRow('Confirmar aparelhos prontos',ready.length,'ready')}
+          ${taskRow('Confirmar aparelhos prontos',oppReady.length,'oppReady')}
         </section>
         <section class="vx-c-list-card vx-c-list-parts"><div class="vx-c-title"><h3>▦ Pedidos de Peças</h3><a href="#" data-drill="parts:partsAll" data-title="Pedidos de Peças">Ver todas</a></div>
           ${iconRow('◷','Pendentes de aprovação',partsPendentes.length,'','parts:partsPendentes')}
@@ -496,13 +574,13 @@
           ${iconRow('⚠','Atrasados',partsAtrasadas.length,'warn','parts:partsAtrasadas')}
           ${iconRow('✓','Recebidos hoje',partsRecebidasHoje.length,'ok','parts:partsRecebidasHoje')}
         </section>
-        <section class="vx-c-list-card vx-c-list-exception"><div class="vx-c-title"><h3>⚠ Gestão por Exceção</h3></div>
-          ${iconRow('⚠','OS paradas há mais de 7 dias',overdueRepair.length,'warn','overdueRepair')}
-          ${iconRow('⏳','Orçamentos sem resposta há mais de 3 dias',overdueApproval.length,'warn','overdueApproval')}
+        ${role()!=='TECNICO'?`<section class="vx-c-list-card vx-c-list-exception"><div class="vx-c-title"><h3>⚠ Gestão por Exceção</h3></div>
+          ${iconRow('⚠','OS paradas há mais de 7 dias',oppOverdueRepair.length,'warn','oppOverdueRepair')}
+          ${iconRow('⏳','Orçamentos sem resposta há mais de 3 dias',oppApproval.filter(o=>age(o)>3).length,'warn','oppOverdueApproval')}
           ${iconRow('📦','Peças atrasadas',partsAtrasadas.length,'warn','parts:partsAtrasadas')}
-          ${iconRow('📥','Aparelhos prontos há mais de 3 dias',readyOverdue3.length,'warn','readyOverdue3')}
+          ${iconRow('📥','Aparelhos prontos há mais de 3 dias',oppReadyOverdue3.length,'warn','oppReadyOverdue3')}
           ${iconRow('👤','Clientes com mais de 1 OS aberta',repeatClients,'','repeatClientOrders')}
-        </section>
+        </section>`:''}
       </div>
 
       <div class="vx-c-grid-2">
@@ -517,8 +595,8 @@
       </div>
 
       <div class="vx-c-grid-2">
-        <section class="vx-c-goals-card"><div class="vx-c-title"><h3>Metas e Bonificação</h3></div><div class="vx-c-goals-empty"><span class="vx-c-goals-icon">◷</span><p>Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</p></div></section>
-        <section class="vx-c-fin-card"><div class="vx-c-title"><h3>$ Resumo Financeiro</h3><small>somente pagamentos registrados</small></div>
+        <section class="vx-c-goals-card"${role()==='TECNICO'?' style="grid-column:1/-1"':''}><div class="vx-c-title"><h3>Metas e Bonificação</h3></div><div class="vx-c-goals-empty"><span class="vx-c-goals-icon">◷</span><p>Não configurado. Indicadores de meta e bônus só serão exibidos quando houver regra persistida e auditável.</p></div></section>
+        ${role()!=='TECNICO'?`<section class="vx-c-fin-card"><div class="vx-c-title"><h3>$ Resumo Financeiro</h3><small>somente pagamentos registrados</small></div>
           <div class="vx-c-fin-grid">
             <div><span>Faturamento realizado (Mês)</span><b>${M(receivedMonth)}</b></div>
             <div><span>A receber</span><b>${M(aReceber)}</b></div>
@@ -527,7 +605,7 @@
             <div><span>Oportunidade de faturamento</span><b>${M(oportunidadeFaturamento)}</b></div>
             <div><span>Meta do mês</span><b class="vx-c-fin-empty">Não configurado</b></div>
           </div>
-        </section>
+        </section>`:''}
       </div>
 
       ${agendaSectionHtml(agendaSelectedTechId)}
@@ -543,7 +621,7 @@
       if(k.startsWith('cases:')||k==='casesAbertos')return casesModal(title,caseDrills[k==='casesAbertos'?'casesAbertos':k.slice(6)]||[]);
       if(drills[k])modal(title,drills[k]);
     });
-    document.getElementById('vxFeedAll').onclick=(ev)=>{ev.preventDefault();feedModal('Feed em Tempo Real',history,feedText)};
+    document.getElementById('vxFeedAll').onclick=(ev)=>{ev.preventDefault();feedModal('Feed em Tempo Real',historyScoped,feedText)};
     wireAgendaCard();
   };
 
