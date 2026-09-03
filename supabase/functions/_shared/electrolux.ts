@@ -13,6 +13,9 @@ export type ElectroluxOrder = {
   internalStatus: string;
   createdDate: string;
   appointmentDate: string | null;
+  // Modelo do produto -- confirmado ao vivo (achado 2026-09-03) que já
+  // vem na própria listagem, sem precisar do detalhe por id.
+  productName?: string | null;
   // Campo real de agendamento no retorno atual da API (confirmado
   // inspecionando a resposta crua em 2026-08-28: appointmentDate está
   // sempre null hoje; firstQueuedDateTime é quem carrega a data/hora do
@@ -67,6 +70,7 @@ export function mapOrderToRow(order: ElectroluxOrder) {
     external_internal_status: order.internalStatus,
     client_name: order.clientName,
     client_phone: order.clientPhone,
+    product_name: order.productName || null,
     notes: order.claimedDefect,
     external_created_at: order.createdDate,
     external_updated_at: order.updatedAt,

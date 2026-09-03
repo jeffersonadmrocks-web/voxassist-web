@@ -98,6 +98,26 @@ Deno.test("mapOrderToRow - mapeia só os campos mínimos, sem inventar dado", ()
   assertEquals(row.external_created_at, "2026-08-10T09:00:00Z");
 });
 
+Deno.test("mapOrderToRow - captura productName na listagem (achado 2026-09-03: vem de graça, sem chamada extra)", () => {
+  const row = mapOrderToRow({
+    id: "abc-123", svoNumber: "SVO-1", clientName: "Maria", clientPhone: "27999998888",
+    claimedDefect: "Não gela", status: "Aguardando atendimento", internalStatus: "NOVA",
+    createdDate: "2026-09-01T00:00:00Z", appointmentDate: null, firstQueuedDateTime: "2026-09-04T11:00:00Z",
+    updatedAt: "2026-09-01T00:00:00Z", productName: "IB54B",
+  });
+  assertEquals(row.product_name, "IB54B");
+});
+
+Deno.test("mapOrderToRow - productName ausente vira null, nunca inventado", () => {
+  const row = mapOrderToRow({
+    id: "abc-124", svoNumber: "SVO-2", clientName: "Ana", clientPhone: "27999998889",
+    claimedDefect: "Não liga", status: "Nova", internalStatus: "NOVA",
+    createdDate: "2026-09-01T00:00:00Z", appointmentDate: null, firstQueuedDateTime: null,
+    updatedAt: "2026-09-01T00:00:00Z",
+  });
+  assertEquals(row.product_name, null);
+});
+
 Deno.test("mapOrderToRow - usa firstQueuedDateTime quando appointmentDate é null (caso real da Electrolux hoje)", () => {
   const row = mapOrderToRow({
     id: "cmtc2te3f000q1hqpch747moy",

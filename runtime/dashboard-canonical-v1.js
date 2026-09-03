@@ -160,7 +160,7 @@
       // aparecia vazio mesmo com a Agenda de verdade cheia. Mesma
       // fonte/janela de datas já usada pela ponte real da Agenda
       // (electrolux-agenda-bridge-v0825.js).
-      source('Agenda 5 dias Electrolux',`external_appointments?select=technician_id,appointment_date,period,external_order_number,client_name,notes,address_neighborhood,address_city&appointment_date=gte.${isoDate(today)}&appointment_date=lte.${isoDate(agendaEnd)}&status=neq.CANCELADO&order=appointment_date.asc,period.asc&limit=300`,[]),
+      source('Agenda 5 dias Electrolux',`external_appointments?select=technician_id,appointment_date,period,external_order_number,client_name,notes,product_name,parts,address_neighborhood,address_city&appointment_date=gte.${isoDate(today)}&appointment_date=lte.${isoDate(agendaEnd)}&status=neq.CANCELADO&order=appointment_date.asc,period.asc&limit=300`,[]),
       source('Peças','parts_requests?select=*&order=created_at.desc&limit=200',[]),
       source('Financeiro','os_financial?select=*&limit=1000',[]),
       source('Pagamentos','payments?select=*&order=paid_at.desc.nullslast&limit=1500',[]),
@@ -352,13 +352,24 @@
           defect:a.service_orders?.reported_defect||'',source:'NATIVO',
         };
       }),
-      ...safe(by['Agenda 5 dias Electrolux'].data).map(a=>({
-        technician_id:a.technician_id,appointment_date:a.appointment_date,period:a.period,
-        equipmentLabel:a.external_order_number?`OS ${a.external_order_number}`:'Electrolux',
-        modelKey:null,productType:null,
-        location:a.address_neighborhood||a.address_city||'',
-        defect:a.notes||'',source:'ELECTROLUX',
-      })),
+      ...safe(by['Agenda 5 dias Electrolux'].data).map(a=>{
+        const osLabel=a.external_order_number?`OS ${a.external_order_number}`:'Electrolux';
+        // Achado do usuário 2026-09-03: Bairro/Modelo/Peça reais, nunca
+        // inventados -- Modelo vem de graça na sincronização (produt_name,
+        // já populado a cada 10min); Bairro/Peça só existem quando o
+        // enriquecimento por detalhe (sync-electrolux-agenda) já
+        // conseguiu captar essa SVO específica -- até lá ficam de fora,
+        // sem inventar nem aproximar.
+        const partsList=Array.isArray(a.parts)?a.parts:[];
+        const partsLabel=partsList.length?partsList.map(p=>p.descricao).filter(Boolean).join(', '):null;
+        return{
+          technician_id:a.technician_id,appointment_date:a.appointment_date,period:a.period,
+          equipmentLabel:a.product_name?`${osLabel} · ${a.product_name}`:osLabel,
+          modelKey:a.product_name||null,productType:a.product_name||null,
+          location:a.address_neighborhood||a.address_city||'',
+          defect:a.notes||'',partsLabel,source:'ELECTROLUX',
+        };
+      }),
     ];
 
     // Orçamentos/Entregues do mês, via os_status_history (data real da
@@ -476,7 +487,8 @@
     let agendaSelectedTechId=role()==='TECNICO'?me():null;
     function apptCard(a){
       const srcTag=a.source==='ELECTROLUX'?'<small class="vx-c-appt-src">Electrolux</small>':'';
-      return `<div class="vx-c-appt"><b>${E(a.equipmentLabel)}</b>${srcTag}<span>${E(a.location)}${a.location&&a.defect?' · ':''}${E(a.defect)}</span></div>`;
+      const partsHtml=a.partsLabel?`<span class="vx-c-appt-parts">🔧 ${E(a.partsLabel)}</span>`:'';
+      return `<div class="vx-c-appt"><b>${E(a.equipmentLabel)}</b>${srcTag}<span>${E(a.location)}${a.location&&a.defect?' · ':''}${E(a.defect)}</span>${partsHtml}</div>`;
     }
     function agendaSectionHtml(techFilterId){
       const isTecnico=role()==='TECNICO';

@@ -223,6 +223,55 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Enriquecimento de bairro/peças (achado do usuário 2026-09-03): a
+    // listagem barata (usada acima) não traz endereço nem peças -- só o
+    // detalhe por id traz. Busca só pra SVOs com compromisso dentro da
+    // janela de agenda relevante (achado 2026-09-03 -- entra
+    // proximamente na "Agenda dos Técnicos") que ainda não têm bairro
+    // capturado, com throttle -- nunca reconsulta tudo a cada ciclo, e
+    // nunca inventa endereço/peça: se a Electrolux não tiver, o campo
+    // continua null.
+    const enrichWindowEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const enrichThrottleCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    let enriched = 0;
+    const { data: needsDetailRaw } = await supabase
+      .from("external_appointments")
+      .select("id, external_id, detail_checked_at")
+      .eq("origin", "ELECTROLUX")
+      .is("address_neighborhood", null)
+      .not("appointment_date", "is", null)
+      .lte("appointment_date", enrichWindowEnd)
+      .or(`detail_checked_at.is.null,detail_checked_at.lt.${enrichThrottleCutoff}`)
+      .order("detail_checked_at", { ascending: true, nullsFirst: true })
+      .limit(30);
+
+    for (const row of (needsDetailRaw ?? []) as Array<{ id: string; external_id: string }>) {
+      const checkedAt = new Date().toISOString();
+      try {
+        const detailRes = await fetch(`${ELECTROLUX_API_URL}/api/dashboard/service-orders/${row.external_id}`, { headers: { Authorization: basicAuth } });
+        if (!detailRes.ok) {
+          await supabase.from("external_appointments").update({ detail_checked_at: checkedAt }).eq("id", row.id);
+          continue;
+        }
+        const detail = await detailRes.json();
+        await supabase.from("external_appointments").update({
+          address_street: detail?.address?.street ?? null,
+          address_neighborhood: detail?.address?.neighborhood ?? null,
+          address_city: detail?.address?.city ?? null,
+          address_state: detail?.address?.state ?? null,
+          parts: Array.isArray(detail?.parts) && detail.parts.length ? detail.parts : null,
+          detail_checked_at: checkedAt,
+        }).eq("id", row.id);
+        enriched++;
+      } catch {
+        try {
+          await supabase.from("external_appointments").update({ detail_checked_at: checkedAt }).eq("id", row.id);
+        } catch {
+          // melhor esforço -- se nem isso funcionar, o próximo ciclo tenta de novo naturalmente
+        }
+      }
+    }
+
     await supabase.from("integration_sync_runs").insert({
       origin: "ELECTROLUX",
       started_at: startedAt,
@@ -242,7 +291,7 @@ Deno.serve(async (req) => {
       }).eq("id", defaultConnectionId);
     }
 
-    return new Response(JSON.stringify({ ok: true, processed }), {
+    return new Response(JSON.stringify({ ok: true, processed, enriched }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (e) {
