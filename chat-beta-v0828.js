@@ -1229,10 +1229,12 @@
     const transferCard=transferHistory.length?`<div class="vx-cc-ctx-card"><h3>Histórico de transferências</h3>${transferHistory.map(ev=>`<div class="vx-cc-ctx-kv"><span>${E(attendantName(ev.previous_data?.assigned_user_id))} → ${E(attendantName(ev.new_data?.assigned_user_id))}</span><span>${new Date(ev.created_at).toLocaleString('pt-BR')}</span></div>`).join('')}</div>`:'';
     const actionsCard=`<div class="vx-cc-ctx-card"><h3>Ações</h3><div class="vx-cc-ctx-actions">
       <button type="button" class="vx-cc-ctx-action-btn" id="vxCtxTransferStore">Transferir loja</button>
+      <button type="button" class="vx-cc-ctx-action-btn" id="vxCtxSendDoc">📎 Enviar arquivo do VoxAssist</button>
       </div></div>`;
     ctx.innerHTML=clientCard+tagsCard+osCard+atendimentoCard+transferCard+auditCard+actionsCard;
     document.querySelectorAll('[data-open-os]').forEach(btn=>btn.addEventListener('click',()=>window.render('os:'+btn.dataset.openOs)));
     document.getElementById('vxCtxTransferStore')?.addEventListener('click',()=>openTransferLojaModal(conv.id,conv.current_store_id));
+    document.getElementById('vxCtxSendDoc')?.addEventListener('click',()=>window.vxOpenSendDocumentFlow?.(clientOrders,conv.id));
     const searchInput=document.getElementById('vxCtxClientSearch');
     if(searchInput)searchInput.oninput=()=>renderClientResults(conv.id,searchInput.value);
     document.getElementById('vxCtxEditSave')?.addEventListener('click',async()=>{

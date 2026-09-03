@@ -1,0 +1,9 @@
+/* VoxAssist Web V0.8.13 -- popups do fluxo "Enviar arquivo do VoxAssist"
+   (Contexto VoxAssist no Chat): escolher OS, escolher tipo de arquivo,
+   e a prévia real do PDF antes de confirmar o envio. */
+.vx-send-doc-list{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+.vx-send-doc-btn{border:1px solid #d5dde5;background:#fff;color:#12324e;font-weight:700;font-size:13px;border-radius:8px;padding:11px 14px;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:10px;transition:border-color .15s ease,background .15s ease}
+.vx-send-doc-btn:hover:not(:disabled){border-color:#1976d2;background:#f2f8fd}
+.vx-send-doc-btn:disabled{opacity:.55;cursor:not-allowed}
+.vx-send-doc-btn small{color:#6a7d90;font-weight:600}
+.vx-send-doc-preview{width:100%;height:60vh;min-height:360px;border:1px solid #e1e8ef;border-radius:8px;margin:12px 0}
