@@ -1,0 +1,11 @@
+/* VoxAssist Web V0.8.13 -- refinamento visual da fileira de acoes da O.S.
+   (AGENDAR/CASO DE ATENCAO/Chat/SALVAR/ALTERAR/MAPA/menu). So feedback de
+   interacao (hover/foco/profundidade) e o botao novo de Chat -- mantem o
+   visual "Desktop aprovado" (cantos retos, mesma paleta), nao reestiliza
+   cores ja semanticas (laranja=atencao, verde=salvar). */
+.vx-os-head-actions{gap:6px}
+.vx-os-head-actions .vx-action{transition:filter .15s ease,box-shadow .15s ease;box-shadow:0 1px 2px rgba(15,42,68,.08)}
+.vx-os-head-actions .vx-action:hover{filter:brightness(.96)}
+.vx-os-head-actions .vx-action:active{filter:brightness(.9)}
+.vx-os-head-actions .vx-action:focus-visible{outline:2px solid #1976d2;outline-offset:1px}
+.vx-os-chat-btn{background:#1976d2;color:#fff;display:inline-flex;align-items:center;gap:6px}
