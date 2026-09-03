@@ -12,17 +12,33 @@
 (function(){
   const E=v=>typeof esc==='function'?esc(v??''):String(v??'');
   const JSPDF_CDN='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js';
-  let jspdfPromise=null;
-  function ensureJsPdf(){
-    if(window.jspdf?.jsPDF)return Promise.resolve();
-    if(jspdfPromise)return jspdfPromise;
-    jspdfPromise=new Promise((resolve,reject)=>{
+  const HTML2CANVAS_CDN='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+  function loadScriptOnce(src){
+    return new Promise((resolve,reject)=>{
       const s=document.createElement('script');
-      s.src=JSPDF_CDN;
+      s.src=src;
       s.onload=()=>resolve();
-      s.onerror=()=>{jspdfPromise=null;reject(new Error('Falha ao carregar a biblioteca de PDF.'))};
+      s.onerror=()=>reject(new Error('Falha ao carregar biblioteca ('+src+').'));
       document.head.appendChild(s);
     });
+  }
+  let jspdfPromise=null;
+  function ensureJsPdf(){
+    if(window.jspdf?.jsPDF&&window.html2canvas)return Promise.resolve();
+    if(jspdfPromise)return jspdfPromise;
+    // Achado do usuário em 2026-09-03: "todos os modelos enviados por
+    // WhatsApp ou impressos devem ser idênticos" -- em vez de desenhar
+    // um layout novo com a API de texto do jsPDF (visual mais pobre,
+    // divergente do documento já aprovado), reaproveita o MESMO
+    // HTML/CSS que "Gerar PDF"/impressão já usa (printShell/printVox/
+    // printWhirlpool, os-whirlpool-extension-v0813.js -- nunca
+    // alterado) e renderiza via jsPDF.html() (que depende do
+    // html2canvas pra rasterizar o HTML real) -- garante paridade
+    // visual de verdade, não uma aproximação.
+    jspdfPromise=Promise.all([
+      window.jspdf?.jsPDF?Promise.resolve():loadScriptOnce(JSPDF_CDN),
+      window.html2canvas?Promise.resolve():loadScriptOnce(HTML2CANVAS_CDN),
+    ]).catch(e=>{jspdfPromise=null;throw e});
     return jspdfPromise;
   }
 
@@ -42,67 +58,59 @@
   }
   const brDate=v=>v?new Date(String(v).slice(0,10)+'T12:00:00').toLocaleDateString('pt-BR'):'';
 
-  async function buildOsPdfBlob(o){
+  // Achado do usuário em 2026-09-03: "todos os modelos enviados por
+  // WhatsApp ou impressos devem ser idênticos" -- este CSS é uma
+  // cópia EXATA do embutido em printShell (os-whirlpool-extension-
+  // v0813.js), nunca reescrito à parte. Se aquele mudar, este também
+  // precisa mudar junto -- é o preço de reaproveitar via cópia (o
+  // original só existe dentro de uma função privada de outro
+  // arquivo, sem exportar a string de CSS pra importar de verdade).
+  const DOC_CSS=`*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:10px}.doc{width:100%}.head{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border-bottom:2px solid #163754;padding-bottom:8px;margin-bottom:8px}.head img{max-width:130px;max-height:60px}.osno{font-size:21px;font-weight:800;color:#163754}.muted{color:#64748b}.grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.box{border:1px solid #9aa9b8;border-radius:4px;padding:7px;margin-bottom:7px}.box h3{font-size:10px;margin:0 0 5px;color:#163754}.row{display:grid;grid-template-columns:130px 1fr;border-bottom:1px solid #e3e8ed;padding:3px 0}.row:last-child{border:0}.row b{font-size:8px}.wp table{width:100%;border-collapse:collapse;margin:0 0 3px}.wp td,.wp th{border:1px solid #111;padding:3px;font-size:8px;vertical-align:top}.wp th{background:#f2f2f2}.wp .title{font-weight:800;text-align:center}.sign{height:52px;border-top:1px solid #777;margin-top:24px;text-align:center;padding-top:4px}.footer{font-size:8px;text-align:center;margin-top:8px;color:#5d6b78}`;
+
+  // Renderiza o MESMO HTML/CSS do documento impresso como PDF de
+  // verdade -- jsPDF.html() usa html2canvas por baixo pra rasterizar
+  // o HTML real (garante paridade visual exata, não uma aproximação
+  // desenhada à mão). O container fica fora da tela (nunca invisível
+  // via display:none, que o html2canvas não consegue medir), só até
+  // o PDF terminar de gerar.
+  async function renderHtmlToPdfBlob(bodyHtml){
     await ensureJsPdf();
     const {jsPDF}=window.jspdf;
-    const doc=new jsPDF({unit:'mm',format:'a4'});
+    const container=document.createElement('div');
+    container.style.cssText='position:fixed;left:-99999px;top:0;width:794px;background:#fff;padding:16px;';
+    container.innerHTML=`<style>${DOC_CSS}</style>${bodyHtml}`;
+    document.body.appendChild(container);
+    try{
+      const doc=new jsPDF({unit:'mm',format:'a4'});
+      await new Promise((resolve,reject)=>{
+        doc.html(container,{
+          callback:()=>resolve(),
+          x:8,y:8,width:194,windowWidth:794,
+          html2canvas:{scale:2,useCORS:true},
+        });
+        setTimeout(()=>reject(new Error('Tempo esgotado ao gerar o PDF.')),20000);
+      });
+      return doc.output('blob');
+    }finally{
+      container.remove();
+    }
+  }
+
+  async function buildOsPdfBlob(o){
     const c=o.clients||{},e=o.equipments||{};
     const [parts,finRows,branding]=await Promise.all([
       api(`os_parts?service_order_id=eq.${o.id}&select=*&order=created_at`).catch(()=>[]),
       api(`os_financial?service_order_id=eq.${o.id}&select=*&limit=1`).catch(()=>[]),
       typeof window.getActiveCompanyBranding==='function'?window.getActiveCompanyBranding().catch(()=>null):Promise.resolve(null),
     ]);
+    const b=branding||{};
     const fin=finRows?.[0]||{};
     const partsTotal=(parts||[]).reduce((s,p)=>s+Number(p.quantity||0)*Number(p.unit_value||0),0);
     const total=partsTotal+Number(fin.labor_value||0)+Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0)-Number(fin.discount_value||0);
-
-    const left=14,pageWidth=210,maxWidth=pageWidth-left*2;
-    let y=20;
-    const line=(text,opts={})=>{
-      const size=opts.size||10,bold=!!opts.bold,gap=opts.gap??6;
-      doc.setFontSize(size);doc.setFont(undefined,bold?'bold':'normal');
-      const wrapped=doc.splitTextToSize(String(text||''),maxWidth);
-      doc.text(wrapped,left,y);
-      y+=gap*wrapped.length;
-    };
-    const spacer=(h=3)=>{y+=h};
-
-    line(branding?.trade_name||branding?.legal_name||'VoxAssist',{size:15,bold:true,gap:7});
-    if(branding?.phone||branding?.mobile)line([branding.phone,branding.mobile].filter(Boolean).join(' • '),{size:9,gap:5});
-    spacer(2);
-    line('ORDEM DE SERVIÇO '+String(o.os_number||''),{size:13,bold:true,gap:7});
-    line('Situação: '+String(o.status||'').replaceAll('_',' '),{size:9,gap:6});
-    spacer(2);
-
-    line('CLIENTE',{size:11,bold:true,gap:6});
-    line('Nome: '+String(c.name||'—'),{gap:5});
-    if(c.phone_primary)line('Telefone: '+String(c.phone_primary),{gap:5});
-    spacer(2);
-
-    line('EQUIPAMENTO',{size:11,bold:true,gap:6});
-    line('Produto: '+[e.product_type,e.brand,e.model].filter(Boolean).join(' — '),{gap:5});
-    if(o.reported_defect)line('Defeito relatado: '+o.reported_defect,{gap:5});
-    if(o.diagnosed_defect)line('Defeito constatado: '+o.diagnosed_defect,{gap:5});
-    if(o.technical_service)line('Serviço / laudo: '+o.technical_service,{gap:5});
-    spacer(2);
-
-    line('ORÇAMENTO',{size:11,bold:true,gap:6});
-    (parts||[]).forEach(p=>{
-      const lineTotal=Number(p.quantity||0)*Number(p.unit_value||0);
-      line(`${p.description||'Peça'}  x${p.quantity||1}  —  ${money(lineTotal)}`,{gap:5});
-    });
-    if(Number(fin.labor_value||0)>0)line('Mão de obra: '+money(fin.labor_value),{gap:5});
-    if(Number(fin.freight_value||0)>0)line('Frete: '+money(fin.freight_value),{gap:5});
-    if(Number(fin.auxiliary_material_value||0)>0)line('Material auxiliar: '+money(fin.auxiliary_material_value),{gap:5});
-    if(Number(fin.technical_report_value||0)>0)line('Laudo técnico: '+money(fin.technical_report_value),{gap:5});
-    if(Number(fin.discount_value||0)>0)line('Desconto: -'+money(fin.discount_value),{gap:5});
-    spacer(2);
-    line('TOTAL: '+money(total),{size:13,bold:true,gap:8});
-
-    doc.setFontSize(8);doc.setFont(undefined,'normal');
-    doc.text('Documento gerado pelo VoxAssist em '+new Date().toLocaleString('pt-BR')+'.',left,290);
-
-    return doc.output('blob');
+    // Cópia EXATA de printVox (os-whirlpool-extension-v0813.js) --
+    // mesmo HTML, só troca a função que o renderiza em PDF por baixo.
+    const body=`<div class="doc"><div class="head"><div>${b.logo_url?`<img src="${E(b.logo_url)}">`:''}<div><b>${E(b.trade_name||b.legal_name||'VOXASSIST')}</b></div><div class="muted">${E([b.address,b.address_number,b.city,b.state].filter(Boolean).join(' • '))}</div><div class="muted">${E([b.phone,b.mobile,b.email].filter(Boolean).join(' • '))}</div></div><div><div class="muted">ORDEM DE SERVIÇO</div><div class="osno">${E(o.os_number)}</div><div>${E(String(o.status||'').replaceAll('_',' '))}</div></div></div><div class="grid"><div class="box"><h3>CLIENTE</h3><div class="row"><b>NOME</b><span>${E(c.name)}</span></div><div class="row"><b>CPF/CNPJ</b><span>${E(c.document)}</span></div><div class="row"><b>TELEFONE</b><span>${E(c.phone_primary)}</span></div><div class="row"><b>ENDEREÇO</b><span>${E([c.address,c.address_number,c.complement,c.neighborhood,c.city,c.state].filter(Boolean).join(', '))}</span></div></div><div class="box"><h3>EQUIPAMENTO</h3><div class="row"><b>PRODUTO</b><span>${E(e.product_type)}</span></div><div class="row"><b>MARCA / MODELO</b><span>${E([e.brand,e.model].filter(Boolean).join(' • '))}</span></div><div class="row"><b>SÉRIE</b><span>${E(e.serial_number)}</span></div><div class="row"><b>ATENDIMENTO</b><span>${E(o.service_type)}</span></div></div></div><div class="box"><h3>ATENDIMENTO TÉCNICO</h3><div class="row"><b>DEFEITO RELATADO</b><span>${E(o.reported_defect)}</span></div><div class="row"><b>DEFEITO CONSTATADO</b><span>${E(o.diagnosed_defect)}</span></div><div class="row"><b>SERVIÇO / LAUDO</b><span>${E(o.technical_service)}</span></div></div><div class="box"><h3>ORÇAMENTO</h3><div class="row"><b>PEÇAS</b><span>${money(partsTotal)}</span></div><div class="row"><b>MÃO DE OBRA</b><span>${money(fin.labor_value||0)}</span></div><div class="row"><b>TOTAL</b><span><strong>${money(total)}</strong></span></div></div><div class="grid"><div class="sign">ASSINATURA DO CLIENTE</div><div class="sign">ASSINATURA DO TÉCNICO</div></div><div class="footer">${E(b.document_footer||b.document_header_note||'')}</div></div>`;
+    return renderHtmlToPdfBlob(body);
   }
 
   async function fetchOsForDoc(id){
@@ -110,15 +118,10 @@
     return rows?.[0]||null;
   }
 
-  // Achado do usuário em 2026-09-03: mesmos campos já usados no
-  // documento impresso da Whirlpool (printWhirlpool,
-  // os-whirlpool-extension-v0813.js) -- nunca inventa um layout novo,
-  // só reconstrói o MESMO conteúdo real como PDF de verdade (aquele
-  // documento só existe como janela de impressão, sem arquivo real
-  // pra anexar). O documento impresso em si continua intocado.
+  // Cópia EXATA de printWhirlpool (os-whirlpool-extension-v0813.js) --
+  // mesmo HTML, mesmo CSS (.wp), só vira PDF de verdade em vez de só
+  // janela de impressão. O documento impresso em si continua intocado.
   async function buildWhirlpoolPdfBlob(id){
-    await ensureJsPdf();
-    const {jsPDF}=window.jspdf;
     const [osRows,impRows,appRows,parts,branding]=await Promise.all([
       api(`service_orders?id=eq.${id}&select=*,clients(*),equipments(*),profiles!service_orders_technician_id_fkey(full_name)`).catch(()=>[]),
       api(`manufacturer_imports?service_order_id=eq.${id}&select=*&order=created_at.desc&limit=1`).catch(()=>[]),
@@ -128,63 +131,11 @@
     ]);
     const o=osRows?.[0]||{};
     const p=impRows?.[0]?.extracted_data||{};
-    const a=appRows?.[0]||{};
     const c=o.clients||{},e=o.equipments||{};
-    const brand=branding||{};
-
-    const doc=new jsPDF({unit:'mm',format:'a4'});
-    const left=14,pageWidth=210,maxWidth=pageWidth-left*2;
-    let y=20;
-    const line=(text,opts={})=>{
-      const size=opts.size||10,bold=!!opts.bold,gap=opts.gap??6;
-      doc.setFontSize(size);doc.setFont(undefined,bold?'bold':'normal');
-      const wrapped=doc.splitTextToSize(String(text||''),maxWidth);
-      doc.text(wrapped,left,y);
-      y+=gap*wrapped.length;
-    };
-    const spacer=(h=3)=>{y+=h};
-
-    line('CENTRAL DE ATENDIMENTO WHIRLPOOL',{size:12,bold:true,gap:6});
-    line('Autorizada: '+(brand.trade_name||brand.legal_name||'VoxAssist'),{gap:5});
-    if(brand.phone||brand.mobile)line('Fone: '+[brand.phone,brand.mobile].filter(Boolean).join(' • '),{gap:5});
-    spacer(2);
-    line('Nº DA OS: '+String(p.numeroOS||o.manufacturer_os_number||o.os_number||''),{size:13,bold:true,gap:7});
-    line('Técnico: '+String(o.profiles?.full_name||''),{gap:5});
-    line('Data agenda: '+brDate(a.appointment_date||p.dataAgenda)+'   Período: '+String(a.period||p.periodo||''),{gap:6});
-    spacer(2);
-
-    line('CONSUMIDOR',{size:11,bold:true,gap:6});
-    line('Nome: '+String(p.cliente||c.name||'—'),{gap:5});
-    line('CPF/CNPJ: '+String(p.documento||c.document||'—'),{gap:5});
-    line('Endereço: '+String(p.endereco||c.address||'—'),{gap:5});
-    line('Bairro: '+String(p.bairro||c.neighborhood||'—')+'   Cidade/UF: '+String((p.cidade||c.city||'')+' / '+(p.uf||c.state||'')),{gap:5});
-    line('Telefone: '+String(p.telefone||c.phone_primary||'—'),{gap:6});
-    spacer(2);
-
-    line('PRODUTO',{size:11,bold:true,gap:6});
-    line('Produto: '+String(p.productLine||e.product_type||'—')+'   Marca: '+String(p.manufacturer||e.brand||'—'),{gap:5});
-    line('Série: '+String(p.serie||e.serial_number||'—'),{gap:6});
-    spacer(2);
-
-    line('DEFEITO RECLAMADO: '+String(p.defeitoReclamado||o.reported_defect||'—'),{gap:5});
-    line('DEFEITO CONSTATADO: '+String(p.defeitoConstatado||o.diagnosed_defect||'—'),{gap:5});
-    if(p.reclamacaoAtendimento||p.reclamacao)line('RECLAMAÇÃO/ATENDIMENTO: '+String(p.reclamacaoAtendimento||p.reclamacao),{gap:5});
-    if(p.laudoTecnico||o.technical_service)line('LAUDO TÉCNICO: '+String(p.laudoTecnico||o.technical_service),{gap:5});
-    spacer(2);
-
-    if((parts||[]).length){
-      line('PEÇAS',{size:11,bold:true,gap:6});
-      parts.forEach(x=>{
-        line(`${x.description||'Peça'}  x${x.quantity||1}${x.unit_value?'  —  '+money(x.unit_value):''}`,{gap:5});
-      });
-      spacer(2);
-    }
-    if(p.observacao)line('OBSERVAÇÃO: '+String(p.observacao),{gap:5});
-
-    doc.setFontSize(8);doc.setFont(undefined,'normal');
-    doc.text('Documento gerado pelo VoxAssist em '+new Date().toLocaleString('pt-BR')+'.',left,290);
-
-    return doc.output('blob');
+    const a=appRows?.[0]||{};
+    const d={brand:branding||{}};
+    const body=`<div class="doc wp"><table><tr><td style="width:70%"><b>AUTORIZADA:</b> ${E(d.brand.trade_name||d.brand.legal_name||'VOX')}<br>${E([d.brand.address,d.brand.address_number,d.brand.city,d.brand.state].filter(Boolean).join(' • '))}<br>FONE: ${E(d.brand.phone||d.brand.mobile)}</td><td><b>CENTRAL DE ATENDIMENTO WHIRLPOOL</b></td></tr></table><table><tr><td class="title">NÚMERO DA OS<br><b style="font-size:14px">${E(o.manufacturer_os_number||o.os_number)}</b></td><td>TÉCNICO<br>${E(o.profiles?.full_name||'')}</td><td>DATA AGENDA: ${E(brDate(a.appointment_date||p.dataAgenda))}<br>PERÍODO: ${E(a.period||p.periodo||'')}</td></tr></table><table><tr><td>CONSUMIDOR: ${E(p.cliente||c.name)}</td><td>CPF/CNPJ: ${E(p.documento||c.document)}</td></tr><tr><td>ENDEREÇO: ${E(p.endereco||c.address)}</td><td>CEP: ${E(p.cep||c.zip_code)}</td></tr><tr><td>BAIRRO: ${E(p.bairro||c.neighborhood)}</td><td>CIDADE/UF: ${E((p.cidade||c.city)+' / '+(p.uf||c.state||''))}</td></tr><tr><td colspan="2">TELEFONE: ${E(p.telefone||c.phone_primary)}</td></tr></table><table><tr><td>PRODUTO: ${E(p.productLine||e.product_type)}</td><td>MARCA: ${E(p.manufacturer||e.brand)}</td></tr><tr><td>SÉRIE: ${E(p.serie||e.serial_number)}</td><td>TIPO DE OS: ${E(p.tipoOS||o.order_type)}</td></tr></table><table><tr><th>DEFEITO RECLAMADO</th><td>${E(p.defeitoReclamado||o.reported_defect)}</td><th>DEFEITO CONSTATADO</th><td>${E(p.defeitoConstatado||o.diagnosed_defect)}</td></tr><tr><th>RECLAMAÇÃO / ATENDIMENTO</th><td colspan="3">${E(p.reclamacaoAtendimento||p.reclamacao||'')}</td></tr><tr><th>LAUDO TÉCNICO</th><td colspan="3" style="height:55px">${E(p.laudoTecnico||o.technical_service||'')}</td></tr></table><table><thead><tr><th>QTD</th><th>CÓDIGO</th><th>DESCRIÇÃO DA PEÇA</th><th>VALOR</th></tr></thead><tbody>${Array.from({length:Math.max(8,(parts||[]).length)}).map((_,i)=>{const x=(parts||[])[i]||{};return `<tr><td>${E(x.quantity||'')}</td><td>${E(x.part_code||x.code||'')}</td><td>${E(x.description||'')}</td><td>${x.unit_value?money(x.unit_value):''}</td></tr>`}).join('')}</tbody></table><table><tr><td style="height:48px"><b>OBSERVAÇÃO</b><br>${E(p.observacao||'')}</td></tr></table><div class="grid"><div class="sign">ASSINATURA DO CONSUMIDOR</div><div class="sign">ASSINATURA DO TÉCNICO</div></div></div>`;
+    return renderHtmlToPdfBlob(body);
   }
 
   async function sendDocumentBlobViaChat(conversationId,blob,fileName){
