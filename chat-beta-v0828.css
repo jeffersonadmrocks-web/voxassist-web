@@ -319,6 +319,8 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
 .vx-cc-ctx-client-opt small{color:var(--cc-ink-faint)}
 .vx-cc-ctx-empty-text{font-size:12px;color:var(--cc-ink-faint);margin:0;font-weight:600}
 .vx-cc-ctx-link-btn{border:1px solid var(--cc-accent);background:var(--cc-accent-soft);color:var(--cc-accent);font-weight:700;font-size:12px;border-radius:8px;padding:8px 12px;cursor:pointer}
+.vx-cc-ctx-os-list{display:flex;flex-direction:column;gap:6px}
+.vx-cc-ctx-os-btn{width:100%;text-align:left}
 .vx-cc-ctx-kv{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;font-size:12px}
 .vx-cc-ctx-kv>span:first-child{color:var(--cc-ink-faint);font-weight:600}
 .vx-cc-ctx-kv>span:last-child{font-weight:700;color:var(--cc-ink);text-align:right}

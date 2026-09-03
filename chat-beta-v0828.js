@@ -623,7 +623,7 @@
      mensagens reais, ausência automática. Nunca mostra remote_jid/
      sender_lid como se fosse telefone -- só customer_phone. */
   const CONV_SELECT='id,customer_phone,customer_name,status,last_message_preview,last_message_at,unread_count,assigned_user_id,client_id,current_store_id,connection_id,service_order_id,next_callback_at,next_callback_reason,remote_jid,sender_lid,profiles!chat_conversations_assigned_user_id_fkey(full_name),clients!chat_conversations_client_id_fkey(name),stores!chat_conversations_store_id_fkey(name),chat_conversation_tags(tag_id)';
-  let hubState={list:[],filter:'TODAS',search:'',storeFilter:'',connectionFilter:'',selectedId:null,currentTransferHistory:[],activeTab:'CENTRAL'};
+  let hubState={list:[],filter:'TODAS',search:'',storeFilter:'',connectionFilter:'',selectedId:null,currentTransferHistory:[],currentClientOrders:[],activeTab:'CENTRAL'};
   let conversaAtualId=null;
   let conversaPollTimer=null;
   let listPollTimer=null;
@@ -1133,11 +1133,32 @@
       }catch(err){toast?.('Não foi possível vincular: '+err.message,'err')}
     });
     hubState.currentTransferHistory=await api(`chat_conversation_events?conversation_id=eq.${id}&action=eq.TRANSFER&select=*&order=created_at.desc`).catch(()=>[]);
+    hubState.currentClientOrders=await loadClientOrdersForConv(conv).catch(()=>[]);
     renderContexto(conv);
     conversaAtualId=id;
     await refreshMensagens();
     stopConversaPoll();
     conversaPollTimer=setInterval(refreshMensagens,3000);
+  }
+
+  // Achado do usuário em 2026-09-03: o card "Ordem de Serviço" só
+  // mostrava um botão genérico "Abrir OS →" pra UMA OS (a vinculada à
+  // conversa via service_order_id) -- sem mostrar o número, e sem as
+  // outras OS's do mesmo cliente. Resolve o client_id (direto de
+  // conv.client_id quando o contato já está vinculado a um cliente do
+  // CRM, senão pela própria OS vinculada) e lista TODAS as OS's desse
+  // cliente, cada uma com o número real, clicável.
+  async function loadClientOrdersForConv(conv){
+    let clientId=conv.client_id||null;
+    if(!clientId&&conv.service_order_id){
+      const rows=await api(`service_orders?id=eq.${conv.service_order_id}&select=client_id`).catch(()=>[]);
+      clientId=rows?.[0]?.client_id||null;
+    }
+    if(!clientId){
+      if(!conv.service_order_id)return [];
+      return await api(`service_orders?id=eq.${conv.service_order_id}&select=id,os_number,status`).catch(()=>[]);
+    }
+    return await api(`service_orders?client_id=eq.${clientId}&select=id,os_number,status&order=opened_at.desc&limit=20`).catch(()=>[]);
   }
 
   /* ---------- Contexto VoxAssist ---------- */
@@ -1177,7 +1198,8 @@
         </div>
       </div>
       </div></div>`;
-    const osCard=`<div class="vx-cc-ctx-card"><h3>Ordem de Serviço</h3>${conv.service_order_id?'<button type="button" class="vx-cc-ctx-link-btn" id="vxCtxOpenOs">Abrir OS →</button>':'<p class="vx-cc-ctx-empty-text">Nenhuma OS vinculada.</p>'}</div>`;
+    const clientOrders=hubState.currentClientOrders||[];
+    const osCard=`<div class="vx-cc-ctx-card"><h3>Ordem de Serviço</h3>${clientOrders.length?`<div class="vx-cc-ctx-os-list">${clientOrders.map(o=>`<button type="button" class="vx-cc-ctx-link-btn vx-cc-ctx-os-btn" data-open-os="${E(o.id)}">${E(o.os_number)} →</button>`).join('')}</div>`:'<p class="vx-cc-ctx-empty-text">Nenhuma OS vinculada.</p>'}</div>`;
     const atendimentoCard=`<div class="vx-cc-ctx-card"><h3>Atendimento</h3>
       <div class="vx-cc-ctx-kv"><span>Status</span><span class="vx-cc-pill ${st.cls}">${E(st.text)}</span></div>
       <div class="vx-cc-ctx-kv"><span>Loja atual</span><span>${E(lojaNome||'—')}</span></div>
@@ -1196,7 +1218,7 @@
       <button type="button" class="vx-cc-ctx-action-btn" id="vxCtxTransferStore">Transferir loja</button>
       </div></div>`;
     ctx.innerHTML=clientCard+tagsCard+osCard+atendimentoCard+transferCard+auditCard+actionsCard;
-    document.getElementById('vxCtxOpenOs')?.addEventListener('click',()=>window.render('os:'+conv.service_order_id));
+    document.querySelectorAll('[data-open-os]').forEach(btn=>btn.addEventListener('click',()=>window.render('os:'+btn.dataset.openOs)));
     document.getElementById('vxCtxTransferStore')?.addEventListener('click',()=>openTransferLojaModal(conv.id,conv.current_store_id));
     const searchInput=document.getElementById('vxCtxClientSearch');
     if(searchInput)searchInput.oninput=()=>renderClientResults(conv.id,searchInput.value);
