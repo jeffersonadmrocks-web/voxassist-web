@@ -1,6 +1,10 @@
 /* VoxAssist Web V0.8.12 — situação visível + ALTERAR completo */
 (function(){
-  const FLOW=[['AGUARDANDO ANALISE','Aguardando Análise'],['AGUARDANDO APROVACAO','Aguardando Aprovação'],['AGUARDANDO CONSERTO','Aguardando Conserto'],['EM CONSERTO','Em Conserto'],['PRONTO PARA ENTREGA','Pronto para Entrega'],['ORCAMENTO RECUSADO','Orçamento Recusado'],['FINALIZADA','Finalizada']];
+  // 2 sub-estados novos (achado do usuário 2026-09-03, fluxo obrigatório
+  // de orçamento recusado): DISPONIVEL PARA RETIRADA/ENCERRADO. Mesma
+  // coluna service_orders.status de sempre (texto livre, sem CHECK) --
+  // só mais 2 valores no vocabulário, nada de segunda tabela.
+  const FLOW=[['AGUARDANDO ANALISE','Aguardando Análise'],['AGUARDANDO APROVACAO','Aguardando Aprovação'],['AGUARDANDO CONSERTO','Aguardando Conserto'],['EM CONSERTO','Em Conserto'],['PRONTO PARA ENTREGA','Pronto para Entrega'],['ORCAMENTO RECUSADO','Orçamento Recusado'],['ORCAMENTO RECUSADO DISPONIVEL PARA RETIRADA','Orçamento Recusado / Disponível para Retirada'],['ORCAMENTO RECUSADO ENCERRADO','Orçamento Recusado / Encerrado'],['FINALIZADA','Finalizada']];
   const labelOf=s=>FLOW.find(x=>x[0]===String(s||'').replaceAll('_',' '))?.[1]||String(s||'').replaceAll('_',' ');
   const roleAllowed=()=>!['TECNICO','ESTOQUE'].includes(String(state?.profile?.role||'').toUpperCase());
   const closeModal=()=>document.querySelector('#vxStatusModal')?.remove();

@@ -37,6 +37,15 @@
     decision.onchange=()=>{wrap.style.display=decision.value==='RECUSADO'?'block':'none';if(decision.value&&!date.value)date.value=today();setDirty(true);};
   }
 
+  // Achado do usuário 2026-09-03: esta função decidia e GRAVAVA o avanço
+  // de status sozinha (nextStatus()/advanceStatus() antigos), duplicando
+  // em JS a mesma regra que agora vive só no banco
+  // (advance_service_order_status, supabase/migrations/20260903010000_
+  // service_order_status_automation.sql). Removido -- SALVAR agora só
+  // salva os campos e chama o motor único (window.vxAdvanceOsStatus,
+  // os-status-engine-v0903.js), igual a todo outro ponto que grava um
+  // campo do fluxo. missingFor() continua existindo só como AJUDA
+  // informativa (texto pro usuário), nunca decide nem grava nada.
   function missingFor(status,o,orderBody,financialBody){
     const s=norm(status),missing=[];
     const get=(name)=>orderBody[name]??o[name]??q(`[data-entity="order"][data-name="${name}"]`)?.value;
@@ -59,28 +68,12 @@
       if(!get('ready_at'))missing.push('Data/hora de pronto');
     }else if(s==='PRONTO PARA ENTREGA'){
       if(!get('delivery_at'))missing.push('Data/hora de entrega/saída');
+    }else if(s==='ORCAMENTO RECUSADO'){
+      if(!get('ready_at'))missing.push('Equipamento preparado/remontado (pronto para retirada)');
+    }else if(s==='ORCAMENTO RECUSADO DISPONIVEL PARA RETIRADA'){
+      if(!get('delivery_at'))missing.push('Data/hora de retirada pelo cliente');
     }
     return missing;
-  }
-
-  function nextStatus(status,o,orderBody){
-    const s=norm(status),get=(n)=>orderBody[n]??o[n]??q(`[data-entity="order"][data-name="${n}"]`)?.value;
-    if(s==='AGUARDANDO ANALISE')return 'AGUARDANDO APROVACAO';
-    if(s==='AGUARDANDO APROVACAO')return get('approval_decision')==='RECUSADO'?'ORCAMENTO RECUSADO':'AGUARDANDO CONSERTO';
-    if(s==='AGUARDANDO CONSERTO')return 'EM CONSERTO';
-    if(s==='EM CONSERTO')return 'PRONTO PARA ENTREGA';
-    if(s==='PRONTO PARA ENTREGA')return 'FINALIZADA';
-    return null;
-  }
-
-  async function advanceStatus(o,next){
-    if(!next||norm(next)===norm(o.status))return false;
-    const prev=o.status,now=new Date().toISOString();const patch={status:next,updated_at:now};if(next==='FINALIZADA')patch.closed_at=now;
-    await api(`service_orders?id=eq.${encodeURIComponent(o.id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(patch)});
-    await api('os_status_history',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({service_order_id:o.id,previous_status:prev,new_status:next,change_type:'AUTOMATICO',reason:next==='ORCAMENTO RECUSADO'?'Orçamento recusado pelo cliente':'Avanço automático conforme preenchimento da etapa',changed_by:state?.session?.user?.id||null,changed_at:now})});
-    o.status=next;Object.assign(o,patch);const core=state.orders?.find(x=>x.id===o.id);if(core)Object.assign(core,patch);
-    const statusText=q('#vxStatusArea strong');if(statusText)statusText.textContent=String(next).replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
-    return true;
   }
 
   async function saveAll(){
@@ -94,10 +87,15 @@
       if(Object.keys(financialBody).length){financialBody.service_order_id=o.id;financialBody.updated_at=new Date().toISOString();const existing=await api(`os_financial?service_order_id=eq.${encodeURIComponent(o.id)}&select=id&limit=1`).catch(()=>[]);if(existing?.[0]?.id)jobs.push(api(`os_financial?id=eq.${encodeURIComponent(existing[0].id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(financialBody)}));else jobs.push(api('os_financial',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(financialBody)}));}
       await Promise.all(jobs);Object.assign(o,orderBody);if(o.equipments&&typeof o.equipments==='object')Object.assign(o.equipments,equipmentBody);if(o.clients&&typeof o.clients==='object')Object.assign(o.clients,clientBody);
       if(typeof window.vxUpdateBudgetTotal==='function')window.vxUpdateBudgetTotal();
-      const missing=missingFor(o.status,o,orderBody,financialBody);
-      if(missing.length){setDirty(false);toast('Dados salvos. A OS não avançou. Falta preencher: '+missing.join(' • '),'err');return;}
-      const next=nextStatus(o.status,o,orderBody);const advanced=await advanceStatus(o,next);setDirty(false);
-      toast(advanced?('OS salva e avançada para '+String(next).replaceAll('_',' ')+'.'):'Alterações da OS salvas com sucesso.');
+      setDirty(false);
+      const statusBefore=o.status;
+      const result=await window.vxAdvanceOsStatus?.(o.id);
+      if(result?.changed){
+        // vxAdvanceOsStatus já mostrou o toast de avanço -- nada a fazer.
+      }else{
+        const missing=missingFor(statusBefore,o,orderBody,financialBody);
+        toast(missing.length?('Dados salvos. A OS não avançou. Falta: '+missing.join(' • ')):'Alterações da OS salvas com sucesso.');
+      }
     }catch(err){setDirty(true);toast('Falha ao salvar alterações da OS: '+err.message,'err');}
     finally{saving=false;if(b)b.disabled=false;setDirty(dirty);}
   }

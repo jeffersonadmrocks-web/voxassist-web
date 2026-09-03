@@ -31,6 +31,7 @@
       if(btn){btn.disabled=true;btn.textContent='SALVANDO...'}
       const stock=await findOrCreateStockItem(code,description,brand);
       await api('os_parts',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({service_order_id:state.activeOs.id,stock_item_id:stock.id,code:code||stock.code,description,brand:brand||stock.manufacturer||null,quantity,unit_value,is_manual:true,move_stock})});
+      await window.vxAdvanceOsStatus?.(state.activeOs.id);
       toast('Peça incluída na OS e cadastrada no catálogo com saldo zero.');
       closeModal();
       await loadCore();
