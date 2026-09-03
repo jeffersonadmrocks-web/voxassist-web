@@ -71,7 +71,7 @@
   window.vxOpenNpsScreen=()=>openNpsScreen();
 
   /* ---------- dados ---------- */
-  let cache={cases:[],contactsToday:[],profileNames:{},filter:{filial:'',situacao:'',classification:'',search:'',technicianId:'',responsibleId:'',dateFrom:'',dateTo:''}};
+  let cache={cases:[],contactsToday:[],profileNames:{},activeIndicator:null,filter:{filial:'',situacao:'',classification:'',contactedTodayOnly:false,search:'',technicianId:'',responsibleId:'',dateFrom:'',dateTo:''}};
 
   async function loadCases(){
     cache.cases=await api('nps_cases?select=*,external_appointments(external_order_number,client_name,client_phone,technician_id,appointment_date)&order=created_at.desc');
@@ -167,6 +167,26 @@
     return{aguardando6h,elegiveisAgora,altaOportunidade,contatadosHoje,aguardandoResposta,casosAtencao,respondidos};
   }
 
+  // Achado do usuário 2026-09-03: os 7 cards de indicador eram só
+  // decorativos -- clicar não filtrava as tabelas abaixo. Cada card vira
+  // um atalho pro filtro que o define (mesmo cache.filter já usado pelos
+  // selects manuais) -- clicar de novo no mesmo card limpa o filtro.
+  const INDICATOR_FILTERS={
+    aguardando6h:{situacao:['AGUARDANDO_ENCERRAMENTO','AGUARDANDO_PRAZO_NPS']},
+    elegiveisAgora:{situacao:'AGUARDANDO_CONTATO'},
+    altaOportunidade:{classification:'ALTA'},
+    contatadosHoje:{contactedTodayOnly:true},
+    aguardandoResposta:{situacao:CONTACTED_SITUACOES},
+    casosAtencao:{situacao:'CASO_DE_ATENCAO'},
+    respondidos:{situacao:'RESPONDIDO'},
+  };
+  function applyIndicatorFilter(key){
+    cache.filter.situacao='';cache.filter.classification='';cache.filter.contactedTodayOnly=false;
+    if(cache.activeIndicator===key){cache.activeIndicator=null}
+    else{cache.activeIndicator=key;Object.assign(cache.filter,INDICATOR_FILTERS[key])}
+    renderNpsScreen();
+  }
+
   /* ---------- filtro/listagem/ordenação ----------
      Achado do usuário em 2026-09-02: a tela precisa separar claramente
      Elegíveis/Pendentes | Enviados/Aguardando resposta | Respondidos --
@@ -206,10 +226,12 @@
   }
   function filteredCases(){
     const f=cache.filter;
+    const contactedTodayIds=f.contactedTodayOnly?new Set(cache.contactsToday.map(ct=>ct.nps_case_id)):null;
     const base=cache.cases.filter(c=>{
       if(f.filial&&c.filial!==f.filial)return false;
-      if(f.situacao&&c.situacao!==f.situacao)return false;
+      if(f.situacao){const list=Array.isArray(f.situacao)?f.situacao:[f.situacao];if(!list.includes(c.situacao))return false}
       if(f.classification&&c.classification!==f.classification)return false;
+      if(contactedTodayIds&&!contactedTodayIds.has(c.id))return false;
       if(f.technicianId&&c.external_appointments?.technician_id!==f.technicianId)return false;
       if(f.responsibleId&&c.responsible_user_id!==f.responsibleId)return false;
       if(f.dateFrom&&(!c.concluded_at||c.concluded_at<f.dateFrom))return false;
@@ -280,13 +302,13 @@
         <div><button id="npsBack">← Voltar</button><h2>NPS Electrolux</h2><small>Acompanhamento da pesquisa de satisfação Electrolux</small></div>
       </div>
       <div class="vx-nps-indicators">
-        <div class="vx-nps-ind"><span>Aguardando 6h</span><b>${ind.aguardando6h}</b></div>
-        <div class="vx-nps-ind"><span>Elegíveis agora</span><b>${ind.elegiveisAgora}</b></div>
-        <div class="vx-nps-ind"><span>Alta oportunidade</span><b>${ind.altaOportunidade}</b></div>
-        <div class="vx-nps-ind"><span>Contatados hoje</span><b>${ind.contatadosHoje}</b></div>
-        <div class="vx-nps-ind"><span>Aguardando resposta</span><b>${ind.aguardandoResposta}</b></div>
-        <div class="vx-nps-ind vx-nps-ind-warn"><span>Casos de atenção</span><b>${ind.casosAtencao}</b></div>
-        <div class="vx-nps-ind vx-nps-ind-ok"><span>Respondidos</span><b>${ind.respondidos}</b></div>
+        <button type="button" class="vx-nps-ind ${cache.activeIndicator==='aguardando6h'?'active':''}" data-ind="aguardando6h"><span>Aguardando 6h</span><b>${ind.aguardando6h}</b></button>
+        <button type="button" class="vx-nps-ind ${cache.activeIndicator==='elegiveisAgora'?'active':''}" data-ind="elegiveisAgora"><span>Elegíveis agora</span><b>${ind.elegiveisAgora}</b></button>
+        <button type="button" class="vx-nps-ind ${cache.activeIndicator==='altaOportunidade'?'active':''}" data-ind="altaOportunidade"><span>Alta oportunidade</span><b>${ind.altaOportunidade}</b></button>
+        <button type="button" class="vx-nps-ind ${cache.activeIndicator==='contatadosHoje'?'active':''}" data-ind="contatadosHoje"><span>Contatados hoje</span><b>${ind.contatadosHoje}</b></button>
+        <button type="button" class="vx-nps-ind ${cache.activeIndicator==='aguardandoResposta'?'active':''}" data-ind="aguardandoResposta"><span>Aguardando resposta</span><b>${ind.aguardandoResposta}</b></button>
+        <button type="button" class="vx-nps-ind vx-nps-ind-warn ${cache.activeIndicator==='casosAtencao'?'active':''}" data-ind="casosAtencao"><span>Casos de atenção</span><b>${ind.casosAtencao}</b></button>
+        <button type="button" class="vx-nps-ind vx-nps-ind-ok ${cache.activeIndicator==='respondidos'?'active':''}" data-ind="respondidos"><span>Respondidos</span><b>${ind.respondidos}</b></button>
       </div>
       <div class="vx-nps-filters">
         <input id="npsSearch" placeholder="Buscar cliente ou OS Electrolux…" value="${E(cache.filter.search)}">
@@ -310,6 +332,7 @@
     </div>`;
 
     document.getElementById('npsBack').onclick=goBack;
+    app.querySelectorAll('[data-ind]').forEach(b=>b.onclick=()=>applyIndicatorFilter(b.dataset.ind));
     document.getElementById('npsSearch').oninput=e=>{cache.filter.search=e.target.value;renderNpsScreen()};
     document.getElementById('npsFilial').onchange=e=>{cache.filter.filial=e.target.value;renderNpsScreen()};
     document.getElementById('npsTecnico').onchange=e=>{cache.filter.technicianId=e.target.value;renderNpsScreen()};
