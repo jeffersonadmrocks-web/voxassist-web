@@ -72,28 +72,45 @@
   const DOC_CSS=`*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:10px}.doc{width:100%}.head{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border-bottom:2px solid #163754;padding-bottom:8px;margin-bottom:8px}.head img{max-width:130px;max-height:60px}.osno{font-size:21px;font-weight:800;color:#163754}.muted{color:#64748b}.grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.box{border:1px solid #9aa9b8;border-radius:4px;padding:7px;margin-bottom:7px}.box h3{font-size:10px;margin:0 0 5px;color:#163754}.row{display:grid;grid-template-columns:130px 1fr;border-bottom:1px solid #e3e8ed;padding:3px 0}.row:last-child{border:0}.row b{font-size:8px}.wp table{width:100%;border-collapse:collapse;margin:0 0 3px}.wp td,.wp th{border:1px solid #111;padding:3px;font-size:8px;vertical-align:top}.wp th{background:#f2f2f2}.wp .title{font-weight:800;text-align:center}.sign{height:52px;border-top:1px solid #777;margin-top:24px;text-align:center;padding-top:4px}.footer{font-size:8px;text-align:center;margin-top:8px;color:#5d6b78}`;
 
   // Renderiza o MESMO HTML/CSS do documento impresso como PDF de
-  // verdade -- jsPDF.html() usa html2canvas por baixo pra rasterizar
-  // o HTML real (garante paridade visual exata, não uma aproximação
-  // desenhada à mão). O container fica fora da tela (nunca invisível
-  // via display:none, que o html2canvas não consegue medir), só até
-  // o PDF terminar de gerar.
+  // verdade. Achado do usuário em 2026-09-03: a primeira versão usava
+  // jsPDF.html() (paginação automática embutida) -- saía em branco,
+  // com 4 páginas vazias. Duas causas reais, corrigidas juntas:
+  // 1) o container ficava em left:-99999px -- deslocamento extremo
+  //    faz alguns navegadores nunca PINTAREM esse conteúdo de verdade
+  //    (otimização de composição fora da viewport), então o
+  //    html2canvas capturava uma área em branco. Agora fica em
+  //    top:0/left:0 (sempre pintado de verdade), só invisível por
+  //    ficar atrás do resto da UI (z-index negativo).
+  // 2) jsPDF.html() faz a própria paginação, com histórico de bugs
+  //    conhecidos de altura/escala errada. Troca pelo padrão mais
+  //    usado e confiável: captura UMA imagem de verdade com
+  //    html2canvas direto, depois fatiada manualmente em páginas via
+  //    addImage -- sem depender da paginação automática do jsPDF.
   async function renderHtmlToPdfBlob(bodyHtml){
     await ensureJsPdf();
     const {jsPDF}=window.jspdf;
     const container=document.createElement('div');
-    container.style.cssText='position:fixed;left:-99999px;top:0;width:794px;background:#fff;padding:16px;';
+    container.style.cssText='position:fixed;left:0;top:0;width:794px;background:#fff;padding:16px;z-index:-1;pointer-events:none;';
     container.innerHTML=`<style>${DOC_CSS}</style>${bodyHtml}`;
     document.body.appendChild(container);
     try{
+      const canvas=await window.html2canvas(container,{scale:2,useCORS:true,backgroundColor:'#ffffff',windowWidth:794});
+      if(!canvas.width||!canvas.height)throw new Error('Falha ao capturar o conteúdo do documento.');
+      const imgData=canvas.toDataURL('image/jpeg',0.92);
       const doc=new jsPDF({unit:'mm',format:'a4'});
-      await new Promise((resolve,reject)=>{
-        doc.html(container,{
-          callback:()=>resolve(),
-          x:8,y:8,width:194,windowWidth:794,
-          html2canvas:{scale:2,useCORS:true},
-        });
-        setTimeout(()=>reject(new Error('Tempo esgotado ao gerar o PDF.')),20000);
-      });
+      const margin=8,pageWidth=210,pageHeight=297;
+      const imgWidthMm=pageWidth-margin*2;
+      const imgHeightMm=(canvas.height*imgWidthMm)/canvas.width;
+      const usableHeight=pageHeight-margin*2;
+      let heightLeft=imgHeightMm,offsetMm=0;
+      doc.addImage(imgData,'JPEG',margin,margin,imgWidthMm,imgHeightMm);
+      heightLeft-=usableHeight;
+      while(heightLeft>0){
+        offsetMm+=usableHeight;
+        doc.addPage();
+        doc.addImage(imgData,'JPEG',margin,margin-offsetMm,imgWidthMm,imgHeightMm);
+        heightLeft-=usableHeight;
+      }
       return doc.output('blob');
     }finally{
       container.remove();
