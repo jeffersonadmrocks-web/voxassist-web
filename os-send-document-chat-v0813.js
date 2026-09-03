@@ -11,7 +11,11 @@
    impressão física, fora de escopo aqui). */
 (function(){
   const E=v=>typeof esc==='function'?esc(v??''):String(v??'');
-  const JSPDF_CDN='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js';
+  // Achado do usuário em 2026-09-03: a versão 2.5.2 não existe mais no
+  // cdnjs (404 real, confirmado) -- 4.2.1 é a versão publicada de
+  // verdade lá agora (api.cdnjs.com/libraries/jspdf), confirmada
+  // acessível antes de trocar.
+  const JSPDF_CDN='https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js';
   const HTML2CANVAS_CDN='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
   function loadScriptOnce(src){
     return new Promise((resolve,reject)=>{
