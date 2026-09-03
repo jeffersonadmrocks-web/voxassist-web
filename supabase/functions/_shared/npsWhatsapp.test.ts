@@ -18,6 +18,15 @@ Deno.test("buildApprovedMessage - inclui a orientação aprovada sobre notas 9 e
   assertStringIncludes(msg, "No NPS, as notas 9 e 10 representam uma avaliação positiva para nossa empresa.");
 });
 
+Deno.test("buildApprovedMessage - espaçamento igual ao modelo aprovado 2026-09-03 (6 parágrafos)", () => {
+  const msg = buildApprovedMessage("Idenísia", "Serra");
+  const paragraphs = msg.split("\n\n");
+  assertEquals(paragraphs.length, 6);
+  assertEquals(paragraphs[0], "Olá, Idenísia! 😊 Seu atendimento foi finalizado.");
+  assertEquals(paragraphs[2], "No NPS, as notas 9 e 10 representam uma avaliação positiva para nossa empresa.");
+  assertEquals(paragraphs[3], "Poderia reservar um momento para responder conforme sua experiência?");
+});
+
 Deno.test("toWhatsappDigits - adiciona código do país quando ausente", () => {
   assertEquals(toWhatsappDigits("27999998888"), "5527999998888");
 });

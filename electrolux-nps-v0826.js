@@ -125,8 +125,11 @@
     return d.startsWith('55')&&d.length>=12?d:`55${d}`;
   }
   function firstName(name){return String(name||'').trim().split(/\s+/)[0]||name||'cliente'}
+  // Achado do usuário 2026-09-03: espaçamento igual ao modelo aprovado
+  // (imagem enviada) -- cada ideia no próprio parágrafo, "Olá" e
+  // "atendimento finalizado" juntos na primeira linha.
   function buildMessage(clientName,filial){
-    return `Olá, ${firstName(clientName)}! 😊\n\nSeu atendimento foi finalizado. A Electrolux enviará uma pesquisa pelo número ${ELX_SURVEY_PHONE_DISPLAY}, referente ao atendimento da nossa equipe — técnico e atendente.\n\nNo NPS, as notas 9 e 10 representam uma avaliação positiva para nossa empresa. Poderia reservar um momento para responder conforme sua experiência? Sua avaliação é muito importante para continuarmos aprimorando nosso atendimento! 🙌\n\nVox Eletrônica – ${FILIAL_LABEL[filial]||'[filial]'}`;
+    return `Olá, ${firstName(clientName)}! 😊 Seu atendimento foi finalizado.\n\nA Electrolux enviará uma pesquisa pelo número ${ELX_SURVEY_PHONE_DISPLAY}, referente ao atendimento da nossa equipe — técnico e atendente.\n\nNo NPS, as notas 9 e 10 representam uma avaliação positiva para nossa empresa.\n\nPoderia reservar um momento para responder conforme sua experiência?\n\nSua avaliação é muito importante para continuarmos aprimorando nosso atendimento! 🙌\n\nVox Eletrônica – ${FILIAL_LABEL[filial]||'[filial]'}`;
   }
 
   /* ---------- navegação ---------- */
@@ -490,18 +493,18 @@
     };
   }
 
-  // Achado do usuário 2026-09-03: isto abria o wa.me manualmente (o
-  // atendente tinha que clicar Enviar no próprio WhatsApp e depois
-  // confirmar aqui) -- construído antes de existir um jeito automático
-  // confirmado de mandar mensagem de verdade. Agora que o chat
-  // integrado existe (chat-send-message, mesmo gateway), o envio é
-  // real: acha/abre a conversa (mesma regra de "+ Nova" na Central,
-  // window.vxFindOrCreateConversation) e manda pelo pipeline de
-  // verdade -- vira uma conversa normal na Central de Conversas,
-  // qualquer atendente pode continuar se o cliente responder por ali.
-  // Mesma conexão já usada pela Central (usuário confirmou: só existe
-  // uma, pros dois). Só marca "enviado" (insertContact/patchCase) se o
-  // envio realmente foi confirmado pelo gateway -- nunca finge sucesso.
+  // Achado do usuário 2026-09-03: isto abria o wa.me manualmente antes;
+  // depois passou a enviar automático pelo chat integrado -- mas o
+  // usuário pediu uma etapa de revisão: a mensagem tem que aparecer
+  // PRONTA no campo da conversa, o atendente relê/edita se precisar e
+  // só sai quando ELE clica Enviar (chat-beta-v0828.js). Acha/abre a
+  // conversa (mesma regra de "+ Nova" na Central,
+  // window.vxFindOrCreateConversation), mesma conexão já usada pela
+  // Central. "Enviado" (insertContact/patchCase) só é marcado depois
+  // do envio de verdade -- vxOpenChatWithDraft arma window.
+  // __vxNpsPendingContact, consumido em chat-beta-v0828.js só se essa
+  // MESMA conversa for realmente enviada (window.vxNpsMarkContactSent
+  // abaixo) -- nunca finge sucesso antes de o atendente agir.
   async function sendFlow(c,ea,contactType,bg){
     if(!ea.client_phone){toast?.('Cliente sem telefone cadastrado.','err');return}
     let filial=c.filial;
@@ -514,10 +517,10 @@
     const message=buildMessage(ea.client_name,filial);
     const phone=window.vxNormalizePhoneFull?.(ea.client_phone);
     if(!phone){toast?.('Telefone do cliente inválido -- confira DDD e quantidade de dígitos.','err');return}
-    if(typeof window.vxFindOrCreateConversation!=='function'){toast?.('Chat integrado indisponível no momento.','err');return}
+    if(typeof window.vxFindOrCreateConversation!=='function'||typeof window.vxOpenChatWithDraft!=='function'){toast?.('Chat integrado indisponível no momento.','err');return}
 
     const sendBtn=bg.querySelector(contactType==='PRIMEIRO_CONTATO'?'#npsSendFirst':'#npsSendReminder');
-    if(sendBtn){sendBtn.disabled=true;sendBtn.textContent='ENVIANDO...'}
+    if(sendBtn){sendBtn.disabled=true;sendBtn.textContent='ABRINDO CONVERSA...'}
     try{
       const connRows=await api('chat_connections?status=eq.CONECTADO&select=id&limit=1').catch(()=>[]);
       const connectionId=connRows?.[0]?.id;
@@ -525,22 +528,27 @@
       const conversationId=await window.vxFindOrCreateConversation(connectionId,phone,ea.client_name||null);
       if(!conversationId)throw new Error('Não foi possível abrir a conversa.');
 
-      const res=await fetch(CFG.url+'/functions/v1/chat-send-message',{
-        method:'POST',headers:authHeaders(),
-        body:JSON.stringify({conversationId,body:message}),
-      });
-      const data=await res.json().catch(()=>null);
-      if(!res.ok||!data?.ok)throw new Error(data?.message||data?.error||'Falha ao enviar pelo WhatsApp.');
-
-      const newSituacao=contactType==='PRIMEIRO_CONTATO'?'PRIMEIRO_CONTATO_ENVIADO':'LEMBRETE_ENVIADO';
-      await insertContact(c,{contactType,phone:ea.client_phone,message,newSituacao});
-      await patchCase(c,{situacao:newSituacao},newSituacao);
-      toast?.('Mensagem enviada pelo WhatsApp integrado -- conversa disponível na Central de Conversas.');
+      window.__vxNpsPendingContact={caseId:c.id,contactType,phone:ea.client_phone,conversationId};
       bg.remove();
-      renderNpsScreen();
+      await window.vxOpenChatWithDraft(conversationId,message);
+      toast?.('Mensagem pronta no campo da conversa -- revise e clique Enviar quando quiser.');
     }catch(err){
-      toast?.('Não foi possível enviar: '+(err.message||'erro desconhecido'),'err');
+      toast?.('Não foi possível abrir a conversa: '+(err.message||'erro desconhecido'),'err');
       if(sendBtn){sendBtn.disabled=false;sendBtn.textContent=contactType==='PRIMEIRO_CONTATO'?'Enviar primeiro contato':'Enviar lembrete'}
     }
   }
+
+  // Consumido por chat-beta-v0828.js só depois do envio REAL confirmado
+  // pelo gateway (nunca no momento de só preparar o rascunho).
+  window.vxNpsMarkContactSent=async(caseId,contactType,phone,message)=>{
+    try{
+      const c=cache.cases.find(x=>String(x.id)===String(caseId));
+      if(!c)return;
+      const newSituacao=contactType==='PRIMEIRO_CONTATO'?'PRIMEIRO_CONTATO_ENVIADO':'LEMBRETE_ENVIADO';
+      await insertContact(c,{contactType,phone,message,newSituacao});
+      await patchCase(c,{situacao:newSituacao},newSituacao);
+    }catch(e){
+      console.error('[electrolux-nps] falha ao registrar contato enviado:',e);
+    }
+  };
 })();

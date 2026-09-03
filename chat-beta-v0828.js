@@ -970,6 +970,18 @@
   // por qualquer outra tela que precise abrir uma conversa real da
   // Central a partir de fora deste arquivo.
   window.vxOpenChatConversation=id=>{hubState.activeTab='CENTRAL';selectConversa(id)};
+  // Achado do usuário 2026-09-03 (NPS Electrolux): mensagem pronta
+  // precisa aparecer NO COMPOSER pro atendente reler/editar antes de
+  // enviar -- nunca sai sozinha. Abre a Central (se ainda não estiver
+  // aberta), seleciona a conversa e deixa o texto pronto no campo, sem
+  // clicar Enviar por conta própria.
+  window.vxOpenChatWithDraft=async(conversationId,draftText)=>{
+    if(!document.querySelector('.vx-chatbeta'))await openConversasScreen();
+    window.vxOpenChatConversation(conversationId);
+    await new Promise(r=>setTimeout(r,120));
+    const input=document.querySelector('#vxMsgForm textarea[name=body]');
+    if(input){input.value=draftText;input.focus()}
+  };
 
   async function selectConversa(id,skipListRerender){
     stopConversaPoll();
@@ -1042,10 +1054,18 @@
         <input type="file" id="vxAttachFileInput" accept="image/*,application/pdf,audio/*,video/mp4" hidden>
         <button type="button" id="vxAttachCameraBtn" class="vx-cc-note-btn" title="Tirar foto" aria-label="Tirar foto">📷</button>
         <input type="file" id="vxAttachCameraInput" accept="image/*" capture="environment" hidden>
-        <input name="body" placeholder="Escrever mensagem…" required maxlength="4000">
+        <textarea name="body" placeholder="Escrever mensagem… (Shift+Enter para quebrar linha)" required maxlength="4000" rows="1"></textarea>
         <button type="submit" class="vx-cc-send-btn">Enviar</button>
       </form>`;
     document.getElementById('vxMsgForm').onsubmit=handleSendMensagem;
+    // Achado do usuário 2026-09-03: campo virou textarea (precisa
+    // preservar quebra de linha pro rascunho de NPS) -- textarea não
+    // envia sozinho no Enter como input enviava, então repõe esse
+    // comportamento manualmente (Enter=enviar, Shift+Enter=nova linha,
+    // igual ao padrão já usado em WhatsApp/Slack).
+    document.querySelector('#vxMsgForm textarea[name=body]')?.addEventListener('keydown',e=>{
+      if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.getElementById('vxMsgForm')?.requestSubmit();}
+    });
     document.getElementById('vxAttachBtn').onclick=()=>document.getElementById('vxAttachFileInput').click();
     document.getElementById('vxAttachCameraBtn').onclick=()=>document.getElementById('vxAttachCameraInput').click();
     document.getElementById('vxAttachFileInput').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)handleAttachmentPick(f)};
@@ -1063,7 +1083,7 @@
       const form=document.getElementById('vxMsgForm');
       form.classList.toggle('note-mode',internalNoteMode);
       document.getElementById('vxNoteToggleBtn').classList.toggle('active',internalNoteMode);
-      const inputEl=form.querySelector('input[name=body]');
+      const inputEl=form.querySelector('textarea[name=body]');
       inputEl.placeholder=internalNoteMode?'Escrever nota interna (não enviada ao cliente)…':'Escrever mensagem…';
     };
     document.getElementById('vxCtxAssume')?.addEventListener('click',()=>assumirConversa(conv.id));
@@ -1269,7 +1289,7 @@
   function useQuickReply(id){
     const q=cache.quickReplies.find(x=>String(x.id)===String(id));
     if(!q)return;
-    const input=document.querySelector('#vxMsgForm input[name=body]');
+    const input=document.querySelector('#vxMsgForm textarea[name=body]');
     if(input)input.value=q.body;
     quickReplyPopoverOpen=false;
     document.getElementById('vxQuickReplyPopover').hidden=true;
@@ -1622,7 +1642,7 @@
     const quoteBlock=m.reply_to?`<div class="vx-msg-quote"><b>${E(quoteSnippetAuthor(m.reply_to))}</b><span>${E(quoteSnippetText(m.reply_to))}</span></div>`:'';
     if(m.origin==='INTERNAL'){
       const autor=m.profiles?.full_name||'—';
-      return `<div class="vx-msg-row vx-msg-internal" data-msg-body="${E((m.body||'').toLowerCase())}"><div class="vx-msg-bubble vx-msg-bubble-internal">${quoteBlock}<span class="vx-msg-internal-tag">📝 Nota interna — visível só pra equipe</span><span><b>${E(autor)}:</b> ${E(m.body||'')}</span><small>${E(hora)}</small></div><button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button></div>`;
+      return `<div class="vx-msg-row vx-msg-internal" data-msg-body="${E((m.body||'').toLowerCase())}"><div class="vx-msg-bubble vx-msg-bubble-internal">${quoteBlock}<span class="vx-msg-internal-tag">📝 Nota interna — visível só pra equipe</span><span class="vx-msg-text"><b>${E(autor)}:</b> ${E(m.body||'')}</span><small>${E(hora)}</small></div><button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button></div>`;
     }
     const lado=m.direction==='OUTBOUND'?'vx-msg-out':'vx-msg-in';
     const isDeleted=!!m.deleted_at;
@@ -1640,7 +1660,11 @@
     // real não mostrava quem respondeu -- só o Robô tinha selo. O nome
     // já vem carregado pelo mesmo embed usado na nota interna
     // (profiles!chat_messages_sender_user_id_fkey), só faltava exibir.
-    const attendantName=(!isBot&&!isImport&&m.direction==='OUTBOUND'&&m.profiles?.full_name)?m.profiles.full_name:null;
+    // Achado do usuário 2026-09-03: nome completo do atendente no selo
+    // era informação demais pro cliente eventualmente ver print/tela
+    // compartilhada -- só o primeiro nome, mesmo critério já usado nos
+    // templates do robô (firstNameOf, chatBotFlow.ts).
+    const attendantName=(!isBot&&!isImport&&m.direction==='OUTBOUND'&&m.profiles?.full_name)?String(m.profiles.full_name).trim().split(/\s+/)[0]:null;
     const attendantTag=attendantName?`<span class="vx-msg-tag vx-msg-tag-attendant">👤 ${E(attendantName)}</span>`:'';
     const replyBtn=isDeleted?'':`<button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button>`;
     // Achado do usuário 2026-09-03: "apagar mensagem" tinha que revogar
@@ -1652,7 +1676,10 @@
     const canDelete=!isDeleted&&!isImport&&m.origin!=='INTERNAL'&&m.direction==='OUTBOUND'&&!!m.external_message_id;
     const deleteBtn=canDelete?`<button type="button" class="vx-msg-reply-btn vx-msg-delete-btn" data-delete-msg="${E(m.id)}" title="Apagar para todos (WhatsApp)">🗑</button>`:'';
     const isMedia=m.message_type&&m.message_type!=='TEXT'&&m.media_storage_path;
-    const bodyHtml=isMedia?mediaBodyHtml(m):`<span>${E(m.body||'[sem texto]')}</span>`;
+    // Achado do usuário 2026-09-03: mensagem com quebras de linha reais
+    // (ex.: template de NPS) chegava como um parágrafo único no balão --
+    // HTML colapsa \n por padrão, precisa de white-space explícito.
+    const bodyHtml=isMedia?mediaBodyHtml(m):`<span class="vx-msg-text">${E(m.body||'[sem texto]')}</span>`;
     return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}" data-msg-body="${E((m.body||'').toLowerCase())}"><div class="vx-msg-bubble${isBot?' vx-msg-bubble-bot':''}">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}${botTag}${attendantTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}${deleteBtn}</div>`;
   }
   function renderReplyBanner(){
@@ -1668,7 +1695,7 @@
     if(!msg)return;
     replyingTo=msg;
     renderReplyBanner();
-    document.querySelector('#vxMsgForm input[name=body]')?.focus();
+    document.querySelector('#vxMsgForm textarea[name=body]')?.focus();
   }
 
   // "Apagar para todos" (achado 2026-09-03) -- revoga de verdade no
@@ -1751,7 +1778,7 @@
     const body=String(f.get('body')||'').trim();
     if(!body||!conversaAtualId)return;
     const btn=e.target.querySelector('button[type=submit]');
-    const input=e.target.querySelector('input[name=body]');
+    const input=e.target.querySelector('textarea[name=body]');
     const conv=hubState.list.find(c=>String(c.id)===String(conversaAtualId));
     const me=myUserId();
     // Auto-atribuição por ação humana (regra dada pelo usuário em
@@ -1825,6 +1852,16 @@
         });
         const data=await res.json().catch(()=>null);
         if(!res.ok||!data?.ok)throw new Error(data?.message||data?.error||'Falha ao enviar.');
+        // Achado do usuário 2026-09-03: NPS Electrolux só marca "enviado"
+        // depois que o atendente REALMENTE clicou Enviar aqui (nunca no
+        // momento de só preparar o rascunho) -- consome o marcador
+        // armado por vxOpenChatWithDraft, só se for exatamente esta
+        // conversa (evita marcar sozinho se o atendente mudou de
+        // conversa antes de mandar).
+        if(window.__vxNpsPendingContact&&String(window.__vxNpsPendingContact.conversationId)===String(conversaAtualId)){
+          const pending=window.__vxNpsPendingContact;window.__vxNpsPendingContact=null;
+          window.vxNpsMarkContactSent?.(pending.caseId,pending.contactType,pending.phone,body);
+        }
       }
       input.value='';
       replyingTo=null;
