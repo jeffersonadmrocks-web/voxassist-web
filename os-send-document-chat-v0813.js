@@ -148,26 +148,6 @@
     if(!res.ok||!data?.ok)throw new Error(data?.message||data?.error||'Falha ao enviar pelo WhatsApp.');
   }
 
-  async function sendOsDocumentViaChat(){
-    const o=state?.activeOs;
-    if(!o?.id)return window.toast?.('Nenhuma O.S. aberta.','err');
-    const clientName=o.clients?.name||'este cliente';
-    if(!confirm(`Enviar o resumo da O.S. ${o.os_number||''} (com orçamento) por WhatsApp pra ${clientName}?`))return;
-    const btn=document.querySelector('[data-act="send-doc"]');
-    if(btn){btn.disabled=true;btn.textContent='Enviando…';}
-    try{
-      const {conversationId}=await window.vxResolveOsChatTarget(o);
-      const blob=await buildOsPdfBlob(o);
-      await sendDocumentBlobViaChat(conversationId,blob,`OS-${o.os_number||o.id}.pdf`);
-      window.toast?.('O.S./Orçamento enviado por WhatsApp com sucesso.');
-      if(typeof window.vxOpenChatWithDraft==='function')await window.vxOpenChatWithDraft(conversationId,'');
-    }catch(e){
-      window.toast?.(e?.message||'Não foi possível enviar o documento.','err');
-    }finally{
-      if(btn){btn.disabled=false;btn.textContent='📄 Enviar O.S./Orçamento por WhatsApp';}
-    }
-  }
-
   // Achado do usuário em 2026-09-03: pedir pra sair da conversa e ir na
   // OS achar o botão certo é um caminho longo -- o fluxo natural é
   // Chat -> Contexto VoxAssist -> "Enviar arquivo do VoxAssist", ali
@@ -269,5 +249,4 @@
     };
   }
   window.vxOpenSendDocumentFlow=openSendDocumentFlow;
-  window.vxSendOsDocumentViaChat=sendOsDocumentViaChat;
 })();
