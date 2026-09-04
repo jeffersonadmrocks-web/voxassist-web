@@ -433,14 +433,12 @@
     }
     const analysis=active.filter(o=>norm(o.status)==='AGUARDANDO ANALISE');
     const approval=active.filter(o=>norm(o.status)==='AGUARDANDO APROVACAO');
+    // "repair" junta AGUARDANDO CONSERTO + EM CONSERTO de propósito --
+    // usada tanto pela métrica já existente de "Oportunidade de
+    // faturamento"/overdueRepair quanto pelo card "AGUARDANDO CONSERTO"
+    // da Gestão Visual (achado do usuário em 2026-09-04: o critério
+    // deve ser amplo, sem um "Em Conserto" à parte).
     const repair=active.filter(o=>['AGUARDANDO CONSERTO','EM CONSERTO'].includes(norm(o.status)));
-    // "repair" acima junta AGUARDANDO CONSERTO + EM CONSERTO de propósito
-    // (métrica já existente de "Oportunidade de faturamento"/
-    // overdueRepair) -- aguardandoConserto é só AGUARDANDO CONSERTO,
-    // pro card novo de Gestão Visual pedido pelo usuário em 2026-09-04
-    // (tempo esperando o conserto COMEÇAR, distinto de já estar em
-    // conserto).
-    const aguardandoConserto=active.filter(o=>norm(o.status)==='AGUARDANDO CONSERTO');
     const ready=active.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA');
     const overdueAnalysis=analysis.filter(o=>age(o)>3), overdueApproval=approval.filter(o=>age(o)>3), overdueRepair=repair.filter(o=>age(o)>7);
     const readyOverdue7=ready.filter(o=>age(o)>7), readyOverdue3=ready.filter(o=>age(o)>3);
@@ -676,7 +674,7 @@
       const oldest=rows.reduce((m,o)=>Math.max(m,age(o)),0);
       return {b,oldest,rowsByBucket};
     }
-    const gvAnalysis=ageBuckets(analysis), gvApproval=ageBuckets(approval), gvConserto=ageBuckets(aguardandoConserto), gvReady=ageBuckets(ready);
+    const gvAnalysis=ageBuckets(analysis), gvApproval=ageBuckets(approval), gvConserto=ageBuckets(repair), gvReady=ageBuckets(ready);
     // Drill-down por faixa etária do Gestão Visual -- clicar num
     // número/segmento mostra exatamente quais OS estão naquela faixa
     // (achado do usuário em 2026-09-01: os números eram estáticos, sem
@@ -846,7 +844,7 @@
       wireAgendaCard();
     }
 
-    const drills={active,analysis,approval,repair,aguardandoConserto,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,oppApproval,oppReady,oppOverdueRepair,oppOverdueApproval:oppApproval.filter(o=>age(o)>3),oppReadyOverdue3,retiradasHojeOrders,prazosCriticosOrders,...gvDrills,...prodDrills};
+    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,oppApproval,oppReady,oppOverdueRepair,oppOverdueApproval:oppApproval.filter(o=>age(o)>3),oppReadyOverdue3,retiradasHojeOrders,prazosCriticosOrders,...gvDrills,...prodDrills};
     const partsDrills={partsAll,partsPendentes,partsCompra,partsEntrega,partsAtrasadas,partsRecebidasHoje};
     const tasksDrills={tasks};
     const caseDrills={casesAbertos,casesNovos,casesAndamento,casesResolvidos,myCases};
