@@ -50,13 +50,21 @@
 /* Achado do usuário em 2026-09-04: com várias abas de OS abertas ao
    mesmo tempo, rolar a tela pra baixo pra preencher um campo faz
    perder a referência de QUAL OS está editando -- risco real de
-   confundir dados entre abas. Cabeçalho fixo ao rolar (position:sticky)
-   -- top:134px porque o header (88px) e a barra de guias/tabs (46px)
-   do app já são sticky também (styles.css), então o cabeçalho da OS
-   fica colado logo abaixo dos dois, nunca por cima. z-index menor que
-   os dois (14/15) pra continuar por baixo se algum dia se sobrepuserem. */
-.vx-os-head{min-height:auto;background:linear-gradient(135deg,#1c4a73,#2c6291);border:0;border-radius:var(--os-radius);padding:16px 22px;margin-bottom:0;box-shadow:0 3px 10px rgba(20,55,90,.14);display:flex;flex-direction:column;gap:14px;width:100%;box-sizing:border-box;position:sticky;top:134px;z-index:13}
-@media(max-width:760px){.vx-os-head{position:static}}
+   confundir dados entre abas. Cabeçalho + guias (O.S./Equipamento/
+   Cliente/...) ficam fixos juntos ao rolar -- top:134px porque o
+   header (88px) e a barra de guias do PRÓPRIO APP (46px) já são
+   sticky também (styles.css), então esse conjunto cola logo abaixo
+   dos dois, nunca por cima. Precisavam ficar num wrapper JUNTOS (não
+   cada um com seu position:sticky separado): só o cabeçalho ficando
+   fixo enquanto as guias rolavam normalmente deixava o conteúdo da OS
+   passar visualmente por trás entre os dois durante a rolagem --
+   achado do usuário ("informação não deveria passar por detrás desses
+   card"). Fundo opaco (mesma cor do fundo da tela) garante que nada
+   fique visível atrás em nenhum momento da rolagem. z-index menor que
+   o header/guias do app (14/15) pra continuar por baixo deles. */
+.vx-os-sticky-top{position:sticky;top:134px;z-index:13;display:flex;flex-direction:column;gap:12px;background:var(--os-bg);padding-bottom:2px}
+@media(max-width:760px){.vx-os-sticky-top{position:static}}
+.vx-os-head{min-height:auto;background:linear-gradient(135deg,#1c4a73,#2c6291);border:0;border-radius:var(--os-radius);padding:12px 22px;margin-bottom:0;box-shadow:0 3px 10px rgba(20,55,90,.14);display:flex;flex-direction:column;gap:10px;width:100%;box-sizing:border-box}
 .vx-os-head-top{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;width:100%}
 .vx-os-head-left{display:flex;align-items:center;gap:10px;min-width:0}
 .vx-os-head-icon{font-size:17px;opacity:.85;flex:none}

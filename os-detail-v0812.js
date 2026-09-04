@@ -326,7 +326,7 @@
     ]);
     const filteredDocs=(docs||[]).filter(d=>(!d.model||d.model===o.equipments?.model)&&(!d.product_type||d.product_type===o.equipments?.product_type));
     ctx={o,c:o.clients||{},e:o.equipments||{},hist,parts,fin:finRows?.[0]||{},atts,payments,techs,phones,addresses,docs:filteredDocs,stores,clientOrders,clientEquipments,serviceGroups,activeTab:tab,selectedPayment:null,profileName:state.profile?.full_name||'USUÁRIO'};
-    const title=document.querySelector('#title');if(title)title.textContent='OS '+o.os_number;document.querySelector('#app').innerHTML=`<div class="vx-os-wrap">${header(o)}${tabs()}${osPanel()}${equipPanel()}${clientPanel()}${budgetPanel()}${attachmentsPanel()}${financePanel()}${historyPanel()}</div>`;
+    const title=document.querySelector('#title');if(title)title.textContent='OS '+o.os_number;document.querySelector('#app').innerHTML=`<div class="vx-os-wrap"><div class="vx-os-sticky-top">${header(o)}${tabs()}</div>${osPanel()}${equipPanel()}${clientPanel()}${budgetPanel()}${attachmentsPanel()}${financePanel()}${historyPanel()}</div>`;
     bind();if(tab==='orcamento')ensureAnalysisDate();
   };
 

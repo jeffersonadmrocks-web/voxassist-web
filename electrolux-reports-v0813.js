@@ -132,19 +132,31 @@
     await api(`electrolux_panel_settings?company_id=eq.${companyId}`,{method:'DELETE'});
     elx.apiUrl='';
   }
+  // Achado do usuário em 2026-09-04: a tela pedia login/senha do painel
+  // Electrolux (Vox Analytics) de novo em cada dispositivo/navegador --
+  // dependia de cookie do PRÓPRIO navegador logado direto no painel
+  // (fetch com credentials:'include'), mesmo a credencial real já
+  // estando guardada nos secrets da function (as MESMAS que
+  // sync-electrolux-agenda já usa). "Isso é uma operação do VoxAssist,
+  // não do usuário/dispositivo" -- agora passa por
+  // supabase/functions/electrolux-proxy, autenticado só pela própria
+  // sessão VoxAssist (qualquer usuário logado, sem depender de sessão
+  // separada no painel Electrolux). apiBase()/elx.apiUrl continuam só
+  // como o texto exibido/checagem de "está configurado" -- a chamada
+  // real usa a credencial do proxy, não mais o navegador direto.
   async function getJson(path){
     const base=apiBase(); if(!base) throw new Error('Configure o endereço da API do Electrolux abaixo.');
     let r;
-    try{ r=await fetch(base+path,{cache:'no-store',credentials:'include'}); }
-    catch(_e){ throw new Error('Não foi possível conectar em '+base+' (provável bloqueio de CORS ou servidor fora do ar).'); }
+    try{ r=await fetch(CFG.url+'/functions/v1/electrolux-proxy?path='+encodeURIComponent(path),{cache:'no-store',headers:authHeaders(false)}); }
+    catch(_e){ throw new Error('Não foi possível conectar ao Electrolux (proxy VoxAssist fora do ar).'); }
     if(!r.ok) throw new Error('HTTP '+r.status+' em '+path);
     return r.json();
   }
   async function postJson(path){
     const base=apiBase(); if(!base) throw new Error('Configure o endereço da API do Electrolux abaixo.');
     let r;
-    try{ r=await fetch(base+path,{method:'POST',cache:'no-store',credentials:'include'}); }
-    catch(_e){ throw new Error('Não foi possível conectar em '+base+' (provável bloqueio de CORS ou servidor fora do ar).'); }
+    try{ r=await fetch(CFG.url+'/functions/v1/electrolux-proxy?path='+encodeURIComponent(path),{method:'POST',cache:'no-store',headers:authHeaders(false)}); }
+    catch(_e){ throw new Error('Não foi possível conectar ao Electrolux (proxy VoxAssist fora do ar).'); }
     if(!r.ok) throw new Error('HTTP '+r.status+' em '+path);
     return r.json();
   }
