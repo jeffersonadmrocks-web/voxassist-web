@@ -800,6 +800,10 @@
             <button type="button" class="vx-c-case-item" data-drill="cases:casesAndamento" data-title="Em andamento"><span class="vx-c-case-ic">🕐</span><div class="vx-c-case-txt"><b>${casesAndamento.length}</b><span>Em andamento</span><small>Aguardando retorno do cliente</small></div><span class="vx-c-case-chev">›</span></button>
             <button type="button" class="vx-c-case-item" data-drill="cases:casesResolvidos" data-title="Resolvidos"><span class="vx-c-case-ic">✓</span><div class="vx-c-case-txt"><b>${casesResolvidos.length}</b><span>Resolvidos</span><small>Últimos 30 dias</small></div><span class="vx-c-case-chev">›</span></button>
           </div>
+          <div class="vx-c-mycases-inline">
+            <div class="vx-c-mycases-inline-head"><span>MEUS CASOS ENVIADOS</span>${myCases.length>3?`<a href="#" data-drill="cases:myCases" data-title="Meus Casos Enviados">Ver todos</a>`:''}</div>
+            ${myCases.length?myCases.slice(0,3).map(myCaseRow).join(''):'<p class="vx-c-mycases-empty">Você ainda não abriu nenhum caso -- confira aqui antes de abrir um novo, pra não duplicar.</p>'}
+          </div>
         </section>
         <section class="vx-c-opp-card"><div class="vx-c-title"><h3>◎ Oportunidades do Dia</h3><a href="#" data-drill="ready" data-title="Oportunidades do Dia">Ver todas</a></div>
           ${oppRow('Retiradas previstas para hoje',retiradasHoje,'retiradasHojeOrders')}
@@ -864,10 +868,6 @@
       </div>
 
       ${agendaSectionHtml(agendaSelectedTechId)}
-
-      <section class="vx-c-list-card vx-c-mycases-card"><div class="vx-c-title"><h3>📝 Meus Casos Enviados</h3><a href="#" data-drill="cases:myCases" data-title="Meus Casos Enviados">Ver todos</a></div>
-        ${myCases.length?myCases.slice(0,6).map(myCaseRow).join(''):'<p class="vx-c-empty">Você ainda não abriu nenhum caso de atenção -- acompanhe aqui pra não abrir um duplicado.</p>'}
-      </section>
 
       ${discovery()}
     </div>`;

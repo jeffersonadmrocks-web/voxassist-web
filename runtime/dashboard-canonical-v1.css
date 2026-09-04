@@ -254,11 +254,17 @@ button.vx-c-icon-row:disabled{cursor:default;opacity:1}
 .vx-c-case-reply button{border:0;background:var(--vx-navy);color:#fff;font-size:11.5px;font-weight:700;border-radius:8px;padding:9px 14px;cursor:pointer;white-space:nowrap}
 
 /* ---------- "Meus Casos Enviados" (2026-09-04) ---------- */
-/* Fica fora dos grids .vx-c-grid-2/.vx-c-grid-3 (seção solta, igual
-   Gestão Visual/Agenda/Descoberta do Dia) -- não herda o estilo de
-   card genérico deles, precisa do próprio. */
-.vx-c-mycases-card{background:var(--vx-surface);border:1px solid var(--vx-border-strong);border-top:3px solid var(--vx-info);border-radius:14px;padding:14px 16px;box-shadow:var(--vx-card-shadow)}
-.vx-c-mycase-row{width:100%;display:flex;align-items:center;gap:10px;border:0;border-top:1px solid var(--vx-border);background:none;padding:8px 2px;text-align:left;cursor:pointer;font:inherit}
+/* Achado do usuário: a seção solta lá embaixo (depois de Agenda) era
+   fácil demais de não ver/rolar até -- movida pra DENTRO do próprio
+   card "Casos de Atenção", logo abaixo dos 3 números, onde o
+   operador já está olhando. */
+.vx-c-mycases-inline{border-top:1px solid var(--vx-border);margin-top:12px;padding-top:10px}
+.vx-c-mycases-inline-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.vx-c-mycases-inline-head span{font-size:10px;font-weight:800;color:var(--vx-muted);letter-spacing:.05em}
+.vx-c-mycases-inline-head a{font-size:10.5px;color:var(--vx-info);font-weight:700;text-decoration:none}
+.vx-c-mycases-inline-head a:hover{text-decoration:underline}
+.vx-c-mycases-empty{margin:4px 0 0;font-size:11px;color:var(--vx-muted)}
+.vx-c-mycase-row{width:100%;display:flex;align-items:center;gap:10px;border:0;border-top:1px solid var(--vx-border);background:none;padding:7px 2px;text-align:left;cursor:pointer;font:inherit}
 .vx-c-mycase-row:first-of-type{border-top:0}
 .vx-c-mycase-row:hover{background:#f6f8fb}
 .vx-c-mycase-ic{flex:none;font-size:14px}
