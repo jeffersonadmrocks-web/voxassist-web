@@ -80,10 +80,19 @@
 .vx-c-cases-card{border-color:#f0c6c4!important;background:var(--vx-risk-bg)!important}
 .vx-c-cases-card h3{color:var(--vx-risk)}
 .vx-c-cases-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.vx-c-cases-row>div{background:var(--vx-surface);border-radius:9px;padding:10px}
-.vx-c-cases-row b{display:block;font-size:20px;color:var(--vx-risk);font-weight:800}
-.vx-c-cases-row span{display:block;font-size:11px;font-weight:700;color:var(--vx-text);margin-top:2px}
-.vx-c-cases-row small{display:block;font-size:9.5px;color:var(--vx-muted);margin-top:1px}
+/* Achado do usuário em 2026-09-03 (referência visual em anexo): os 3
+   números nunca tiveram data-drill nenhum -- clicar não fazia nada.
+   Viraram <button data-drill="cases:X"> (mesmo dispatcher genérico já
+   usado por todo o resto do dashboard) + visual novo (ícone em
+   quadrado azul-claro, seta). */
+.vx-c-case-item{display:flex;align-items:center;gap:10px;background:var(--vx-surface);border:1px solid var(--vx-border);border-radius:11px;padding:11px 12px;text-align:left;cursor:pointer;font:inherit;transition:box-shadow .15s ease,border-color .15s ease}
+.vx-c-case-item:hover{border-color:var(--vx-info);box-shadow:0 2px 8px rgba(15,39,64,.08)}
+.vx-c-case-ic{flex:none;width:34px;height:34px;border-radius:9px;background:var(--vx-info-bg);color:var(--vx-info);display:flex;align-items:center;justify-content:center;font-size:15px}
+.vx-c-case-txt{flex:1;min-width:0}
+.vx-c-case-txt b{display:block;font-size:19px;color:var(--vx-text);font-weight:800;line-height:1.1}
+.vx-c-case-txt span{display:block;font-size:11px;font-weight:700;color:var(--vx-text);margin-top:2px}
+.vx-c-case-txt small{display:block;font-size:9.5px;color:var(--vx-muted);margin-top:1px}
+.vx-c-case-chev{flex:none;color:var(--vx-muted);font-size:16px}
 .vx-c-opp-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:1px solid var(--vx-border);font-size:11.5px;color:var(--vx-text)}
 .vx-c-opp-row:first-of-type{border-top:0}
 .vx-c-opp-row b{font-weight:800;color:var(--vx-navy)}

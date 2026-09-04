@@ -652,11 +652,11 @@
       </div>
 
       <div class="vx-c-grid-2">
-        <section class="vx-c-cases-card"><div class="vx-c-title"><h3>⚠ Casos de Atenção</h3><a href="#" data-drill="casesAbertos" data-title="Casos de Atenção">Ver todos os casos</a></div>
+        <section class="vx-c-cases-card"><div class="vx-c-title"><h3>⚠ Casos de Atenção</h3><a href="#" data-drill="casesAbertos" data-title="Casos de Atenção">Ver todos os casos ›</a></div>
           <div class="vx-c-cases-row">
-            <div><b>${casesNovos.length}</b><span>Novos casos</span><small>Requerem triagem</small></div>
-            <div><b>${casesAndamento.length}</b><span>Em andamento</span><small>Aguardando retorno do cliente</small></div>
-            <div><b>${casesResolvidos.length}</b><span>Resolvidos</span><small>Últimos 30 dias</small></div>
+            <button type="button" class="vx-c-case-item" data-drill="cases:casesNovos" data-title="Novos casos"><span class="vx-c-case-ic">📄</span><div class="vx-c-case-txt"><b>${casesNovos.length}</b><span>Novos casos</span><small>Requerem triagem</small></div><span class="vx-c-case-chev">›</span></button>
+            <button type="button" class="vx-c-case-item" data-drill="cases:casesAndamento" data-title="Em andamento"><span class="vx-c-case-ic">🕐</span><div class="vx-c-case-txt"><b>${casesAndamento.length}</b><span>Em andamento</span><small>Aguardando retorno do cliente</small></div><span class="vx-c-case-chev">›</span></button>
+            <button type="button" class="vx-c-case-item" data-drill="cases:casesResolvidos" data-title="Resolvidos"><span class="vx-c-case-ic">✓</span><div class="vx-c-case-txt"><b>${casesResolvidos.length}</b><span>Resolvidos</span><small>Últimos 30 dias</small></div><span class="vx-c-case-chev">›</span></button>
           </div>
         </section>
         <section class="vx-c-opp-card"><div class="vx-c-title"><h3>◎ Oportunidades do Dia</h3><a href="#" data-drill="ready" data-title="Oportunidades do Dia">Ver todas</a></div>
