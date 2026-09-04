@@ -17,26 +17,9 @@
 .vx-peca-body{padding:16px 18px;max-height:72vh;overflow:auto}
 .vx-peca-body .vx-field{margin-bottom:13px}
 .vx-peca-body .vx-field label{font-size:12px;font-weight:700;color:#334155;display:block;margin-bottom:4px;text-transform:none}
-.vx-peca-body textarea{width:100%;border:1px solid #d7dee6;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;height:auto;line-height:1.4;resize:vertical;box-sizing:border-box}
+.vx-peca-body textarea,.vx-peca-body select{width:100%;border:1px solid #d7dee6;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;height:auto;line-height:1.4;resize:vertical;box-sizing:border-box;background:#fff;color:#0f172a}
 .vx-peca-counter{display:block;text-align:right;color:#94a3b8;font-size:11px;margin-top:2px}
 .vx-peca-divider{height:1px;background:#eef1f4;margin:16px 0}
-
-.vx-peca-recipient{position:relative}
-.vx-peca-recipient-trigger{width:100%;display:flex;align-items:center;gap:8px;border:1px solid #d7dee6;border-radius:8px;background:#fff;padding:7px 10px;cursor:pointer;text-align:left}
-.vx-peca-recipient-trigger:hover{border-color:#b7c3d0}
-.vx-peca-recipient-chips{flex:1;display:flex;flex-wrap:wrap;gap:6px;min-height:22px;align-items:center}
-.vx-peca-recipient-placeholder{color:#94a3b8;font-size:13px}
-.vx-peca-recipient-arrow{color:#94a3b8;font-size:11px;flex:none}
-.vx-peca-chip{display:inline-flex;align-items:center;gap:5px;background:#e3f0fb;color:#0e6fa8;font-size:11.5px;font-weight:700;padding:3px 6px 3px 9px;border-radius:999px;white-space:nowrap}
-.vx-peca-chip button{border:0;background:none;color:#0e6fa8;font-size:13px;line-height:1;cursor:pointer;padding:0;opacity:.7}
-.vx-peca-chip button:hover{opacity:1}
-.vx-peca-recipient-panel{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;background:#fff;border:1px solid #d7dee6;border-radius:10px;box-shadow:0 8px 24px rgba(15,35,60,.12);padding:8px 10px 10px;display:flex;gap:18px;flex-wrap:wrap;max-height:220px;overflow:auto}
-.vx-peca-recipient-group{min-width:130px}
-.vx-peca-recipient-group b{display:block;font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em;margin:6px 0 4px}
-.vx-peca-recipient-item{display:flex;align-items:center;gap:7px;font-size:12.5px;padding:3px 0;color:#334155;cursor:pointer;white-space:nowrap}
-.vx-peca-recipient-item input[type="checkbox"]{width:14px;height:14px;min-width:14px;flex:none;margin:0;accent-color:#0e6fa8}
-.vx-peca-recipient-item span{overflow:hidden;text-overflow:ellipsis}
-.vx-peca-recipients-empty{font-size:12px;color:#94a3b8}
 
 .vx-peca-parts-field label{color:#64748b!important;font-weight:600!important}
 .vx-peca-parts-list{border:1px solid #eef1f4;border-radius:8px;max-height:130px;overflow:auto;padding:2px 10px;background:#fbfcfd}

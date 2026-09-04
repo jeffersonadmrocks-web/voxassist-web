@@ -35,7 +35,12 @@
   // OS atual ou ao cliente, prioridade em pills e pré-visualização ao
   // vivo de como o caso aparece no Dashboard. client_id/case_type são
   // colunas novas e aditivas (migration 20260903060000).
-  const CASO_TYPES=[['INFO','🚩','Informação importante'],['RECLAMACAO','⚠','Reclamação do cliente'],['ATRASO','⏰','Atraso no atendimento'],['CANCELAMENTO','🔁','Risco de cancelamento'],['FINANCEIRO','💰','Pendência financeira'],['PECA','🔧','Solicitação de peça'],['OUTRO','📌','Outro']];
+  // "PECA" propositalmente NÃO está nesta lista: solicitação de peça
+  // tem botão e fluxo próprios (vxOpenSolicitarPecaModal, grava em
+  // parts_requests) -- listar aqui de novo faria cair em
+  // dashboard_cases/"Casos de Atenção", o mesmo bug que o usuário
+  // reportou em 2026-09-04 (ia pro card errado do Dashboard).
+  const CASO_TYPES=[['INFO','🚩','Informação importante'],['RECLAMACAO','⚠','Reclamação do cliente'],['ATRASO','⏰','Atraso no atendimento'],['CANCELAMENTO','🔁','Risco de cancelamento'],['FINANCEIRO','💰','Pendência financeira'],['OUTRO','📌','Outro']];
   const CASO_PRIORITIES=[['ALTA','Alta','high'],['MEDIA','Média','med'],['BAIXA','Baixa','low']];
   window.vxOpenCasoAtencaoModal=async function(){
     const o=ctx?.o;if(!o)return;
@@ -220,21 +225,22 @@
 
   // Achado do usuário em 2026-09-04: o botão "SOLICITAR PEÇA" do
   // cabeçalho não fazia nada de verdade -- resíduo de uma versão
-  // anterior. Primeira versão reaproveitou o mesmo VISUAL do modal de
-  // Caso de Atenção (vx-caso-modal-v2, duas colunas com preview à
-  // direita) -- o usuário reportou que ficou parecido demais,
-  // confundindo os dois. Este modal é próprio (vx-peca-modal): uma
-  // coluna só, mais largo e mais baixo, sem o painel de preview;
-  // "Descrição/Observações" e "Destinatário" (a informação que o
-  // usuário preenche) ficam no topo, "Peças já cadastradas nesta OS"
-  // (dado auxiliar, só consulta) fica embaixo. O seletor de
-  // destinatário trocou o <details> sempre aberto com lista de
-  // checkbox crua (ficava enorme e "estranho" com nomes longos) por
-  // um combobox fechado por padrão, mostrando os selecionados como
-  // chips -- só expande a lista ao clicar. Continua gravando em
-  // dashboard_cases (case_type='PECA') + dashboard_case_recipients,
-  // igual ao caso de atenção (mesma regra, aparece no Dashboard, tem
-  // histórico/reabertura) -- só o modal em si é outro.
+  // anterior. As duas primeiras tentativas gravavam em dashboard_cases
+  // (case_type='PECA'), reaproveitando a regra do Caso de Atenção --
+  // só que o Dashboard já tem um card PRÓPRIO "Pedidos de Peças"
+  // (dashboard-canonical-v1.js, fonte real: tabela parts_requests, não
+  // dashboard_cases) com suas próprias colunas -- description, code,
+  // quantity, status, requested_by, assigned_to, service_order_id.
+  // Gravar em dashboard_cases fazia a solicitação cair no card "Casos
+  // de Atenção" em vez de "Pedidos de Peças" (achado do usuário: "ao
+  // invés de ir pro dash pedido de peça está indo pra casos de
+  // atenção"). Corrigido gravando na tabela certa -- uma linha por
+  // peça marcada (ou uma linha só com a observação como descrição,
+  // se nenhuma peça foi marcada). parts_requests só tem UM
+  // responsável (assigned_to), não uma lista de destinatários -- por
+  // isso o seletor virou um <select> simples de uma pessoa (sem
+  // escolher ninguém, o pedido fica visível pra loja toda via a mesma
+  // regra de visibilidade que o resto do Dashboard já usa).
   window.vxOpenSolicitarPecaModal=async function(){
     const o=ctx?.o;const parts=ctx?.parts||[];if(!o)return;
     document.querySelector('#vxSolicitarPecaModal')?.remove();
@@ -242,11 +248,6 @@
     bg.id='vxSolicitarPecaModal';
     bg.className='vx-modal-bg';
     const people=await api(`profiles?select=id,full_name,role&active=eq.true&order=full_name`).catch(()=>[]);
-    const recipientLabel=r=>{
-      const [kind,value]=r.split(':');
-      if(kind==='role')return CASO_ROLE_GROUPS.find(g=>g[0]===value)?.[1]||value;
-      return people.find(p=>String(p.id)===value)?.full_name||'Usuário';
-    };
     bg.innerHTML=`<div class="vx-modal vx-peca-modal">
       <div class="vx-peca-head">
         <h3><span class="vx-peca-icon">🔧</span> Solicitar peça</h3>
@@ -256,20 +257,11 @@
       <div class="vx-peca-body">
         <div class="vx-field"><label>Descrição / Observações${parts.length?'':' *'}</label><textarea id="vxPecaObs" maxlength="300" rows="3" placeholder="Descreva a peça necessária: código, modelo, quantidade e urgência."></textarea><small class="vx-peca-counter" id="vxPecaCounter">0/300</small></div>
         <div class="vx-field"><label>Destinatário</label>
-          <div class="vx-peca-recipient" id="vxPecaRecipient">
-            <button type="button" class="vx-peca-recipient-trigger" id="vxPecaRecipientTrigger">
-              <span class="vx-peca-recipient-chips" id="vxPecaRecipientChips"></span>
-              <span class="vx-peca-recipient-arrow">▾</span>
-            </button>
-            <div class="vx-peca-recipient-panel" id="vxPecaRecipientPanel" hidden>
-              <div class="vx-peca-recipient-group"><b>Grupos</b>${CASO_ROLE_GROUPS.map(([v,l])=>`<label class="vx-peca-recipient-item"><input type="checkbox" data-value="role:${v}"${v==='ESTOQUE'?' checked':''}><span>${val(l)}</span></label>`).join('')}</div>
-              <div class="vx-peca-recipient-group"><b>Pessoas</b>${people.length?people.map(p=>`<label class="vx-peca-recipient-item"><input type="checkbox" data-value="user:${val(p.id)}"><span>${val(p.full_name)}</span></label>`).join(''):'<span class="vx-peca-recipients-empty">Nenhum usuário ativo.</span>'}</div>
-            </div>
-          </div>
+          <select id="vxPecaAssignedTo"><option value="">Sem responsável específico (visível para a loja)</option>${people.map(p=>`<option value="${val(p.id)}">${val(p.full_name)}</option>`).join('')}</select>
         </div>
         <div class="vx-peca-divider"></div>
         <div class="vx-field vx-peca-parts-field"><label>Peças já cadastradas nesta OS</label>
-          ${parts.length?`<div class="vx-peca-parts-list" id="vxPecaParts">${parts.map(p=>`<label class="vx-peca-part-item"><input type="checkbox" value="${val(p.id)}" data-desc="${val(p.description)}"><span class="vx-peca-part-desc">${val(p.description)}${p.code?` <small>(${val(p.code)})</small>`:''}</span><span class="vx-peca-part-qty">Qtd ${val(p.quantity)}</span></label>`).join('')}</div>`
+          ${parts.length?`<div class="vx-peca-parts-list" id="vxPecaParts">${parts.map(p=>`<label class="vx-peca-part-item"><input type="checkbox" value="${val(p.id)}" data-desc="${val(p.description)}" data-code="${val(p.code||'')}" data-qty="${val(p.quantity||1)}"><span class="vx-peca-part-desc">${val(p.description)}${p.code?` <small>(${val(p.code)})</small>`:''}</span><span class="vx-peca-part-qty">Qtd ${val(p.quantity)}</span></label>`).join('')}</div>`
           :`<div class="vx-peca-empty">Nenhuma peça cadastrada nesta OS ainda — descreva a peça necessária acima.</div>`}
         </div>
       </div>
@@ -287,61 +279,19 @@
     const obsEl=bg.querySelector('#vxPecaObs'),counterEl=bg.querySelector('#vxPecaCounter');
     obsEl.oninput=()=>{counterEl.textContent=`${obsEl.value.length}/300`};
 
-    // Combobox de destinatário: fechado por padrão, mostra os
-    // escolhidos como chips (em vez do <details> sempre aberto com
-    // lista crua de checkbox, que ficava enorme com muitos nomes).
-    const selectedRecipients=new Set(['role:ESTOQUE']);
-    const trigger=bg.querySelector('#vxPecaRecipientTrigger'),panel=bg.querySelector('#vxPecaRecipientPanel'),chipsEl=bg.querySelector('#vxPecaRecipientChips');
-    function renderChips(){
-      chipsEl.innerHTML=selectedRecipients.size?[...selectedRecipients].map(r=>`<span class="vx-peca-chip" data-value="${val(r)}">${val(recipientLabel(r))}<button type="button" data-remove="${val(r)}">×</button></span>`).join(''):'<span class="vx-peca-recipient-placeholder">Selecionar destinatário…</span>';
-      chipsEl.querySelectorAll('[data-remove]').forEach(btn=>btn.onclick=e=>{
-        e.stopPropagation();
-        const v=btn.dataset.remove;
-        selectedRecipients.delete(v);
-        const chk=panel.querySelector(`input[data-value="${CSS.escape(v)}"]`);if(chk)chk.checked=false;
-        renderChips();
-      });
-    }
-    panel.querySelectorAll('input[type="checkbox"]').forEach(chk=>chk.onchange=()=>{
-      if(chk.checked)selectedRecipients.add(chk.dataset.value);else selectedRecipients.delete(chk.dataset.value);
-      renderChips();
-    });
-    trigger.onclick=e=>{e.stopPropagation();panel.hidden=!panel.hidden};
-    document.addEventListener('click',e=>{if(!panel.hidden&&!bg.querySelector('#vxPecaRecipient').contains(e.target))panel.hidden=true});
-    renderChips();
-
     bg.querySelector('[data-save]').onclick=async()=>{
-      const sel=[...bg.querySelectorAll('#vxPecaParts input:checked')].map(el=>({id:el.value,desc:el.dataset.desc}));
+      const sel=[...bg.querySelectorAll('#vxPecaParts input:checked')].map(el=>({desc:el.dataset.desc,code:el.dataset.code||null,qty:Number(el.dataset.qty)||1}));
       const obs=obsEl.value.trim();
       if(!sel.length&&!obs){toast?.('Selecione ao menos uma peça ou descreva a peça necessária.','err');return}
       const btn=bg.querySelector('[data-save]');btn.disabled=true;
-      const title=sel.length?`Peça: ${sel[0].desc}${sel.length>1?` +${sel.length-1}`:''}`:obs.slice(0,60);
-      const messageParts=[];
-      if(obs)messageParts.push(obs);
-      if(sel.length)messageParts.push('Peças solicitadas:\n'+sel.map(p=>`- ${p.desc}`).join('\n'));
-      const message=messageParts.join('\n\n');
       const myId=state.session?.user?.id||state.profile?.id||null;
       const companyId=state.profile?.active_company_id;
-      const recipients=[...selectedRecipients];
+      const assignedTo=bg.querySelector('#vxPecaAssignedTo').value||null;
+      const rows=sel.length
+        ?sel.map(p=>({service_order_id:o.id,description:obs?`${p.desc} — ${obs}`:p.desc,code:p.code,quantity:p.qty,status:'SOLICITADO',requested_by:myId,assigned_to:assignedTo,company_id:companyId}))
+        :[{service_order_id:o.id,description:obs,code:null,quantity:1,status:'SOLICITADO',requested_by:myId,assigned_to:assignedTo,company_id:companyId}];
       try{
-        const created=await api('dashboard_cases',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
-          service_order_id:o.id,
-          case_type:'PECA',
-          title,
-          message,
-          priority:'MEDIA',
-          status:'NOVO',
-          source:'MANUAL',
-          created_by:myId,
-          company_id:companyId,
-        })});
-        const caseId=created?.[0]?.id;
-        if(caseId&&recipients.length){
-          await api('dashboard_case_recipients',{method:'POST',body:JSON.stringify(recipients.map(r=>{
-            const [kind,value]=r.split(':');
-            return {case_id:caseId,company_id:companyId,user_id:kind==='user'?value:null,role:kind==='role'?value:null,created_by:myId};
-          }))}).catch(err=>toast?.('Solicitação criada, mas não foi possível salvar os destinatários: '+err.message,'err'));
-        }
+        await api('parts_requests',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(rows)});
         toast?.('Solicitação de peça enviada.');
         close();
       }catch(err){toast?.('Não foi possível enviar a solicitação: '+(err.message||'erro desconhecido'),'err');btn.disabled=false}
