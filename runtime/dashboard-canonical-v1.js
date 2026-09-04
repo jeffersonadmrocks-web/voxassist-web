@@ -402,12 +402,18 @@
     }
     const casesAll=safe(by['Casos de atenção'].data).filter(caseVisibleToMe);
     const casesAbertos=casesAll.filter(c=>!['RESOLVIDO','CANCELADO'].includes(norm(c.status)));
+    // Achado do usuário em 2026-09-04: os 3 números (Novos/Em andamento/
+    // Resolvidos) devem contar só casos RECEBIDOS -- casesAll inclui os
+    // que EU criei também (é o que caseVisibleToMe também permite, de
+    // propósito, pra "Meus Casos Enviados" funcionar). Um caso que eu
+    // mesmo abri não deveria contar como "recebido para triagem".
+    const casesReceived=casesAll.filter(c=>String(c.created_by)!==String(myId));
     // Card "Casos de Atenção": Novos/Em andamento/Resolvidos, escopados
     // aos últimos 30 dias -- confirmado pelo usuário em 2026-09-01 (a
     // versão anterior, mais conservadora, tratava EM ANDAMENTO/
     // RESOLVIDO como vocabulário não confirmado; o usuário confirmou
     // que é exatamente esse o vocabulário real esperado).
-    const casesLast30=casesAll.filter(c=>c.created_at&&new Date(c.created_at)>=days30Ago);
+    const casesLast30=casesReceived.filter(c=>c.created_at&&new Date(c.created_at)>=days30Ago);
     const casesNovos=casesLast30.filter(c=>norm(c.status)==='NOVO');
     const casesAndamento=casesLast30.filter(c=>norm(c.status)==='EM ANDAMENTO');
     const casesResolvidos=casesLast30.filter(c=>norm(c.status)==='RESOLVIDO');
@@ -416,7 +422,11 @@
     // tinha aberto um igual antes de criar outro -- "meus casos" é só
     // um filtro de casesAll (já escopado por caseVisibleToMe, que já
     // inclui created_by===myId) por quem criou, sem fetch novo.
+    // myCases fica com a lista completa (pro "Ver todos"); o card
+    // inline mostra até 10 dentro de uma área com rolagem própria (não
+    // cresce mais o Dashboard a cada caso novo -- achado do usuário).
     const myCases=casesAll.filter(c=>String(c.created_by)===String(myId)).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    const myCasesInline=myCases.slice(0,10);
     // Card "Pedidos de Peças": Pendentes de aprovação/Em compra/
     // Aguardando entrega/Atrasados/Recebidos hoje -- vocabulário
     // confirmado pelo usuário em 2026-09-01 (mesma situação de Casos
@@ -801,8 +811,8 @@
             <button type="button" class="vx-c-case-item" data-drill="cases:casesResolvidos" data-title="Resolvidos"><span class="vx-c-case-ic">✓</span><div class="vx-c-case-txt"><b>${casesResolvidos.length}</b><span>Resolvidos</span><small>Últimos 30 dias</small></div><span class="vx-c-case-chev">›</span></button>
           </div>
           <div class="vx-c-mycases-inline">
-            <div class="vx-c-mycases-inline-head"><span>MEUS CASOS ENVIADOS</span>${myCases.length>3?`<a href="#" data-drill="cases:myCases" data-title="Meus Casos Enviados">Ver todos</a>`:''}</div>
-            ${myCases.length?myCases.slice(0,3).map(myCaseRow).join(''):'<p class="vx-c-mycases-empty">Você ainda não abriu nenhum caso -- confira aqui antes de abrir um novo, pra não duplicar.</p>'}
+            <div class="vx-c-mycases-inline-head"><span>MEUS CASOS ENVIADOS</span>${myCases.length>myCasesInline.length?`<a href="#" data-drill="cases:myCases" data-title="Meus Casos Enviados">Ver todos</a>`:''}</div>
+            <div class="vx-c-mycases-scroll">${myCasesInline.length?myCasesInline.map(myCaseRow).join(''):'<p class="vx-c-mycases-empty">Você ainda não abriu nenhum caso -- confira aqui antes de abrir um novo, pra não duplicar.</p>'}</div>
           </div>
         </section>
         <section class="vx-c-opp-card"><div class="vx-c-title"><h3>◎ Oportunidades do Dia</h3><a href="#" data-drill="ready" data-title="Oportunidades do Dia">Ver todas</a></div>

@@ -90,13 +90,15 @@
    Viraram <button data-drill="cases:X"> (mesmo dispatcher genérico já
    usado por todo o resto do dashboard) + visual novo (ícone em
    quadrado azul-claro, seta). */
-.vx-c-case-item{display:flex;align-items:center;gap:10px;background:var(--vx-surface);border:1px solid var(--vx-border);border-radius:11px;padding:11px 12px;text-align:left;cursor:pointer;font:inherit;transition:box-shadow .15s ease,border-color .15s ease}
+/* Achado do usuário em 2026-09-04: cards baixos demais em altura --
+   reduzido padding/ícone/fonte pra caber mais tela sem rolar. */
+.vx-c-case-item{display:flex;align-items:center;gap:8px;background:var(--vx-surface);border:1px solid var(--vx-border);border-radius:10px;padding:8px 10px;text-align:left;cursor:pointer;font:inherit;transition:box-shadow .15s ease,border-color .15s ease}
 .vx-c-case-item:hover{border-color:var(--vx-info);box-shadow:0 2px 8px rgba(15,39,64,.08)}
-.vx-c-case-ic{flex:none;width:34px;height:34px;border-radius:9px;background:var(--vx-info-bg);color:var(--vx-info);display:flex;align-items:center;justify-content:center;font-size:15px}
+.vx-c-case-ic{flex:none;width:26px;height:26px;border-radius:8px;background:var(--vx-info-bg);color:var(--vx-info);display:flex;align-items:center;justify-content:center;font-size:12px}
 .vx-c-case-txt{flex:1;min-width:0}
-.vx-c-case-txt b{display:block;font-size:19px;color:var(--vx-text);font-weight:800;line-height:1.1}
-.vx-c-case-txt span{display:block;font-size:11px;font-weight:700;color:var(--vx-text);margin-top:2px}
-.vx-c-case-txt small{display:block;font-size:9.5px;color:var(--vx-muted);margin-top:1px}
+.vx-c-case-txt b{display:block;font-size:16px;color:var(--vx-text);font-weight:800;line-height:1.1}
+.vx-c-case-txt span{display:block;font-size:10.5px;font-weight:700;color:var(--vx-text);margin-top:1px}
+.vx-c-case-txt small{display:block;font-size:9px;color:var(--vx-muted)}
 .vx-c-case-chev{flex:none;color:var(--vx-muted);font-size:16px}
 .vx-c-opp-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:1px solid var(--vx-border);font-size:11.5px;color:var(--vx-text);width:100%;border-left:0;border-right:0;border-bottom:0;background:none;font-family:inherit;text-align:left;cursor:default}
 .vx-c-opp-row:first-of-type{border-top:0}
@@ -257,20 +259,25 @@ button.vx-c-icon-row:disabled{cursor:default;opacity:1}
 /* Achado do usuário: a seção solta lá embaixo (depois de Agenda) era
    fácil demais de não ver/rolar até -- movida pra DENTRO do próprio
    card "Casos de Atenção", logo abaixo dos 3 números, onde o
-   operador já está olhando. */
-.vx-c-mycases-inline{border-top:1px solid var(--vx-border);margin-top:12px;padding-top:10px}
+   operador já está olhando.
+   2º achado (mesmo dia): cada caso novo criava mais uma linha e ia
+   empurrando/alterando a altura do card (e do Dashboard todo) --
+   agora é uma lista com altura MÁXIMA fixa e rolagem própria
+   (overflow-y), nunca cresce o card por fora. Barrinha lateral
+   (border-left) em cada item, estilo lista de notificação. */
+.vx-c-mycases-inline{border-top:1px solid var(--vx-border);margin-top:10px;padding-top:8px}
 .vx-c-mycases-inline-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
 .vx-c-mycases-inline-head span{font-size:10px;font-weight:800;color:var(--vx-muted);letter-spacing:.05em}
 .vx-c-mycases-inline-head a{font-size:10.5px;color:var(--vx-info);font-weight:700;text-decoration:none}
 .vx-c-mycases-inline-head a:hover{text-decoration:underline}
 .vx-c-mycases-empty{margin:4px 0 0;font-size:11px;color:var(--vx-muted)}
-.vx-c-mycase-row{width:100%;display:flex;align-items:center;gap:10px;border:0;border-top:1px solid var(--vx-border);background:none;padding:7px 2px;text-align:left;cursor:pointer;font:inherit}
-.vx-c-mycase-row:first-of-type{border-top:0}
-.vx-c-mycase-row:hover{background:#f6f8fb}
-.vx-c-mycase-ic{flex:none;font-size:14px}
+.vx-c-mycases-scroll{max-height:150px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;padding-right:2px}
+.vx-c-mycase-row{width:100%;display:flex;align-items:center;gap:9px;border:0;border-left:3px solid var(--vx-info);background:#f7f9fb;border-radius:0 7px 7px 0;padding:6px 8px;text-align:left;cursor:pointer;font:inherit}
+.vx-c-mycase-row:hover{background:#eef3f8}
+.vx-c-mycase-ic{flex:none;font-size:13px}
 .vx-c-mycase-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-.vx-c-mycase-txt b{font-size:11.5px;color:var(--vx-text);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.vx-c-mycase-txt small{font-size:9.5px;color:var(--vx-muted)}
+.vx-c-mycase-txt b{font-size:11px;color:var(--vx-text);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vx-c-mycase-txt small{font-size:9px;color:var(--vx-muted)}
 
 @media(max-width:1300px){.vx-c-kpirow{grid-template-columns:repeat(4,1fr)}.vx-c-agenda5-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:1100px){.vx-c-grid-2,.vx-c-grid-3,.vx-c-gv-grid{grid-template-columns:1fr}.vx-c-fin-grid{grid-template-columns:repeat(2,1fr)}}
