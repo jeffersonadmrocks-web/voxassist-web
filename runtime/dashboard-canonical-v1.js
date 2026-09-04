@@ -285,10 +285,13 @@
   function feedModal(title,rows,feedTextFn){
     document.querySelector('#vxCanonicalModal')?.remove();
     const bg=document.createElement('div');bg.id='vxCanonicalModal';bg.className='vx-c-modal-bg';
-    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Quando</th><th>Evento</th></tr></thead><tbody>${rows.map(h=>`<tr><td>${new Date(h.changed_at).toLocaleString('pt-BR')}</td><td>${E(feedTextFn(h))}</td></tr>`).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
+    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Quando</th><th>Evento</th></tr></thead><tbody>${rows.map(h=>`<tr${h.service_order_id?` data-row-os="${E(h.service_order_id)}"`:''}><td>${new Date(h.changed_at).toLocaleString('pt-BR')}</td><td>${E(feedTextFn(h))}</td></tr>`).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
     document.body.appendChild(bg);
     bg.querySelector('[data-close]').onclick=()=>bg.remove();
     bg.onclick=e=>{if(e.target===bg)bg.remove();};
+    // Achado do usuário em 2026-09-04: mesma correção do card -- linha
+    // que fala de uma OS deve abrir a OS ao clicar.
+    bg.querySelectorAll('tr[data-row-os]').forEach(tr=>tr.onclick=()=>{bg.remove();(window.render||render)('os:'+tr.dataset.rowOs)});
   }
 
   // Modal pra linhas de tasks (achado do usuário em 2026-09-01: mesma
@@ -935,7 +938,7 @@
 
       <div class="vx-c-grid-2">
         <section class="vx-c-feed-card"><div class="vx-c-title"><h3>◉ Feed em Tempo Real</h3><a href="#" id="vxFeedAll">Ver tudo</a></div>
-          <div class="vx-c-feed-scroll">${feed.length?feed.map(h=>`<div class="vx-c-feed-row"><span class="vx-c-feed-dot"></span><div><b>${new Date(h.changed_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</b><span>${E(feedText(h))}</span></div></div>`).join(''):'<p class="vx-c-empty">Nenhuma movimentação recente.</p>'}</div>
+          <div class="vx-c-feed-scroll">${feed.length?feed.map(h=>`<div class="vx-c-feed-row${h.service_order_id?' vx-c-feed-row-click':''}"${h.service_order_id?` data-drill="feedos:${E(h.service_order_id)}" data-title="OS"`:''}><span class="vx-c-feed-dot"></span><div><b>${new Date(h.changed_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</b><span>${E(feedText(h))}</span></div></div>`).join(''):'<p class="vx-c-empty">Nenhuma movimentação recente.</p>'}</div>
         </section>
         <section class="vx-c-prod-table-card"><div class="vx-c-title"><h3>★ Produtividade</h3></div>
           <p class="vx-c-prod-total">Total recebido nas OS: <b>${M(totalRecebidoOS)}</b></p>
@@ -970,6 +973,7 @@
       if(k.startsWith('tasks:'))return tasksModal(title,tasksDrills[k.slice(6)]||[]);
       if(k.startsWith('cases:')||k==='casesAbertos')return casesModal(title,caseDrills[k==='casesAbertos'?'casesAbertos':k.slice(6)]||[],ordersById);
       if(k.startsWith('mycase:')){const c=myCases.find(x=>String(x.id)===k.slice(7));if(c)return caseDetailModal(c,ordersById);return;}
+      if(k.startsWith('feedos:'))return (window.render||render)('os:'+k.slice(7));
       if(drills[k])modal(title,drills[k]);
     });
     document.getElementById('vxFeedAll').onclick=(ev)=>{ev.preventDefault();feedModal('Feed em Tempo Real',historyScoped,feedText)};

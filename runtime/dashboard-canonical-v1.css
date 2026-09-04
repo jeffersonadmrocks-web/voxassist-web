@@ -155,6 +155,12 @@ button.vx-c-icon-row:disabled{cursor:default;opacity:1}
    própria pro resto, igual ao "Meus Casos Enviados" (vx-c-mycases-scroll). */
 .vx-c-feed-scroll{max-height:170px;overflow-y:auto;padding-right:2px}
 .vx-c-feed-row{display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--vx-border);font-size:11px}
+/* Achado do usuário em 2026-09-04: clicar num item do feed que fala
+   de uma OS não abria nada -- as linhas eram só texto estático, sem
+   nenhum data-drill (o dispatcher delegado já existe pra outros
+   cards, só faltava aqui). */
+.vx-c-feed-row-click{cursor:pointer;margin:0 -4px;padding-left:4px;padding-right:4px;border-radius:6px}
+.vx-c-feed-row-click:hover{background:#f4f8fb}
 .vx-c-feed-row:first-of-type{border-top:0}
 .vx-c-feed-dot{width:6px;height:6px;border-radius:50%;background:var(--vx-info);margin-top:5px;flex:none}
 .vx-c-feed-row b{display:block;font-size:9.5px;color:var(--vx-muted);font-weight:700}
