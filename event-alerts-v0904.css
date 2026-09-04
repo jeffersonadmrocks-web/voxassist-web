@@ -1,0 +1,17 @@
+/* VoxAssist Web V0.9.04 -- alerta de eventos (event-alerts-v0904.js).
+   Achado do usuário em 2026-09-04: o alerta precisa FICAR na tela até
+   o operador fechar, pra garantir que ele viu -- não é mais uma
+   variante do .toast (que some sozinho). Container próprio empilhado
+   com flex (sem cálculo manual de posição -- fechar um reacomoda os
+   outros sozinho), acima até do .toast normal em z-index. */
+#vxAlertStack{position:fixed;right:22px;bottom:22px;z-index:100000;display:flex;flex-direction:column;gap:10px;max-width:360px}
+.vx-alert-card{background:#0f4c81;color:#fff;border-radius:10px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:8px;animation:vxAlertIn .18s ease-out}
+.vx-alert-card-msg{font-size:13px;line-height:1.4}
+.vx-alert-card-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.vx-alert-card-actions button{border:0;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;padding:6px 10px}
+.vx-alert-card-actions [data-open]{background:#fff;color:#0f4c81}
+.vx-alert-card-actions [data-open]:hover{background:#e6f0fb}
+.vx-alert-card-actions [data-dismiss]{background:rgba(255,255,255,.16);color:#fff;padding:6px 9px}
+.vx-alert-card-actions [data-dismiss]:hover{background:rgba(255,255,255,.28)}
+@keyframes vxAlertIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:520px){#vxAlertStack{left:12px;right:12px;max-width:none}}

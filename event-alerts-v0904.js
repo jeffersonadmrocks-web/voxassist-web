@@ -55,21 +55,29 @@
     return null;
   }
 
-  // Variante do toast() de app.js (não alterado -- usado em todo lugar,
-  // risco desnecessário mexer nele) com clique pra abrir a OS, tempo
-  // maior (6s, não 3.2s) e empilhamento com deslocamento vertical de
-  // verdade (dois alertas ao mesmo tempo hoje ficam um em cima do
-  // outro; aqui cada um ganha sua própria posição).
-  function alertToast(msg,osId){
-    const stackIndex=document.querySelectorAll('.toast.vx-alert-toast').length;
-    const x=document.createElement('div');
-    x.className='toast vx-alert-toast';
-    x.style.bottom=(22+stackIndex*64)+'px';
-    x.style.cursor=osId?'pointer':'default';
-    x.textContent=msg;
-    if(osId)x.onclick=()=>{x.remove();(window.render||render)('os:'+osId)};
-    document.body.appendChild(x);
-    setTimeout(()=>x.remove(),6000);
+  // Achado do usuário em 2026-09-04: um toast que some sozinho (mesmo
+  // com 6s) não garante que o operador viu -- pediu explicitamente que
+  // o alerta FIQUE na tela até ele mesmo fechar. Por isso não é mais
+  // uma variante do toast() de app.js (que continua intocado): é um
+  // cartão persistente, empilhado num container próprio (flex, sem
+  // cálculo manual de posição -- ao fechar um, os outros reacomodam
+  // sozinhos), com botão de fechar (✕) e, quando tem OS vinculada, um
+  // botão "Abrir OS →" -- os dois removem o cartão; só o de abrir
+  // também navega.
+  function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function alertStack(){
+    let s=document.getElementById('vxAlertStack');
+    if(!s){s=document.createElement('div');s.id='vxAlertStack';document.body.appendChild(s);}
+    return s;
+  }
+  function alertCard(msg,osId){
+    const stack=alertStack();
+    const card=document.createElement('div');
+    card.className='vx-alert-card';
+    card.innerHTML=`<span class="vx-alert-card-msg">${esc(msg)}</span><div class="vx-alert-card-actions">${osId?'<button type="button" data-open>Abrir OS →</button>':''}<button type="button" data-dismiss aria-label="Fechar">✕</button></div>`;
+    stack.prepend(card);
+    card.querySelector('[data-dismiss]').onclick=()=>card.remove();
+    if(osId)card.querySelector('[data-open]').onclick=()=>{card.remove();(window.render||render)('os:'+osId)};
   }
 
   async function poll(){
@@ -82,10 +90,18 @@
       watermark=rows[rows.length-1].changed_at;
       for(const h of rows){
         const alert=await relevantAlert(h,{myId,role});
-        if(alert)alertToast(alert.text,alert.osId);
+        if(alert)alertCard(alert.text,alert.osId);
       }
     }catch(_e){/* alerta nunca pode travar nada da tela -- silencioso */}
   }
+
+  // Achado do usuário em 2026-09-04: com a aba em segundo plano, o
+  // navegador reduz a frequência real do setInterval (throttling),
+  // podendo levar bem mais que POLL_MS pra disparar. Rechecar na hora
+  // em que a aba volta a ficar visível cobre exatamente o caso mais
+  // comum de teste -- alguém troca de aba, faz a mudança em outro
+  // lugar, volta -- sem precisar reduzir o intervalo geral.
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')poll();});
 
   function start(){if(timer)return;timer=setInterval(poll,POLL_MS);}
   start();
