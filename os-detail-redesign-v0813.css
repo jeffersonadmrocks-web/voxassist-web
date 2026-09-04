@@ -40,7 +40,7 @@
    localizam em tempo de execução (.vx-os-head-left,
    .vx-os-head-actions, .vx-os-number, .vx-status-btn, #vxStatusArea)
    continuam com o mesmo nome. */
-.vx-os-head{min-height:auto;background:linear-gradient(135deg,#1c4a73,#2c6291);border:0;border-radius:var(--os-radius);padding:14px 18px;margin-bottom:0;box-shadow:0 3px 10px rgba(20,55,90,.14);display:flex;flex-direction:column;gap:12px}
+.vx-os-head{min-height:auto;background:linear-gradient(135deg,#1c4a73,#2c6291);border:0;border-radius:var(--os-radius);padding:16px 22px;margin-bottom:0;box-shadow:0 3px 10px rgba(20,55,90,.14);display:flex;flex-direction:column;gap:14px}
 .vx-os-head-top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .vx-os-head-left{display:flex;align-items:center;gap:10px}
 .vx-os-head-icon{font-size:17px;opacity:.85;flex:none}
@@ -63,7 +63,7 @@
 #vxStatusArea strong{color:#fff!important}
 .vx-whirlpool-badge{display:inline-flex;align-items:center;background:rgba(255,255,255,.14);color:#fff!important;font-size:10px;font-weight:700;letter-spacing:.03em;padding:6px 12px;border-radius:999px}
 
-.vx-os-head-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.vx-os-head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .vx-os-head-actions .vx-action{border-radius:999px;height:34px;font-size:11.5px;font-weight:700}
 .vx-os-head-actions #vxOsActionsMenu .vx-action{border-radius:var(--os-radius-sm);height:auto;font-size:inherit;font-weight:inherit}
 /* Chat e Agendar -- discretos, sem fundo próprio, só um leve realce no hover. */
@@ -87,11 +87,15 @@
 .vx-os-actions-item-ic{font-size:13px;flex:none;opacity:.85}
 
 /* ---------- Faixa Abertura/Atendente/Técnico/Loja (+ Voltar à direita) ---------- */
-.vx-os-head-info{display:flex;align-items:center;gap:22px;flex-wrap:wrap;background:rgba(255,255,255,.06);border-radius:var(--os-radius-sm);padding:10px 14px}
-.vx-os-head-info>div{display:flex;align-items:center;gap:8px;min-width:0}
+/* Achado do usuário em 2026-09-03 (5ª rodada): laterais do cabeçalho
+   ficavam vazias -- os 4 blocos de info se amontoavam à esquerda,
+   sobrando um vão grande antes do Voltar. space-between distribui os
+   5 itens (4 blocos + Voltar) por toda a largura da faixa. */
+.vx-os-head-info{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:rgba(255,255,255,.06);border-radius:var(--os-radius-sm);padding:12px 20px}
+.vx-os-head-info>div{display:flex;align-items:center;gap:9px;min-width:0}
 .vx-os-head-info-ic{flex:none;opacity:.9}
 .vx-os-head-info small{display:block;font-size:9.5px;color:#bcd7ef;font-weight:700;letter-spacing:.04em}
-.vx-os-head-info b{display:block;font-size:12px;color:#fff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vx-os-head-info b{display:block;font-size:12.5px;color:#fff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:900px){.vx-os-head-info{gap:14px}.vx-back{width:100%;margin-left:0;order:99}}
 
 /* ---------- Guias da O.S. ---------- */
