@@ -144,7 +144,17 @@
         }
       }
       updateBudgetTotal();
-      toast('Orçamento / análise técnica salvos.');
+      // Achado do usuário em 2026-09-04: OS 02I26O35 tinha "Decisão do
+      // orçamento: APROVADO" + "Data da decisão" preenchidos e salvos
+      // de verdade no banco (confirmado), mas a situação continuava
+      // "Aguardando Aprovação" -- este é o botão "SALVAR ORÇAMENTO /
+      // ANÁLISE TÉCNICA" (o mais usado no fluxo normal de orçamento),
+      // e ele nunca chamava o motor de avanço de status. Mesma classe
+      // de bug já corrigida nos dois salvamentos Whirlpool -- corrigida
+      // aqui também, provavelmente a causa raiz de vários relatos
+      // anteriores de "status não avançou sozinho".
+      const advanceResult=await window.vxAdvanceOsStatus?.(o.id);
+      if(!advanceResult?.changed&&!(advanceResult?.missing?.length))toast('Orçamento / análise técnica salvos.');
     }catch(err){
       // vxHumanMessage() (security-whirlpool-hardening-v0813.js) já
       // traduz a causa técnica pra uma frase honesta e loga o erro
