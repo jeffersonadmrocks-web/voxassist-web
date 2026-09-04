@@ -219,16 +219,22 @@
   };
 
   // Achado do usuário em 2026-09-04: o botão "SOLICITAR PEÇA" do
-  // cabeçalho não fazia nada de verdade (só trocava de aba e tentava
-  // focar um campo #vxPartDescription que nunca existiu -- resíduo de
-  // uma versão anterior). O usuário pediu um popup do MESMO GÊNERO do
-  // Caso de Atenção (mesma regra: vira um dashboard_cases, aparece no
-  // Dashboard, tem destinatário, histórico, reabertura), mas com
-  // formulário próprio: deixa marcar quais peças JÁ CADASTRADAS nesta
-  // OS (os_parts, ctx.parts) estão sendo solicitadas, um campo de
-  // observações livre, e quem deve receber o pedido. Reaproveita as
-  // mesmas classes CSS/estrutura do modal de caso (vx-caso-*) pra
-  // manter a mesma linguagem visual, sem reaproveitar o modal em si.
+  // cabeçalho não fazia nada de verdade -- resíduo de uma versão
+  // anterior. Primeira versão reaproveitou o mesmo VISUAL do modal de
+  // Caso de Atenção (vx-caso-modal-v2, duas colunas com preview à
+  // direita) -- o usuário reportou que ficou parecido demais,
+  // confundindo os dois. Este modal é próprio (vx-peca-modal): uma
+  // coluna só, mais largo e mais baixo, sem o painel de preview;
+  // "Descrição/Observações" e "Destinatário" (a informação que o
+  // usuário preenche) ficam no topo, "Peças já cadastradas nesta OS"
+  // (dado auxiliar, só consulta) fica embaixo. O seletor de
+  // destinatário trocou o <details> sempre aberto com lista de
+  // checkbox crua (ficava enorme e "estranho" com nomes longos) por
+  // um combobox fechado por padrão, mostrando os selecionados como
+  // chips -- só expande a lista ao clicar. Continua gravando em
+  // dashboard_cases (case_type='PECA') + dashboard_case_recipients,
+  // igual ao caso de atenção (mesma regra, aparece no Dashboard, tem
+  // histórico/reabertura) -- só o modal em si é outro.
   window.vxOpenSolicitarPecaModal=async function(){
     const o=ctx?.o;const parts=ctx?.parts||[];if(!o)return;
     document.querySelector('#vxSolicitarPecaModal')?.remove();
@@ -236,40 +242,38 @@
     bg.id='vxSolicitarPecaModal';
     bg.className='vx-modal-bg';
     const people=await api(`profiles?select=id,full_name,role&active=eq.true&order=full_name`).catch(()=>[]);
-    bg.innerHTML=`<div class="vx-modal vx-caso-modal-v2">
-      <div class="vx-caso-head">
-        <h3>🔧 Solicitar peça</h3>
-        <span class="vx-caso-head-os">OS ${val(o.os_number)}</span>
-        <button type="button" class="vx-caso-close" data-cancel>×</button>
+    const recipientLabel=r=>{
+      const [kind,value]=r.split(':');
+      if(kind==='role')return CASO_ROLE_GROUPS.find(g=>g[0]===value)?.[1]||value;
+      return people.find(p=>String(p.id)===value)?.full_name||'Usuário';
+    };
+    bg.innerHTML=`<div class="vx-modal vx-peca-modal">
+      <div class="vx-peca-head">
+        <h3><span class="vx-peca-icon">🔧</span> Solicitar peça</h3>
+        <span class="vx-peca-head-os">OS ${val(o.os_number)}</span>
+        <button type="button" class="vx-peca-close" data-cancel>×</button>
       </div>
-      <div class="vx-caso-body">
-        <div class="vx-caso-form">
-          ${parts.length?`<div class="vx-field"><label>Peças já cadastradas nesta OS</label>
-            <div class="vx-caso-parts-list" id="vxPecaParts">${parts.map(p=>`<label class="vx-caso-part-item"><input type="checkbox" value="${val(p.id)}" data-desc="${val(p.description)}"><span class="vx-caso-part-desc">${val(p.description)}${p.code?` <small>(${val(p.code)})</small>`:''}</span><span class="vx-caso-part-qty">Qtd ${val(p.quantity)}</span></label>`).join('')}</div>
-          </div>`:`<div class="vx-caso-info">Nenhuma peça cadastrada nesta OS ainda — descreva a peça necessária abaixo.</div>`}
-          <div class="vx-field"><label>Descrição / Observações${parts.length?'':' *'}</label><textarea id="vxPecaObs" maxlength="300" rows="3" placeholder="Descreva a peça necessária: código, modelo, quantidade e urgência."></textarea><small class="vx-caso-counter" id="vxPecaCounter">0/300</small></div>
-          <div class="vx-field"><label>Destinatário</label>
-            <details class="vx-caso-visible" id="vxPecaRecipients" open>
-              <summary id="vxPecaRecipientsSummary">Todos os usuários da loja</summary>
-              <div class="vx-caso-recipients-panel">
-                <div class="vx-caso-recipients-group"><b>Grupos</b>${CASO_ROLE_GROUPS.map(([v,l])=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="role:${v}"${v==='ESTOQUE'?' checked':''}>${val(l)}</label>`).join('')}</div>
-                <div class="vx-caso-recipients-group"><b>Pessoas</b>${people.length?people.map(p=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="user:${val(p.id)}">${val(p.full_name)}</label>`).join(''):'<span class="vx-caso-recipients-empty">Nenhum usuário ativo.</span>'}</div>
-              </div>
-            </details>
+      <div class="vx-peca-body">
+        <div class="vx-field"><label>Descrição / Observações${parts.length?'':' *'}</label><textarea id="vxPecaObs" maxlength="300" rows="3" placeholder="Descreva a peça necessária: código, modelo, quantidade e urgência."></textarea><small class="vx-peca-counter" id="vxPecaCounter">0/300</small></div>
+        <div class="vx-field"><label>Destinatário</label>
+          <div class="vx-peca-recipient" id="vxPecaRecipient">
+            <button type="button" class="vx-peca-recipient-trigger" id="vxPecaRecipientTrigger">
+              <span class="vx-peca-recipient-chips" id="vxPecaRecipientChips"></span>
+              <span class="vx-peca-recipient-arrow">▾</span>
+            </button>
+            <div class="vx-peca-recipient-panel" id="vxPecaRecipientPanel" hidden>
+              <div class="vx-peca-recipient-group"><b>Grupos</b>${CASO_ROLE_GROUPS.map(([v,l])=>`<label class="vx-peca-recipient-item"><input type="checkbox" data-value="role:${v}"${v==='ESTOQUE'?' checked':''}><span>${val(l)}</span></label>`).join('')}</div>
+              <div class="vx-peca-recipient-group"><b>Pessoas</b>${people.length?people.map(p=>`<label class="vx-peca-recipient-item"><input type="checkbox" data-value="user:${val(p.id)}"><span>${val(p.full_name)}</span></label>`).join(''):'<span class="vx-peca-recipients-empty">Nenhum usuário ativo.</span>'}</div>
+            </div>
           </div>
         </div>
-        <div class="vx-caso-side">
-          <div class="vx-caso-side-title">Como será exibido</div>
-          <div class="vx-caso-preview-card">
-            <div class="vx-caso-preview-top"><span class="vx-caso-preview-badge" id="vxPecaPreviewBadge">🔧 SOLICITAÇÃO DE PEÇA</span></div>
-            <b class="vx-caso-preview-title" id="vxPecaPreviewTitle">Solicitação de peça</b>
-            <p class="vx-caso-preview-desc" id="vxPecaPreviewDesc">Descreva a peça necessária ou marque uma já cadastrada na OS.</p>
-            <div class="vx-caso-preview-meta"><span>OS ${val(o.os_number)} • Agora há pouco</span><span class="vx-caso-preview-new">Novo</span></div>
-          </div>
-          <div class="vx-caso-info">ⓘ Esta solicitação vira um caso de atenção: fica visível no Dashboard para os destinatários escolhidos, com histórico, resposta e reabertura.</div>
+        <div class="vx-peca-divider"></div>
+        <div class="vx-field vx-peca-parts-field"><label>Peças já cadastradas nesta OS</label>
+          ${parts.length?`<div class="vx-peca-parts-list" id="vxPecaParts">${parts.map(p=>`<label class="vx-peca-part-item"><input type="checkbox" value="${val(p.id)}" data-desc="${val(p.description)}"><span class="vx-peca-part-desc">${val(p.description)}${p.code?` <small>(${val(p.code)})</small>`:''}</span><span class="vx-peca-part-qty">Qtd ${val(p.quantity)}</span></label>`).join('')}</div>`
+          :`<div class="vx-peca-empty">Nenhuma peça cadastrada nesta OS ainda — descreva a peça necessária acima.</div>`}
         </div>
       </div>
-      <div class="vx-modal-actions vx-caso-actions">
+      <div class="vx-modal-actions vx-peca-actions">
         <div></div>
         <div><button type="button" data-cancel>Cancelar</button><button type="button" class="primary" data-save>🔧 Solicitar peça</button></div>
       </div>
@@ -277,32 +281,37 @@
     document.body.appendChild(bg);
     const close=()=>bg.remove();
     bg.querySelector('[data-cancel]').onclick=close;
-    bg.querySelector('.vx-caso-close').onclick=close;
+    bg.querySelector('.vx-peca-close').onclick=close;
     bg.addEventListener('click',e=>{if(e.target===bg)close()});
 
     const obsEl=bg.querySelector('#vxPecaObs'),counterEl=bg.querySelector('#vxPecaCounter');
-    const prevTitleEl=bg.querySelector('#vxPecaPreviewTitle'),prevDescEl=bg.querySelector('#vxPecaPreviewDesc');
-    function selectedParts(){return [...bg.querySelectorAll('#vxPecaParts input:checked')].map(el=>({id:el.value,desc:el.dataset.desc}))}
-    function updatePreview(){
-      const sel=selectedParts();
-      const obs=obsEl.value.trim();
-      prevTitleEl.textContent=sel.length?`Peça: ${sel[0].desc}${sel.length>1?` +${sel.length-1}`:''}`:(obs?obs.slice(0,60):'Solicitação de peça');
-      prevDescEl.textContent=obs||(sel.length?`${sel.length} peça${sel.length===1?'':'s'} selecionada${sel.length===1?'':'s'} desta OS.`:'Descreva a peça necessária ou marque uma já cadastrada na OS.');
-      counterEl.textContent=`${obs.length}/300`;
+    obsEl.oninput=()=>{counterEl.textContent=`${obsEl.value.length}/300`};
+
+    // Combobox de destinatário: fechado por padrão, mostra os
+    // escolhidos como chips (em vez do <details> sempre aberto com
+    // lista crua de checkbox, que ficava enorme com muitos nomes).
+    const selectedRecipients=new Set(['role:ESTOQUE']);
+    const trigger=bg.querySelector('#vxPecaRecipientTrigger'),panel=bg.querySelector('#vxPecaRecipientPanel'),chipsEl=bg.querySelector('#vxPecaRecipientChips');
+    function renderChips(){
+      chipsEl.innerHTML=selectedRecipients.size?[...selectedRecipients].map(r=>`<span class="vx-peca-chip" data-value="${val(r)}">${val(recipientLabel(r))}<button type="button" data-remove="${val(r)}">×</button></span>`).join(''):'<span class="vx-peca-recipient-placeholder">Selecionar destinatário…</span>';
+      chipsEl.querySelectorAll('[data-remove]').forEach(btn=>btn.onclick=e=>{
+        e.stopPropagation();
+        const v=btn.dataset.remove;
+        selectedRecipients.delete(v);
+        const chk=panel.querySelector(`input[data-value="${CSS.escape(v)}"]`);if(chk)chk.checked=false;
+        renderChips();
+      });
     }
-    obsEl.oninput=updatePreview;
-    bg.querySelectorAll('#vxPecaParts input[type="checkbox"]').forEach(chk=>chk.onchange=updatePreview);
-    const recipientsSummary=bg.querySelector('#vxPecaRecipientsSummary');
-    function updateRecipientsSummary(){
-      const n=bg.querySelectorAll('#vxPecaRecipients input:checked').length;
-      recipientsSummary.textContent=n?`${n} selecionado${n===1?'':'s'}`:'Todos os usuários da loja';
-    }
-    bg.querySelectorAll('#vxPecaRecipients input[type="checkbox"]').forEach(chk=>chk.onchange=updateRecipientsSummary);
-    updateRecipientsSummary();
-    updatePreview();
+    panel.querySelectorAll('input[type="checkbox"]').forEach(chk=>chk.onchange=()=>{
+      if(chk.checked)selectedRecipients.add(chk.dataset.value);else selectedRecipients.delete(chk.dataset.value);
+      renderChips();
+    });
+    trigger.onclick=e=>{e.stopPropagation();panel.hidden=!panel.hidden};
+    document.addEventListener('click',e=>{if(!panel.hidden&&!bg.querySelector('#vxPecaRecipient').contains(e.target))panel.hidden=true});
+    renderChips();
 
     bg.querySelector('[data-save]').onclick=async()=>{
-      const sel=selectedParts();
+      const sel=[...bg.querySelectorAll('#vxPecaParts input:checked')].map(el=>({id:el.value,desc:el.dataset.desc}));
       const obs=obsEl.value.trim();
       if(!sel.length&&!obs){toast?.('Selecione ao menos uma peça ou descreva a peça necessária.','err');return}
       const btn=bg.querySelector('[data-save]');btn.disabled=true;
@@ -313,7 +322,7 @@
       const message=messageParts.join('\n\n');
       const myId=state.session?.user?.id||state.profile?.id||null;
       const companyId=state.profile?.active_company_id;
-      const recipients=[...bg.querySelectorAll('#vxPecaRecipients input:checked')].map(el=>el.value);
+      const recipients=[...selectedRecipients];
       try{
         const created=await api('dashboard_cases',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
           service_order_id:o.id,

@@ -1,0 +1,51 @@
+/* VoxAssist Web V0.9.04 -- modal "Solicitar peça" (os-detail-v0812.js,
+   vxOpenSolicitarPecaModal). Achado do usuário: a primeira versão
+   reaproveitava o visual do modal de Caso de Atenção (vx-caso-*) e
+   ficou parecida demais, confundindo os dois. Este arquivo é
+   independente -- identidade própria (azul-petróleo, não o laranja/
+   vermelho de "⚠ atenção"), uma coluna só (sem o painel de preview
+   que ocupava a metade direita), mais largo e mais baixo. Tudo que o
+   usuário PREENCHE (observações, destinatário) fica no topo; a lista
+   de peças já cadastradas na OS (só consulta) fica embaixo. */
+.vx-peca-modal{width:min(640px,94vw);padding:0;overflow:hidden;border-radius:16px}
+.vx-peca-head{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid #eef1f4}
+.vx-peca-head h3{margin:0;font-size:15.5px;display:flex;align-items:center;gap:8px;flex:1;color:#0f172a}
+.vx-peca-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;background:#e3f0fb;color:#0e6fa8;font-size:13px}
+.vx-peca-head-os{color:#0e6fa8;font-weight:700;font-size:13px}
+.vx-peca-close{border:0;background:none;font-size:20px;line-height:1;cursor:pointer;color:#64748b;padding:2px 6px}
+.vx-peca-close:hover{color:#0f172a}
+.vx-peca-body{padding:16px 18px;max-height:72vh;overflow:auto}
+.vx-peca-body .vx-field{margin-bottom:13px}
+.vx-peca-body .vx-field label{font-size:12px;font-weight:700;color:#334155;display:block;margin-bottom:4px;text-transform:none}
+.vx-peca-body textarea{width:100%;border:1px solid #d7dee6;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;height:auto;line-height:1.4;resize:vertical;box-sizing:border-box}
+.vx-peca-counter{display:block;text-align:right;color:#94a3b8;font-size:11px;margin-top:2px}
+.vx-peca-divider{height:1px;background:#eef1f4;margin:16px 0}
+
+.vx-peca-recipient{position:relative}
+.vx-peca-recipient-trigger{width:100%;display:flex;align-items:center;gap:8px;border:1px solid #d7dee6;border-radius:8px;background:#fff;padding:7px 10px;cursor:pointer;text-align:left}
+.vx-peca-recipient-trigger:hover{border-color:#b7c3d0}
+.vx-peca-recipient-chips{flex:1;display:flex;flex-wrap:wrap;gap:6px;min-height:22px;align-items:center}
+.vx-peca-recipient-placeholder{color:#94a3b8;font-size:13px}
+.vx-peca-recipient-arrow{color:#94a3b8;font-size:11px;flex:none}
+.vx-peca-chip{display:inline-flex;align-items:center;gap:5px;background:#e3f0fb;color:#0e6fa8;font-size:11.5px;font-weight:700;padding:3px 6px 3px 9px;border-radius:999px;white-space:nowrap}
+.vx-peca-chip button{border:0;background:none;color:#0e6fa8;font-size:13px;line-height:1;cursor:pointer;padding:0;opacity:.7}
+.vx-peca-chip button:hover{opacity:1}
+.vx-peca-recipient-panel{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;background:#fff;border:1px solid #d7dee6;border-radius:10px;box-shadow:0 8px 24px rgba(15,35,60,.12);padding:8px 10px 10px;display:flex;gap:18px;flex-wrap:wrap;max-height:220px;overflow:auto}
+.vx-peca-recipient-group{min-width:130px}
+.vx-peca-recipient-group b{display:block;font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em;margin:6px 0 4px}
+.vx-peca-recipient-item{display:flex;align-items:center;gap:7px;font-size:12.5px;padding:3px 0;color:#334155;cursor:pointer;white-space:nowrap}
+.vx-peca-recipient-item input[type="checkbox"]{width:14px;height:14px;min-width:14px;flex:none;margin:0;accent-color:#0e6fa8}
+.vx-peca-recipient-item span{overflow:hidden;text-overflow:ellipsis}
+.vx-peca-recipients-empty{font-size:12px;color:#94a3b8}
+
+.vx-peca-parts-field label{color:#64748b!important;font-weight:600!important}
+.vx-peca-parts-list{border:1px solid #eef1f4;border-radius:8px;max-height:130px;overflow:auto;padding:2px 10px;background:#fbfcfd}
+.vx-peca-part-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #eef1f4;font-size:12.5px;color:#334155;cursor:pointer}
+.vx-peca-part-item:first-child{border-top:0}
+.vx-peca-part-item input[type="checkbox"]{width:14px;height:14px;min-width:14px;flex:none;margin:0;accent-color:#0e6fa8}
+.vx-peca-part-desc{flex:1;min-width:0}
+.vx-peca-part-desc small{color:#94a3b8}
+.vx-peca-part-qty{color:#64748b;font-size:11.5px;white-space:nowrap}
+.vx-peca-empty{font-size:12.5px;color:#64748b;background:#f7f9fb;border-radius:8px;padding:9px 10px;line-height:1.4}
+
+.vx-peca-actions{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-top:1px solid #eef1f4;margin:0}
