@@ -15,6 +15,21 @@
   const labelOf=s=>STATUS_LABEL[String(s||'').replaceAll('_',' ')]||String(s||'').replaceAll('_',' ');
   const E=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+  // Achado do usuário em 2026-09-04 (OS #03I26G57): o modal "falta
+  // preencher" fazia sentido pra AGUARDANDO ANALISE (técnico/defeito/
+  // serviço/valor são coisas que o ATENDENTE/TÉCNICO esqueceu de
+  // preencher, ação real e imediata). Mas pra estes 3 status aqui o
+  // "que falta" é uma decisão/ação de quem NÃO é quem está usando o
+  // sistema (o cliente aprovar/recusar o orçamento, ou o cliente vir
+  // retirar o aparelho) -- exigir isso como se fosse um esquecimento
+  // do operador é incoerente: o próprio nome do status ("Aguardando
+  // Aprovação"/"Pronto para Entrega") já significa "ainda não temos
+  // essa definição, estamos esperando o cliente". O alerta que
+  // "aparelho travado" some despercebido continua valendo pros
+  // status abaixo (são os únicos onde falta algo que o operador PODE
+  // agir agora); pra estes aqui o modal simplesmente não deve abrir.
+  const CLIENT_WAIT_STATUSES=new Set(['AGUARDANDO APROVACAO','PRONTO PARA ENTREGA','ORCAMENTO RECUSADO DISPONIVEL PARA RETIRADA']);
+
   // Achado do usuário em 2026-09-03: uma OS com orçamento já lançado
   // (peça/valor) mas travada em "Aguardando Análise" só mostrava um
   // toast de erro -- fácil de não ver/ignorar (foi exatamente o que
@@ -60,7 +75,7 @@
       // (incluir peça, editar financeiro, modo Whirlpool etc.) abre o
       // mesmo modal.
       if(!result.changed){
-        if(result.missing?.length)openMissingStatusModal(result,id);
+        if(result.missing?.length&&!CLIENT_WAIT_STATUSES.has(String(result.final_status||'').replaceAll('_',' ')))openMissingStatusModal(result,id);
         return result;
       }
       const o=state.activeOs;
