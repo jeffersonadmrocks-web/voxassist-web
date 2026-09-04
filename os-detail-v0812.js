@@ -200,19 +200,31 @@
   // é clicável desde a rodada anterior); MAPA sai também -- já existe
   // duplicado dentro do card RESUMO DO CLIENTE (📍 ABRIR NO MAPA/WAZE,
   // os-summary-map-v0812.js), sem motivo pra ocupar espaço aqui.
+  // Achado do usuário em 2026-09-03 (4ª rodada -- imagem real da tela
+  // publicada): "TIPO: FORA DE GARANTIA" duplicado (era o selo antigo
+  // de order-type-v0812.js coexistindo com o texto novo aqui -- selo
+  // antigo removido nesse arquivo) e "AGENDAR" duplicado (era um botão
+  // solto injetado por um MutationObserver esquecido em
+  // field-agenda-complete-v0813.js -- removido lá). Layout também
+  // reorganizado: Tipo + Situação agora ficam JUNTOS, numa linha
+  // secundária embaixo do número da OS (não mais numa fileira única
+  // com divisores); Voltar sai do topo e vai pra faixa de baixo,
+  // alinhado à direita (embaixo de Ações).
   function header(o){
     const openedFmt=o.opened_at?new Date(o.opened_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
     return `<div class="vx-os-head">
       <div class="vx-os-head-top">
         <div class="vx-os-head-left">
-          <button class="vx-back" onclick="render('os')">← Voltar</button>
-          <span class="vx-os-head-divider"></span>
           <span class="vx-os-head-icon">🧾</span>
-          <div class="vx-os-id"><small>ORDEM DE SERVIÇO</small><div class="vx-os-number">${val(o.os_number)}</div></div>
-          <span class="vx-os-head-divider"></span>
-          <span class="vx-os-head-type">Tipo: ${val(fmtStatus(o.order_type)||'—')}</span>
-          <span class="vx-os-head-divider"></span>
-          <button class="vx-status-btn" onclick="manualStatus()" style="display:none">${val(fmtStatus(o.status))} ▼</button>
+          <div class="vx-os-id">
+            <small>ORDEM DE SERVIÇO</small>
+            <div class="vx-os-number">${val(o.os_number)}</div>
+            <div class="vx-os-head-sub">
+              <span class="vx-os-head-type">Tipo: ${val(fmtStatus(o.order_type)||'—')}</span>
+              <span class="vx-os-head-divider"></span>
+              <button class="vx-status-btn" onclick="manualStatus()" style="display:none">${val(fmtStatus(o.status))} ▼</button>
+            </div>
+          </div>
         </div>
         <div class="vx-os-head-actions">
           <button class="vx-action vx-os-agendar-btn" onclick="vxOpenAgendarForOs('${val(o.id)}')">📅 Agendar</button>
@@ -228,6 +240,7 @@
         <div><span class="vx-os-head-info-ic">👤</span><div><small>ATENDENTE</small><b>${val(o.attendant?.full_name||'—')}</b></div></div>
         <div><span class="vx-os-head-info-ic">🧑‍🔧</span><div><small>TÉCNICO</small><b>${val(o.profiles?.full_name||'—')}</b></div></div>
         <div><span class="vx-os-head-info-ic">🏬</span><div><small>LOJA</small><b>${val(o.stores?.name||'—')}</b></div></div>
+        <button class="vx-back" onclick="render('os')">← Voltar</button>
       </div>
     </div>`;
   }

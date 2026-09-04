@@ -46,44 +46,13 @@
     };
   }
 
-  const baseDetail=window.renderOsDetail;
-  if(typeof baseDetail==='function'){
-    window.renderOsDetail=async function(id){
-      const r=await baseDetail.apply(this,arguments);
-      try{
-        const o=state.activeOs;
-        if(!o)return r;
-        const orderType=o.order_type||'FORA DE GARANTIA';
-
-        /* Identificação principal: imediatamente abaixo do número da OS. */
-        ensureTypeStyle();
-        const number=document.querySelector('.vx-os-number');
-        if(number){
-          let badge=document.querySelector('.vx-order-type-badge');
-          if(!badge){
-            badge=document.createElement('div');
-            badge.className='vx-order-type-badge';
-            number.insertAdjacentElement('afterend',badge);
-          }
-          badge.dataset.type=orderType;
-          badge.textContent='TIPO: '+orderType;
-        }
-
-        /* Achado do usuário em 2026-09-02: este campo readonly extra
-           duplicava a mesma informação já mostrada no selo "TIPO:"
-           acima (linhas 58-70) E no seletor editável de verdade
-           injetado por os-corrections-v0812.js (ensureOrderType) --
-           duas caixas mostrando "GARANTIA"/etc. lado a lado. Pior:
-           cada um desses dois arquivos inseria seu próprio campo bem
-           antes de "TIPO DE ATENDIMENTO", sem um saber do outro --
-           empurrando esse e os campos seguintes uma posição a mais a
-           cada um, o que desalinhava o divisor "Atendimento" (CSS por
-           posição em os-detail-v0812.css) pra cima de "ESTADO DO
-           APARELHO". Removido -- a informação continua disponível no
-           selo do cabeçalho (sempre visível) e no seletor editável
-           (única fonte de edição de verdade).*/
-      }catch{}
-      return r;
-    };
-  }
+  // Achado do usuário em 2026-09-03 (refinamento do cabeçalho, 4ª
+  // rodada): o selo ".vx-order-type-badge" injetado aqui duplicava a
+  // mesma informação que o cabeçalho novo (os-detail-v0812.js) já
+  // mostra inline, ao lado do número da OS ("Tipo: Fora de garantia").
+  // Removido -- a informação continua vindo de o.order_type, só que
+  // renderizada uma vez só, dentro do próprio header(). ensureTypeStyle
+  // fica (não usada mais aqui, mas outros arquivos não dependem dela
+  // sumir) e o override de api() no topo deste arquivo (grava
+  // order_type na criação da OS) continua intocado.
 })();
