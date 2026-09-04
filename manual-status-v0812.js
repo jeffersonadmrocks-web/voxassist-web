@@ -12,13 +12,27 @@
   // picker (needsReason() depende da posição no array).
   const labelOf=s=>window.vxOsStatusLabel?window.vxOsStatusLabel(s):(FLOW.find(x=>x[0]===String(s||'').replaceAll('_',' '))?.[1]||String(s||'').replaceAll('_',' '));
   const roleAllowed=()=>!['TECNICO','ESTOQUE'].includes(String(state?.profile?.role||'').toUpperCase());
+  function statusTone(s){
+    const n=String(s||'').toUpperCase();
+    if(n.includes('CANCEL'))return '#8b95a3';
+    if(n.includes('RECUSADO'))return '#c0392b';
+    if(n.includes('FINALIZADA')||n.includes('ENCERRADO'))return '#2f9e58';
+    if(n.includes('PRONTO'))return '#1976d2';
+    if(n.includes('AGUARDANDO'))return '#d98a1f';
+    if(n.includes('CONSERTO'))return '#1976d2';
+    return '#9fc1e6';
+  }
   const closeModal=()=>document.querySelector('#vxStatusModal')?.remove();
 
   function injectStatus(){
     const o=state?.activeOs,head=document.querySelector('.vx-os-head-left'),bar=document.querySelector('.vx-os-head-actions');if(!o?.id||!head||!bar)return;
     const old=head.querySelector('.vx-status-btn');if(old)old.style.display='none';
     let box=head.querySelector('#vxStatusArea');if(!box){box=document.createElement('div');box.id='vxStatusArea';box.style.cssText='display:flex;align-items:center;gap:8px;margin:4px 0 6px;flex-wrap:wrap;';const number=head.querySelector('.vx-os-number');(number||head.firstElementChild)?.insertAdjacentElement('afterend',box);}
-    box.innerHTML=`<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10px;color:#6a7d90;font-weight:700">SITUAÇÃO ATUAL</span><strong style="font-size:12px;color:#12324e">${labelOf(o.status)}</strong></div>`;
+    // Achado do usuário em 2026-09-03 (referência visual aprovada): o
+    // próprio badge agora é clicável (mesmo destino do botão ALTERAR,
+    // que continua existindo -- só um atalho a mais, não substitui
+    // nada) e ganhou uma bolinha colorida por grupo de situação.
+    box.innerHTML=`<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10px;color:#6a7d90;font-weight:700">SITUAÇÃO ATUAL</span><strong style="font-size:12px;color:#12324e;cursor:pointer" title="Clique para alterar a situação" onclick="manualStatus()"><i style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${statusTone(o.status)};margin-right:5px;vertical-align:middle"></i>${labelOf(o.status)}</strong></div>`;
     if(!bar.querySelector('#vxChangeStatus')){const b=document.createElement('button');b.type='button';b.id='vxChangeStatus';b.className='vx-action';b.textContent='ALTERAR';b.style.cssText='min-width:78px;background:#fff;color:#40566e;border:1px solid #c8d3dd;';b.onclick=window.vxEditOrder;const save=bar.querySelector('#vxGlobalSave');if(save)save.insertAdjacentElement('afterend',b);else{const attention=[...bar.querySelectorAll('button')].find(x=>/CASO DE ATENÇÃO/i.test(x.textContent));if(attention)attention.insertAdjacentElement('afterend',b);else bar.prepend(b);}}
   }
 

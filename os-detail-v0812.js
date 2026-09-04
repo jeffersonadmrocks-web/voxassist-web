@@ -180,7 +180,45 @@
     };
   };
 
-  function header(o){return `<div class="vx-os-head"><div class="vx-os-head-left"><div class="vx-os-number">${val(o.os_number)}</div><button class="vx-status-btn" onclick="manualStatus()">${val(fmtStatus(o.status))} ▼</button><button class="vx-back" onclick="render('os')">← VOLTAR</button></div><div class="vx-os-head-actions"><button class="vx-action attention" onclick="vxOpenCasoAtencaoModal()">CASO DE ATENÇÃO</button><button class="vx-action parts" onclick="showVxOsSection('orcamento');setTimeout(()=>document.querySelector('#vxPartDescription')?.focus(),50)">SOLICITAR PEÇA</button><button class="vx-action" onclick="showVxOsSection('orcamento')">GERAR PARECER ▼</button><button class="vx-action" onclick="printOs()">GERAR PDF</button><button class="vx-action" onclick="window.print()">IMPRIMIR ▼</button></div></div>`}
+  // Achado do usuário em 2026-09-03 (referência visual aprovada):
+  // cabeçalho reorganizado -- Voltar/Nº OS/Tipo/Situação numa faixa só
+  // + faixa nova de Abertura/Atendente/Técnico/Loja embaixo, e "Agendar"
+  // reaproveitando 100% o formulário já existente da Agenda
+  // (window.vxOpenAgendarForOs, field-agenda-complete-v0813.js).
+  // .vx-os-head-left/.vx-os-head-actions/.vx-os-number/.vx-status-btn
+  // continuam com o MESMO nome de classe -- manual-status-v0812.js,
+  // os-actions-menu-v0812.js e os-global-save-v0812.js os localizam por
+  // esses seletores em tempo de execução; a ordem visual (Tipo antes de
+  // Situação Atual, mesmo com #vxStatusArea sendo inserido via JS logo
+  // depois de .vx-os-number) é resolvida só por CSS (order), sem mexer
+  // em nenhum desses três arquivos.
+  function header(o){
+    const openedFmt=o.opened_at?new Date(o.opened_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+    return `<div class="vx-os-head">
+      <div class="vx-os-head-top">
+        <div class="vx-os-head-left">
+          <button class="vx-back" onclick="render('os')">← Voltar</button>
+          <div class="vx-os-number">${val(o.os_number)}</div>
+          <div class="vx-os-head-type"><small>TIPO</small><b>${val(fmtStatus(o.order_type)||'—')}</b></div>
+          <button class="vx-status-btn" onclick="manualStatus()" style="display:none">${val(fmtStatus(o.status))} ▼</button>
+        </div>
+        <div class="vx-os-head-actions">
+          <button class="vx-action agendar" onclick="vxOpenAgendarForOs('${val(o.id)}')">📅 Agendar</button>
+          <button class="vx-action attention" onclick="vxOpenCasoAtencaoModal()">+ Caso de atenção</button>
+          <button class="vx-action parts" onclick="showVxOsSection('orcamento');setTimeout(()=>document.querySelector('#vxPartDescription')?.focus(),50)">SOLICITAR PEÇA</button>
+          <button class="vx-action" onclick="showVxOsSection('orcamento')">GERAR PARECER ▼</button>
+          <button class="vx-action" onclick="printOs()">GERAR PDF</button>
+          <button class="vx-action" onclick="window.print()">IMPRIMIR ▼</button>
+        </div>
+      </div>
+      <div class="vx-os-head-info">
+        <div><span class="vx-os-head-info-ic">📅</span><div><small>ABERTURA</small><b>${openedFmt}</b></div></div>
+        <div><span class="vx-os-head-info-ic">👤</span><div><small>ATENDENTE</small><b>${val(o.attendant?.full_name||'—')}</b></div></div>
+        <div><span class="vx-os-head-info-ic">🧑‍🔧</span><div><small>TÉCNICO</small><b>${val(o.profiles?.full_name||'—')}</b></div></div>
+        <div><span class="vx-os-head-info-ic">🏬</span><div><small>LOJA</small><b>${val(o.stores?.name||'—')}</b></div></div>
+      </div>
+    </div>`;
+  }
   function tabs(){return `<div class="vx-os-tabs">${TABS.map(([k,l])=>`<button data-section="${k}" class="${ctx.activeTab===k?'active':''}" onclick="showVxOsSection('${k}')">${l}</button>`).join('')}</div>`}
 
   function osPanel(){const {o,c,e,hist,parts,fin}=ctx;const partsTotal=parts.reduce((s,x)=>s+num(x.quantity)*num(x.unit_value),0),labor=num(fin.labor_value),disc=num(fin.discount_value),total=partsTotal+labor-disc;const analysisDate=fin.analysis_date?fmtDate(fin.analysis_date):eventDate(hist,['AGUARDANDO APROVACAO']);return `<section id="vx-os" class="vx-os-panel ${ctx.activeTab==='os'?'':'hidden'}"><div class="vx-os-summary-grid">
@@ -216,7 +254,12 @@
   async function ensureAnalysisDate(){if(!ctx||ctx.fin.analysis_date)return;try{const fid=await ensureFinancial();const today=localDateISO();await patch('os_financial',fid,{analysis_date:today});ctx.fin.analysis_date=today;const el=document.querySelector('[data-entity="financial"][data-name="analysis_date"]');if(el&&!el.value)el.value=today}catch(e){toast('Não foi possível registrar a data automática da análise: '+e.message,'err')}}
 
   window.renderOsDetail=async function(id,tab='os'){
-    const arr=await api(`service_orders?id=eq.${id}&select=*,clients(*),equipments(*),profiles!service_orders_technician_id_fkey(full_name)`);const o=arr?.[0];if(!o){document.querySelector('#app').innerHTML='<div class="card">OS não encontrada.</div>';return}
+    // Achado do usuário em 2026-09-03 (referência visual aprovada): a
+    // nova faixa do cabeçalho mostra Abertura/Atendente/Técnico/Loja.
+    // "profiles" (sem alias, técnico) fica intocado -- reaproveitado
+    // por vários arquivos Whirlpool (o.profiles?.full_name); atendente
+    // e loja são embeds NOVOS e aditivos, com alias pra não colidir.
+    const arr=await api(`service_orders?id=eq.${id}&select=*,clients(*),equipments(*),profiles!service_orders_technician_id_fkey(full_name),attendant:profiles!service_orders_attendant_id_fkey(full_name),stores(name)`);const o=arr?.[0];if(!o){document.querySelector('#app').innerHTML='<div class="card">OS não encontrada.</div>';return}
     state.activeOs=o;const [hist,parts,finRows,atts,payments,techs,phones,addresses,docs,stores,clientOrders,clientEquipments]=await Promise.all([
       api(`os_status_history?service_order_id=eq.${id}&select=*&order=changed_at.desc`).catch(()=>[]),api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`).catch(()=>[]),api(`os_financial?service_order_id=eq.${id}&select=*`).catch(()=>[]),api(`attachments?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`payments?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`profiles?role=eq.TECNICO&active=eq.true&select=id,full_name`).catch(()=>[]),api(`client_phones?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`client_addresses?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`technical_documents?select=*&order=created_at.desc`).catch(()=>[]),api('stores?active=eq.true&select=id,name,code').catch(()=>[]),api(`service_orders?client_id=eq.${o.client_id}&select=*,equipments(product_type,brand,model,serial_number)&order=opened_at.desc`).catch(()=>[]),api(`equipments?current_client_id=eq.${o.client_id}&select=*&order=created_at.desc`).catch(()=>[])
     ]);
