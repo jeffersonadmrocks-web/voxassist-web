@@ -205,6 +205,15 @@
     const detail=m.event_type==='REASSIGN'?`encaminhou para ${E(m.new_data?.assigned_to_name||'—')}`:m.event_type==='STATUS_CHANGE'?`mudou a situação para ${E(CASE_STATUS_LABEL[m.new_data?.status]||m.new_data?.status||'—')}`:m.event_type;
     return `<div class="vx-c-case-event"><small>${author} ${detail} • ${when}</small></div>`;
   }
+  // "Meus Casos Enviados" (achado do usuário em 2026-09-04): linha
+  // compacta pro card do Dashboard -- clique abre o mesmo
+  // caseDetailModal de sempre (via dispatcher mycase:<id>, que já tem
+  // myCases/ordersById no escopo de renderDashboard).
+  function myCaseRow(c){
+    const typeInfo=CASE_TYPES[c.case_type];
+    const statusLabel=CASE_STATUS_LABEL[norm(c.status)]||norm(c.status)||'—';
+    return `<button type="button" class="vx-c-mycase-row" data-drill="mycase:${E(c.id)}" data-title="${E(c.title)}"><span class="vx-c-mycase-ic">${typeInfo?typeInfo[0]:'📌'}</span><span class="vx-c-mycase-txt"><b>${E(c.title)}</b><small>${new Date(c.created_at).toLocaleDateString('pt-BR')}</small></span><span class="vx-c-case-pill status-${E(norm(c.status)).toLowerCase().replace(/\s+/g,'-')}">${E(statusLabel)}</span></button>`;
+  }
 
   // Modal pra linhas de parts_requests (achado do usuário em
   // 2026-09-01: "Pedidos de Peças" não tinha como ver quais pedidos
@@ -402,6 +411,12 @@
     const casesNovos=casesLast30.filter(c=>norm(c.status)==='NOVO');
     const casesAndamento=casesLast30.filter(c=>norm(c.status)==='EM ANDAMENTO');
     const casesResolvidos=casesLast30.filter(c=>norm(c.status)==='RESOLVIDO');
+    // Achado do usuário em 2026-09-04: quem abre um caso não tinha
+    // como acompanhar os próprios casos enviados, nem checar se já
+    // tinha aberto um igual antes de criar outro -- "meus casos" é só
+    // um filtro de casesAll (já escopado por caseVisibleToMe, que já
+    // inclui created_by===myId) por quem criou, sem fetch novo.
+    const myCases=casesAll.filter(c=>String(c.created_by)===String(myId)).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     // Card "Pedidos de Peças": Pendentes de aprovação/Em compra/
     // Aguardando entrega/Atrasados/Recebidos hoje -- vocabulário
     // confirmado pelo usuário em 2026-09-01 (mesma situação de Casos
@@ -741,7 +756,7 @@
     const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,oppApproval,oppReady,oppOverdueRepair,oppOverdueApproval:oppApproval.filter(o=>age(o)>3),oppReadyOverdue3,retiradasHojeOrders,prazosCriticosOrders,...gvDrills,...prodDrills};
     const partsDrills={partsAll,partsPendentes,partsCompra,partsEntrega,partsAtrasadas,partsRecebidasHoje};
     const tasksDrills={tasks};
-    const caseDrills={casesAbertos,casesNovos,casesAndamento,casesResolvidos};
+    const caseDrills={casesAbertos,casesNovos,casesAndamento,casesResolvidos,myCases};
 
     function kpi(icon,title,value,sub,key){return `<button type="button" class="vx-c-kpi" data-drill="${key}" data-title="${E(title)}"><span class="vx-c-kpi-icon">${icon}</span><span class="vx-c-kpi-label">${E(title)}</span><b>${E(value)}</b><small>${E(sub)}</small></button>`}
     function oppRow(label,n,key){
@@ -850,6 +865,10 @@
 
       ${agendaSectionHtml(agendaSelectedTechId)}
 
+      <section class="vx-c-list-card vx-c-mycases-card"><div class="vx-c-title"><h3>📝 Meus Casos Enviados</h3><a href="#" data-drill="cases:myCases" data-title="Meus Casos Enviados">Ver todos</a></div>
+        ${myCases.length?myCases.slice(0,6).map(myCaseRow).join(''):'<p class="vx-c-empty">Você ainda não abriu nenhum caso de atenção -- acompanhe aqui pra não abrir um duplicado.</p>'}
+      </section>
+
       ${discovery()}
     </div>`;
     app.querySelectorAll('[data-drill]').forEach(el=>el.onclick=(ev)=>{
@@ -859,6 +878,7 @@
       if(k.startsWith('parts:'))return partsModal(title,partsDrills[k.slice(6)]||[]);
       if(k.startsWith('tasks:'))return tasksModal(title,tasksDrills[k.slice(6)]||[]);
       if(k.startsWith('cases:')||k==='casesAbertos')return casesModal(title,caseDrills[k==='casesAbertos'?'casesAbertos':k.slice(6)]||[],ordersById);
+      if(k.startsWith('mycase:')){const c=myCases.find(x=>String(x.id)===k.slice(7));if(c)return caseDetailModal(c,ordersById);return;}
       if(drills[k])modal(title,drills[k]);
     });
     document.getElementById('vxFeedAll').onclick=(ev)=>{ev.preventDefault();feedModal('Feed em Tempo Real',historyScoped,feedText)};
