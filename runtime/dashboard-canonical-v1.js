@@ -107,7 +107,7 @@
   // arquivo (E/norm/role/me/api/toast/state), nunca uma variável local
   // de renderDashboard (foi exatamente esse erro que quebrou o clique
   // dos casos antes).
-  const CASE_TYPES={INFO:['🚩','Informação importante'],RECLAMACAO:['⚠','Reclamação do cliente'],ATRASO:['⏰','Atraso no atendimento'],CANCELAMENTO:['🔁','Risco de cancelamento'],FINANCEIRO:['💰','Pendência financeira'],OUTRO:['📌','Outro']};
+  const CASE_TYPES={INFO:['🚩','Informação importante'],RECLAMACAO:['⚠','Reclamação do cliente'],ATRASO:['⏰','Atraso no atendimento'],CANCELAMENTO:['🔁','Risco de cancelamento'],FINANCEIRO:['💰','Pendência financeira'],PECA:['🔧','Solicitação de peça'],OUTRO:['📌','Outro']};
   const CASE_PRIORITY_LABEL={ALTA:'Alta',MEDIA:'Média',BAIXA:'Baixa',NORMAL:'Normal',URGENTE:'Urgente'};
   const CASE_STATUS_LABEL={NOVO:'Novo',['EM ANDAMENTO']:'Em andamento',RESOLVIDO:'Resolvido',CANCELADO:'Cancelado'};
   const CASE_NEXT_ACTIONS={NOVO:[['EM ANDAMENTO','▶ Marcar em andamento'],['CANCELADO','✕ Cancelar']],['EM ANDAMENTO']:[['RESOLVIDO','✓ Marcar resolvido'],['CANCELADO','✕ Cancelar']],RESOLVIDO:[['EM ANDAMENTO','↺ Reabrir']],CANCELADO:[['EM ANDAMENTO','↺ Reabrir']]};

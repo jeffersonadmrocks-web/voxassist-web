@@ -35,9 +35,19 @@
   // OS atual ou ao cliente, prioridade em pills e pré-visualização ao
   // vivo de como o caso aparece no Dashboard. client_id/case_type são
   // colunas novas e aditivas (migration 20260903060000).
-  const CASO_TYPES=[['INFO','🚩','Informação importante'],['RECLAMACAO','⚠','Reclamação do cliente'],['ATRASO','⏰','Atraso no atendimento'],['CANCELAMENTO','🔁','Risco de cancelamento'],['FINANCEIRO','💰','Pendência financeira'],['OUTRO','📌','Outro']];
+  const CASO_TYPES=[['INFO','🚩','Informação importante'],['RECLAMACAO','⚠','Reclamação do cliente'],['ATRASO','⏰','Atraso no atendimento'],['CANCELAMENTO','🔁','Risco de cancelamento'],['FINANCEIRO','💰','Pendência financeira'],['PECA','🔧','Solicitação de peça'],['OUTRO','📌','Outro']];
   const CASO_PRIORITIES=[['ALTA','Alta','high'],['MEDIA','Média','med'],['BAIXA','Baixa','low']];
-  window.vxOpenCasoAtencaoModal=async function(){
+  // Achado do usuário em 2026-09-04: o botão "SOLICITAR PEÇA" do
+  // cabeçalho não fazia nada de verdade (só trocava de aba e tentava
+  // focar um campo #vxPartDescription que nunca existiu -- resíduo de
+  // uma versão anterior). Em vez de inventar um fluxo novo do zero, o
+  // usuário pediu a MESMA regra do Caso de Atenção: vira exatamente
+  // um caso de atenção (mesmo registro dashboard_cases, mesmo
+  // dashboard, mesmo histórico/reabertura/encaminhamento), só que com
+  // tipo pré-selecionado "🔧 Solicitação de peça" e já sugerindo o
+  // grupo Estoque como destinatário. `preset` é opcional e não muda
+  // nada pra quem chama sem argumento (o "+ Caso de atenção" comum).
+  window.vxOpenCasoAtencaoModal=async function(preset={}){
     const o=ctx?.o;if(!o)return;
     document.querySelector('#vxCasoAtencaoModal')?.remove();
     const bg=document.createElement('div');
@@ -55,14 +65,14 @@
     const clientName=o.clients?.name||'Cliente';
     bg.innerHTML=`<div class="vx-modal vx-caso-modal-v2">
       <div class="vx-caso-head">
-        <h3><span class="vx-caso-warn">⚠</span> Novo caso de atenção</h3>
+        <h3><span class="vx-caso-warn">⚠</span> ${val(preset.headerTitle||'Novo caso de atenção')}</h3>
         <span class="vx-caso-head-os">OS ${val(o.os_number)}</span>
         <button type="button" class="vx-caso-close" data-cancel>×</button>
       </div>
       <div class="vx-caso-body">
         <div class="vx-caso-form">
-          <div class="vx-field"><label>Título do caso *</label><input id="vxCasoTitle" maxlength="140" placeholder="Ex.: Cliente solicitou ligar antes da visita"></div>
-          <div class="vx-field"><label>Tipo de atenção *</label><select id="vxCasoType">${CASO_TYPES.map(([v,ic,l])=>`<option value="${v}">${ic} ${val(l)}</option>`).join('')}</select></div>
+          <div class="vx-field"><label>Título do caso *</label><input id="vxCasoTitle" maxlength="140" placeholder="${val(preset.titlePlaceholder||'Ex.: Cliente solicitou ligar antes da visita')}"></div>
+          <div class="vx-field"><label>Tipo de atenção *</label><select id="vxCasoType">${CASO_TYPES.map(([v,ic,l])=>`<option value="${v}"${preset.type===v?' selected':''}>${ic} ${val(l)}</option>`).join('')}</select></div>
           <div class="vx-field"><label>Relacionado à</label>
             <div class="vx-caso-relate" id="vxCasoRelate">
               <button type="button" class="active" data-relate="os">Esta OS (${val(o.os_number)})</button>
@@ -70,7 +80,7 @@
             </div>
           </div>
           <div class="vx-caso-dup-warn" id="vxCasoDupWarn" hidden></div>
-          <div class="vx-field"><label>Descrição *</label><textarea id="vxCasoMessage" maxlength="300" rows="3" placeholder="Detalhe as informações importantes que todos devem saber sobre este atendimento."></textarea><small class="vx-caso-counter" id="vxCasoCounter">0/300</small></div>
+          <div class="vx-field"><label>Descrição *</label><textarea id="vxCasoMessage" maxlength="300" rows="3" placeholder="${val(preset.messagePlaceholder||'Detalhe as informações importantes que todos devem saber sobre este atendimento.')}"></textarea><small class="vx-caso-counter" id="vxCasoCounter">0/300</small></div>
           <div class="vx-field"><label>Prioridade</label>
             <div class="vx-caso-priority" id="vxCasoPriority">${CASO_PRIORITIES.map(([v,l,tone],i)=>`<button type="button" class="vx-caso-prio-${tone}${i===0?' active':''}" data-priority="${v}">${l}</button>`).join('')}</div>
           </div>
@@ -78,7 +88,7 @@
             <details class="vx-caso-visible" id="vxCasoRecipients">
               <summary id="vxCasoRecipientsSummary">Todos os usuários da loja</summary>
               <div class="vx-caso-recipients-panel">
-                <div class="vx-caso-recipients-group"><b>Grupos</b>${CASO_ROLE_GROUPS.map(([v,l])=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="role:${v}">${val(l)}</label>`).join('')}</div>
+                <div class="vx-caso-recipients-group"><b>Grupos</b>${CASO_ROLE_GROUPS.map(([v,l])=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="role:${v}"${(preset.recipientRoles||[]).includes(v)?' checked':''}>${val(l)}</label>`).join('')}</div>
                 <div class="vx-caso-recipients-group"><b>Pessoas</b>${people.length?people.map(p=>`<label class="vx-caso-recipient-item"><input type="checkbox" value="user:${val(p.id)}">${val(p.full_name)}</label>`).join(''):'<span class="vx-caso-recipients-empty">Nenhum usuário ativo.</span>'}</div>
               </div>
             </details>
@@ -171,10 +181,12 @@
     });
     checkDuplicates();
     const recipientsSummary=bg.querySelector('#vxCasoRecipientsSummary');
-    bg.querySelectorAll('#vxCasoRecipients input[type="checkbox"]').forEach(chk=>chk.onchange=()=>{
+    function updateRecipientsSummary(){
       const n=bg.querySelectorAll('#vxCasoRecipients input:checked').length;
       recipientsSummary.textContent=n?`${n} selecionado${n===1?'':'s'}`:'Todos os usuários da loja';
-    });
+    }
+    bg.querySelectorAll('#vxCasoRecipients input[type="checkbox"]').forEach(chk=>chk.onchange=updateRecipientsSummary);
+    updateRecipientsSummary();
     updatePreview();
 
     bg.querySelector('[data-save]').onclick=async()=>{
@@ -265,7 +277,7 @@
         <div class="vx-os-head-actions">
           <button class="vx-action vx-os-agendar-btn" onclick="vxOpenAgendarForOs('${val(o.id)}')">📅 Agendar</button>
           <button class="vx-action attention" onclick="vxOpenCasoAtencaoModal()">+ Caso de atenção</button>
-          <button class="vx-action parts" onclick="showVxOsSection('orcamento');setTimeout(()=>document.querySelector('#vxPartDescription')?.focus(),50)">SOLICITAR PEÇA</button>
+          <button class="vx-action parts" onclick="vxOpenCasoAtencaoModal({type:'PECA',recipientRoles:['ESTOQUE'],headerTitle:'Solicitar peça',titlePlaceholder:'Ex.: Placa eletrônica do modelo XYZ',messagePlaceholder:'Descreva a peça necessária: código, modelo, quantidade e urgência.'})">SOLICITAR PEÇA</button>
           <button class="vx-action" onclick="showVxOsSection('orcamento')">GERAR PARECER ▼</button>
           <button class="vx-action" onclick="printOs()">GERAR PDF</button>
           <button class="vx-action" onclick="window.print()">IMPRIMIR ▼</button>
