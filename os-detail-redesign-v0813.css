@@ -85,7 +85,7 @@
    !important só aqui, justificado por sobrepor style inline que este
    CSS não tem outro jeito de alcançar. */
 #vxStatusArea strong{color:#fff!important}
-.vx-whirlpool-badge{display:inline-flex;align-items:center;background:rgba(255,255,255,.14);color:#fff!important;font-size:10px;font-weight:700;letter-spacing:.03em;padding:6px 12px;border-radius:999px}
+.vx-whirlpool-badge{display:inline-flex;align-items:center;background:rgba(255,255,255,.22);color:#fff!important;font-size:12px;font-weight:700;letter-spacing:.01em;line-height:1;padding:7px 14px;border-radius:999px;white-space:nowrap;border:1px solid rgba(255,255,255,.28)}
 
 .vx-os-head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .vx-os-head-actions .vx-action{border-radius:999px;height:34px;font-size:11.5px;font-weight:700}
