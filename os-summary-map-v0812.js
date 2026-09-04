@@ -69,12 +69,11 @@
       clientBox.appendChild(actions);
     }
 
-    const headActions=document.querySelector('.vx-os-head-actions');
-    if(headActions && !headActions.querySelector('[data-vx-map]')){
-      const btn=document.createElement('button');
-      btn.type='button';btn.className='vx-action';btn.dataset.vxMap='1';btn.textContent='MAPA';btn.addEventListener('click',()=>vxOpenMap('google'));
-      headActions.appendChild(btn);
-    }
+    // Achado do usuário em 2026-09-03 (3ª rodada, refinamento do
+    // cabeçalho): botão "MAPA" solto no cabeçalho removido -- já
+    // duplicado logo acima (📍 ABRIR NO MAPA/WAZE no card RESUMO DO
+    // CLIENTE) e agora também dentro do menu ⋮ Ações
+    // (os-actions-menu-v0812.js, grupo OPERAÇÃO, "Ver no mapa").
   }
 
   const observer=new MutationObserver(()=>enhance());

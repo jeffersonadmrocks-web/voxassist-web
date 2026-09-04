@@ -31,28 +31,29 @@
 .vx-os-wrap{background:var(--os-bg);border:0;padding:14px;min-height:calc(100vh - 140px);font-family:Arial,sans-serif;color:var(--os-ink);display:flex;flex-direction:column;gap:12px}
 
 /* ---------- Cabeçalho ---------- */
-/* Achado do usuário em 2026-09-03 (2ª referência visual aprovada):
-   cabeçalho ganhou uma faixa nova (Abertura/Atendente/Técnico/Loja)
-   embaixo da faixa de ações, e Tipo/Situação Atual passaram a viver
-   lado a lado com o número da OS. Isto deixa de ser "puramente
-   visual" (nota no topo do arquivo) -- os-detail-v0812.js ganhou uma
-   estrutura HTML nova (.vx-os-head-top/.vx-os-head-info), mas os TRÊS
-   seletores que outros arquivos localizam em tempo de execução
-   (.vx-os-head-left, .vx-os-head-actions, .vx-os-number,
-   .vx-status-btn, #vxStatusArea) continuam com o mesmo nome -- só a
-   volta deles que mudou. */
+/* Achado do usuário em 2026-09-03 (3ª rodada -- refinamento visual
+   detalhado, referência textual completa): faixa de identificação
+   virou uma linha única com divisores finos (Voltar | Nº OS | Tipo |
+   Situação), número da OS como maior destaque, Tipo e Situação como
+   texto secundário (não mais selo/botão). ALTERAR e MAPA saíram do
+   cabeçalho (situação já é clicável direto no badge; mapa já existe
+   duplicado no card do cliente). Ações à direita reduzidas a
+   Chat/Agendar/Caso de atenção/Salvar/Ações, com hierarquia visual
+   mais discreta. Os seletores que outros arquivos localizam em tempo
+   de execução (.vx-os-head-left, .vx-os-head-actions, .vx-os-number,
+   .vx-status-btn, #vxStatusArea) continuam com o mesmo nome. */
 .vx-os-head{min-height:auto;background:linear-gradient(135deg,var(--os-accent-dark),#123a61);border:0;border-radius:var(--os-radius);padding:14px 18px;margin-bottom:0;box-shadow:0 4px 14px rgba(11,43,74,.18);display:flex;flex-direction:column;gap:12px}
 .vx-os-head-top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
-.vx-os-head-left{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.vx-os-number{font-size:20px;color:#fff;font-weight:700;min-width:auto;padding-left:0;letter-spacing:.02em;order:2}
-.vx-os-number::before{content:'ORDEM DE SERVIÇO';font-size:10px;font-weight:700;color:#9fc1e6;letter-spacing:.08em;display:block;margin-bottom:2px}
-.vx-os-head-type{order:3;display:flex;flex-direction:column;gap:2px}
-.vx-os-head-type small{font-size:10px;color:#9fc1e6;font-weight:700;letter-spacing:.04em}
-.vx-os-head-type b{font-size:12.5px;color:#fff;font-weight:700;text-transform:capitalize}
-#vxStatusArea{order:4}
-.vx-status-btn{height:34px;border:0;background:rgba(255,255,255,.14);color:#fff;padding:0 16px;font-size:12px;font-weight:700;min-width:auto;border-radius:999px;letter-spacing:.02em;transition:background .15s ease;order:5}
-.vx-status-btn:hover{background:rgba(255,255,255,.24)}
-.vx-back{height:34px;border:0;background:rgba(255,255,255,.08);color:#dbe8f6;padding:0 14px;font-size:11px;font-weight:700;border-radius:999px;transition:background .15s ease;order:1}
+.vx-os-head-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.vx-os-head-divider{width:1px;height:22px;background:rgba(255,255,255,.18);flex:none}
+.vx-os-head-icon{font-size:15px;opacity:.85;flex:none}
+.vx-os-id{display:flex;flex-direction:column;gap:1px;line-height:1}
+.vx-os-id small{font-size:9px;color:#9fc1e6;font-weight:700;letter-spacing:.08em}
+.vx-os-number{font-size:22px;color:#fff;font-weight:800;letter-spacing:.01em;line-height:1.15}
+.vx-os-head-type{font-size:12px;color:#c3d9ef;font-weight:600}
+#vxStatusArea strong{font-size:12px;font-weight:700;white-space:nowrap}
+.vx-status-btn{display:none}
+.vx-back{height:32px;border:0;background:rgba(255,255,255,.08);color:#dbe8f6;padding:0 13px;font-size:11px;font-weight:700;border-radius:999px;transition:background .15s ease}
 .vx-back:hover{background:rgba(255,255,255,.18);filter:none}
 /* #vxStatusArea (manual-status-v0812.js) e .vx-whirlpool-badge (os-
    whirlpool-extension-v0813.js) usam cor de texto escura fixa via
@@ -60,21 +61,31 @@
    isso, ficam ilegíveis em cima do novo fundo azul-marinho escuro.
    !important só aqui, justificado por sobrepor style inline que este
    CSS não tem outro jeito de alcançar. */
-#vxStatusArea span{color:#9fc1e6!important}
 #vxStatusArea strong{color:#fff!important}
 .vx-whirlpool-badge{display:inline-flex;align-items:center;background:rgba(255,255,255,.14);color:#fff!important;font-size:10px;font-weight:700;letter-spacing:.03em;padding:6px 12px;border-radius:999px}
 
-.vx-os-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.vx-os-head-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .vx-os-head-actions .vx-action{border-radius:999px;height:34px;font-size:11.5px;font-weight:700}
 .vx-os-head-actions #vxOsActionsMenu .vx-action{border-radius:var(--os-radius-sm);height:auto;font-size:inherit;font-weight:inherit}
-.vx-os-head-actions .vx-os-chat-btn{background:rgba(255,255,255,.14);color:#fff;border:0}
-.vx-os-head-actions .vx-os-chat-btn:hover{background:rgba(255,255,255,.24)}
-.vx-os-head-actions .vx-action.agendar{background:rgba(255,255,255,.14);color:#fff;border:0}
-.vx-os-head-actions .vx-action.agendar:hover{background:rgba(255,255,255,.24)}
-.vx-os-head-actions .vx-action.attention{background:#fff3e0;color:var(--os-orange);border:0}
+/* Chat e Agendar -- discretos, sem fundo próprio, só um leve realce no hover. */
+.vx-os-head-actions .vx-os-chat-btn,.vx-os-head-actions .vx-os-agendar-btn{background:none;color:#dbe8f6;border:0;padding:0 10px}
+.vx-os-head-actions .vx-os-chat-btn:hover,.vx-os-head-actions .vx-os-agendar-btn:hover{background:rgba(255,255,255,.1)}
+/* Caso de atenção -- contorno laranja, sem bloco preenchido. */
+.vx-os-head-actions .vx-action.attention{background:none;color:#ffb74d;border:1px solid rgba(255,183,77,.55);padding:0 12px}
+.vx-os-head-actions .vx-action.attention:hover{background:rgba(255,183,77,.12)}
 .vx-os-head-actions #vxGlobalSave{background:var(--os-green);color:#fff;border:0}
 .vx-os-head-actions .vx-os-actions-btn{background:rgba(255,255,255,.10);color:#fff;border:1px solid rgba(255,255,255,.22);height:34px;border-radius:999px;padding:0 14px;font-size:11.5px;font-weight:700}
 .vx-os-head-actions .vx-os-actions-btn:hover{background:rgba(255,255,255,.2)}
+/* Menu "⋮ Ações" -- ícones pequenos, divisores suaves, cantos
+   arredondados e sombra leve (referência visual 2026-09-03). */
+.vx-os-actions-drop{position:absolute;right:0;top:calc(100% + 8px);z-index:10000;min-width:230px;background:#fff;border:1px solid var(--os-line);border-radius:var(--os-radius);box-shadow:0 10px 28px rgba(15,42,68,.16);padding:6px}
+.vx-os-actions-group{padding:8px 10px 4px;font-size:10px;color:var(--os-ink-soft);font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.vx-os-actions-sep{border-top:1px solid var(--os-line);margin:5px 4px}
+.vx-os-actions-item{width:100%;display:flex;align-items:center;gap:9px;text-align:left;border:0;background:#fff;padding:9px 10px;font-size:12.5px;font-weight:600;color:var(--os-ink);border-radius:var(--os-radius-sm);cursor:pointer}
+.vx-os-actions-item:hover{background:#f1f5f9}
+.vx-os-actions-item.danger{color:#a32121}
+.vx-os-actions-item.danger:hover{background:#fdecec}
+.vx-os-actions-item-ic{font-size:13px;flex:none;opacity:.85}
 
 /* ---------- Faixa Abertura/Atendente/Técnico/Loja ---------- */
 .vx-os-head-info{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;background:rgba(255,255,255,.06);border-radius:var(--os-radius-sm);padding:10px 14px}

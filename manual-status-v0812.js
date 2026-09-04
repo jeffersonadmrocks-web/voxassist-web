@@ -27,13 +27,22 @@
   function injectStatus(){
     const o=state?.activeOs,head=document.querySelector('.vx-os-head-left'),bar=document.querySelector('.vx-os-head-actions');if(!o?.id||!head||!bar)return;
     const old=head.querySelector('.vx-status-btn');if(old)old.style.display='none';
-    let box=head.querySelector('#vxStatusArea');if(!box){box=document.createElement('div');box.id='vxStatusArea';box.style.cssText='display:flex;align-items:center;gap:8px;margin:4px 0 6px;flex-wrap:wrap;';const number=head.querySelector('.vx-os-number');(number||head.firstElementChild)?.insertAdjacentElement('afterend',box);}
-    // Achado do usuário em 2026-09-03 (referência visual aprovada): o
-    // próprio badge agora é clicável (mesmo destino do botão ALTERAR,
-    // que continua existindo -- só um atalho a mais, não substitui
-    // nada) e ganhou uma bolinha colorida por grupo de situação.
-    box.innerHTML=`<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10px;color:#6a7d90;font-weight:700">SITUAÇÃO ATUAL</span><strong style="font-size:12px;color:#12324e;cursor:pointer" title="Clique para alterar a situação" onclick="manualStatus()"><i style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${statusTone(o.status)};margin-right:5px;vertical-align:middle"></i>${labelOf(o.status)}</strong></div>`;
-    if(!bar.querySelector('#vxChangeStatus')){const b=document.createElement('button');b.type='button';b.id='vxChangeStatus';b.className='vx-action';b.textContent='ALTERAR';b.style.cssText='min-width:78px;background:#fff;color:#40566e;border:1px solid #c8d3dd;';b.onclick=window.vxEditOrder;const save=bar.querySelector('#vxGlobalSave');if(save)save.insertAdjacentElement('afterend',b);else{const attention=[...bar.querySelectorAll('button')].find(x=>/CASO DE ATENÇÃO/i.test(x.textContent));if(attention)attention.insertAdjacentElement('afterend',b);else bar.prepend(b);}}
+    // Achado do usuário em 2026-09-03 (3ª rodada, refinamento do
+    // cabeçalho): a âncora de inserção mudou de .vx-os-number (que
+    // agora vive dentro de um wrapper .vx-os-id, então "depois dele"
+    // caía DENTRO do wrapper, quebrando a linha) pro próprio
+    // .vx-status-btn oculto -- ele já está posicionado exatamente onde
+    // a Situação Atual deve aparecer na nova ordem linear do cabeçalho
+    // (os-detail-v0812.js), sem precisar de nenhum truque de CSS order.
+    let box=head.querySelector('#vxStatusArea');if(!box){box=document.createElement('div');box.id='vxStatusArea';box.style.cssText='display:flex;align-items:center;';const anchor=head.querySelector('.vx-status-btn');(anchor||head.lastElementChild)?.insertAdjacentElement('afterend',box);}
+    // Achado do usuário em 2026-09-03 (3ª rodada, refinamento do
+    // cabeçalho): "SITUAÇÃO ATUAL" como legenda separada e o botão
+    // ALTERAR foram removidos -- o badge (bolinha colorida + texto)
+    // agora é a ÚNICA forma de mudar a situação pelo cabeçalho,
+    // compacto, sem competir visualmente com Nº OS/Tipo. O picker
+    // continua sendo exatamente o mesmo (window.manualStatus), só
+    // ganhou esse atalho a mais no lugar do botão dedicado antigo.
+    box.innerHTML=`<strong style="font-size:12px;color:#12324e;cursor:pointer;font-weight:700" title="Situação atual -- clique para alterar" onclick="manualStatus()"><i style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${statusTone(o.status)};margin-right:5px;vertical-align:middle"></i>${labelOf(o.status)}</strong>`;
   }
 
   window.vxEditOrder=function(){

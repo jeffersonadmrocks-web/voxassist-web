@@ -192,18 +192,30 @@
   // Situação Atual, mesmo com #vxStatusArea sendo inserido via JS logo
   // depois de .vx-os-number) é resolvida só por CSS (order), sem mexer
   // em nenhum desses três arquivos.
+  // Achado do usuário em 2026-09-03 (3ª rodada -- refinamento visual
+  // detalhado do cabeçalho, referência textual completa): faixa única
+  // em linha, número da OS como maior destaque, Tipo e Situação viram
+  // texto secundário separado por divisores finos (não mais selo/
+  // badge). ALTERAR sai do cabeçalho (o próprio badge de situação já
+  // é clicável desde a rodada anterior); MAPA sai também -- já existe
+  // duplicado dentro do card RESUMO DO CLIENTE (📍 ABRIR NO MAPA/WAZE,
+  // os-summary-map-v0812.js), sem motivo pra ocupar espaço aqui.
   function header(o){
     const openedFmt=o.opened_at?new Date(o.opened_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
     return `<div class="vx-os-head">
       <div class="vx-os-head-top">
         <div class="vx-os-head-left">
           <button class="vx-back" onclick="render('os')">← Voltar</button>
-          <div class="vx-os-number">${val(o.os_number)}</div>
-          <div class="vx-os-head-type"><small>TIPO</small><b>${val(fmtStatus(o.order_type)||'—')}</b></div>
+          <span class="vx-os-head-divider"></span>
+          <span class="vx-os-head-icon">🧾</span>
+          <div class="vx-os-id"><small>ORDEM DE SERVIÇO</small><div class="vx-os-number">${val(o.os_number)}</div></div>
+          <span class="vx-os-head-divider"></span>
+          <span class="vx-os-head-type">Tipo: ${val(fmtStatus(o.order_type)||'—')}</span>
+          <span class="vx-os-head-divider"></span>
           <button class="vx-status-btn" onclick="manualStatus()" style="display:none">${val(fmtStatus(o.status))} ▼</button>
         </div>
         <div class="vx-os-head-actions">
-          <button class="vx-action agendar" onclick="vxOpenAgendarForOs('${val(o.id)}')">📅 Agendar</button>
+          <button class="vx-action vx-os-agendar-btn" onclick="vxOpenAgendarForOs('${val(o.id)}')">📅 Agendar</button>
           <button class="vx-action attention" onclick="vxOpenCasoAtencaoModal()">+ Caso de atenção</button>
           <button class="vx-action parts" onclick="showVxOsSection('orcamento');setTimeout(()=>document.querySelector('#vxPartDescription')?.focus(),50)">SOLICITAR PEÇA</button>
           <button class="vx-action" onclick="showVxOsSection('orcamento')">GERAR PARECER ▼</button>
