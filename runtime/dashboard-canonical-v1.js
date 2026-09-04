@@ -885,6 +885,14 @@
     wireAgendaCard();
   };
 
+  // Achado do usuário em 2026-09-04: pra checar duplicidade e
+  // continuar um caso já existente direto do popup de criação
+  // (os-detail-v0812.js), o formulário de lá precisa chamar o mesmo
+  // caseDetailModal daqui -- exposto uma vez só, no mesmo espírito de
+  // window.vxOsStatusLabel/window.vxOpenAgendarForOs já usados nesta
+  // sessão pra reaproveitar função de um arquivo em outro sem duplicar.
+  window.vxOpenCaseDetail=caseDetailModal;
+
   window.VoxAssistRuntime=window.VoxAssistRuntime||{};
   window.VoxAssistRuntime.dashboard={name:'Dashboard Canônico V1',version:'2.0.0',owner:'runtime/dashboard-canonical-v1.js'};
 })();

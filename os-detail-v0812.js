@@ -63,6 +63,7 @@
               <button type="button" data-relate="client">Cliente</button>
             </div>
           </div>
+          <div class="vx-caso-dup-warn" id="vxCasoDupWarn" hidden></div>
           <div class="vx-field"><label>Descrição *</label><textarea id="vxCasoMessage" maxlength="300" rows="3" placeholder="Detalhe as informações importantes que todos devem saber sobre este atendimento."></textarea><small class="vx-caso-counter" id="vxCasoCounter">0/300</small></div>
           <div class="vx-field"><label>Prioridade</label>
             <div class="vx-caso-priority" id="vxCasoPriority">${CASO_PRIORITIES.map(([v,l,tone],i)=>`<button type="button" class="vx-caso-prio-${tone}${i===0?' active':''}" data-priority="${v}">${l}</button>`).join('')}</div>
@@ -128,12 +129,41 @@
       btn.classList.add('active');
       updatePreview();
     });
+    // Achado do usuário em 2026-09-04: caso é um registro isolado --
+    // nada impedia (nem avisava) abrir um caso repetido na mesma OS/
+    // cliente. Ao abrir o popup (e sempre que "Relacionado à" muda),
+    // checa se já existe algum caso pra esse mesmo alvo e mostra um
+    // aviso com atalho pra CONTINUAR o caso existente (abre o mesmo
+    // caseDetailModal do Dashboard, com o histórico completo -- inclui
+    // o botão "Reabrir" pra quando o destinatário encerrou sem
+    // resolver de verdade) em vez de criar um duplicado.
+    const dupWarnEl=bg.querySelector('#vxCasoDupWarn');
+    const CASE_STATUS_LABEL_LOCAL={NOVO:'Novo','EM ANDAMENTO':'Em andamento',RESOLVIDO:'Resolvido',CANCELADO:'Cancelado'};
+    async function checkDuplicates(){
+      dupWarnEl.hidden=true;dupWarnEl.innerHTML='';
+      const filter=relateTo==='client'?(o.client_id?`client_id=eq.${o.client_id}`:null):`service_order_id=eq.${o.id}`;
+      if(!filter)return;
+      const existing=await api(`dashboard_cases?${filter}&select=*&order=created_at.desc&limit=5`).catch(()=>[]);
+      if(!existing.length)return;
+      dupWarnEl.hidden=false;
+      dupWarnEl.innerHTML=`<div class="vx-caso-dup-title">⚠ ${existing.length===1?'Já existe 1 caso':`Já existem ${existing.length} casos`} ${relateTo==='client'?'deste cliente':'nesta OS'}:</div>`+
+        existing.slice(0,3).map(c=>`<div class="vx-caso-dup-row"><span class="vx-caso-dup-row-title">${val(c.title)}</span><span class="vx-caso-dup-row-status">${val(CASE_STATUS_LABEL_LOCAL[String(c.status||'').toUpperCase()]||c.status)}</span><button type="button" class="vx-caso-dup-continue" data-continue="${val(c.id)}">Continuar este caso →</button></div>`).join('')+
+        (existing.length>3?`<div class="vx-caso-dup-more">e mais ${existing.length-3}…</div>`:'');
+      dupWarnEl.querySelectorAll('[data-continue]').forEach(b=>b.onclick=()=>{
+        const c=existing.find(x=>String(x.id)===b.dataset.continue);
+        if(!c)return;
+        close();
+        window.vxOpenCaseDetail?.(c,new Map([[o.id,o]]));
+      });
+    }
     bg.querySelectorAll('#vxCasoRelate [data-relate]').forEach(btn=>btn.onclick=()=>{
       relateTo=btn.dataset.relate;
       bg.querySelectorAll('#vxCasoRelate [data-relate]').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
       updatePreview();
+      checkDuplicates();
     });
+    checkDuplicates();
     const recipientsSummary=bg.querySelector('#vxCasoRecipientsSummary');
     bg.querySelectorAll('#vxCasoRecipients input[type="checkbox"]').forEach(chk=>chk.onchange=()=>{
       const n=bg.querySelectorAll('#vxCasoRecipients input:checked').length;

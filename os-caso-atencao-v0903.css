@@ -11,6 +11,19 @@
 .vx-caso-close:hover{color:#0f172a}
 .vx-caso-body{display:grid;grid-template-columns:1.15fr 1fr;gap:20px;padding:18px 20px;max-height:70vh;overflow:auto}
 @media(max-width:760px){.vx-caso-body{grid-template-columns:1fr}}
+/* Achado do usuário em 2026-09-04: caso é um registro isolado, sem
+   nenhuma checagem de duplicidade -- aviso ao abrir o popup quando já
+   existe caso pra mesma OS/cliente, com atalho pra continuar o
+   existente em vez de criar outro igual. */
+.vx-caso-dup-warn{background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:9px 11px;margin-bottom:13px}
+.vx-caso-dup-title{font-size:12px;font-weight:700;color:#9a3412;margin-bottom:6px}
+.vx-caso-dup-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-top:1px solid #fed7aa}
+.vx-caso-dup-row:first-of-type{border-top:0}
+.vx-caso-dup-row-title{flex:1;min-width:0;font-size:12px;color:#7c2d12;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vx-caso-dup-row-status{font-size:10px;font-weight:700;color:#9a3412;background:#fed7aa;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.vx-caso-dup-continue{border:0;background:none;color:#c2410c;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;padding:2px 0}
+.vx-caso-dup-continue:hover{text-decoration:underline}
+.vx-caso-dup-more{font-size:11px;color:#9a3412;margin-top:4px}
 .vx-caso-form .vx-field{margin-bottom:13px}
 .vx-caso-form label{font-size:12px;font-weight:700;color:#334155;display:block;margin-bottom:4px}
 .vx-caso-form input,.vx-caso-form select,.vx-caso-form textarea{width:100%;border:1px solid #d7dee6;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box}
