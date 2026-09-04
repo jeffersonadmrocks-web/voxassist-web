@@ -40,9 +40,16 @@
    localizam em tempo de execução (.vx-os-head-left,
    .vx-os-head-actions, .vx-os-number, .vx-status-btn, #vxStatusArea)
    continuam com o mesmo nome. */
-.vx-os-head{min-height:auto;background:linear-gradient(135deg,#1c4a73,#2c6291);border:0;border-radius:var(--os-radius);padding:16px 22px;margin-bottom:0;box-shadow:0 3px 10px rgba(20,55,90,.14);display:flex;flex-direction:column;gap:14px}
-.vx-os-head-top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
-.vx-os-head-left{display:flex;align-items:center;gap:10px}
+/* Achado do usuário em 2026-09-04 (5ª rodada -- ainda concentrado no
+   meio, laterais vazias mesmo depois do space-between): trocado de
+   flexbox pra CSS GRID nas duas faixas -- grid não depende da largura
+   "natural" do conteúdo pra decidir onde sobra espaço, as colunas são
+   explícitas (1fr pro bloco esquerdo/os 4 campos, auto pro que tem
+   largura própria) e SEMPRE ocupam a largura inteira do cabeçalho,
+   ponta a ponta, sem ambiguidade. */
+.vx-os-head{min-height:auto;background:linear-gradient(135deg,#1c4a73,#2c6291);border:0;border-radius:var(--os-radius);padding:16px 22px;margin-bottom:0;box-shadow:0 3px 10px rgba(20,55,90,.14);display:flex;flex-direction:column;gap:14px;width:100%;box-sizing:border-box}
+.vx-os-head-top{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;width:100%}
+.vx-os-head-left{display:flex;align-items:center;gap:10px;min-width:0}
 .vx-os-head-icon{font-size:17px;opacity:.85;flex:none}
 .vx-os-id{display:flex;flex-direction:column;gap:2px;line-height:1}
 .vx-os-id small{font-size:9px;color:#bcd7ef;font-weight:700;letter-spacing:.08em}
@@ -87,16 +94,17 @@
 .vx-os-actions-item-ic{font-size:13px;flex:none;opacity:.85}
 
 /* ---------- Faixa Abertura/Atendente/Técnico/Loja (+ Voltar à direita) ---------- */
-/* Achado do usuário em 2026-09-03 (5ª rodada): laterais do cabeçalho
-   ficavam vazias -- os 4 blocos de info se amontoavam à esquerda,
-   sobrando um vão grande antes do Voltar. space-between distribui os
-   5 itens (4 blocos + Voltar) por toda a largura da faixa. */
-.vx-os-head-info{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:rgba(255,255,255,.06);border-radius:var(--os-radius-sm);padding:12px 20px}
+/* Achado do usuário em 2026-09-04 (5ª rodada): flexbox+space-between
+   ainda deixava os 4 blocos amontoados à esquerda em telas largas --
+   grid com 4 colunas EXPLÍCITAS de 1fr cada (+ auto pro Voltar) força
+   os blocos a se espalharem por igual pela largura inteira, sem
+   depender de quanto espaço "sobra". */
+.vx-os-head-info{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;align-items:center;gap:18px;width:100%;background:rgba(255,255,255,.06);border-radius:var(--os-radius-sm);padding:12px 20px;box-sizing:border-box}
 .vx-os-head-info>div{display:flex;align-items:center;gap:9px;min-width:0}
 .vx-os-head-info-ic{flex:none;opacity:.9}
 .vx-os-head-info small{display:block;font-size:9.5px;color:#bcd7ef;font-weight:700;letter-spacing:.04em}
 .vx-os-head-info b{display:block;font-size:12.5px;color:#fff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media(max-width:900px){.vx-os-head-info{gap:14px}.vx-back{width:100%;margin-left:0;order:99}}
+@media(max-width:900px){.vx-os-head-top{grid-template-columns:1fr}.vx-os-head-info{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.vx-back{grid-column:1/-1;width:100%;margin-left:0}}
 
 /* ---------- Guias da O.S. ---------- */
 .vx-os-tabs{height:auto;display:flex;align-items:center;gap:4px;margin:0;padding:6px;background:var(--os-surface);border:1px solid var(--os-line);border-radius:999px;overflow-x:auto;box-shadow:0 1px 3px rgba(15,42,68,.05)}
