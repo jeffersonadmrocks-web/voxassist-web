@@ -35,6 +35,11 @@
   function readPerms(root){const o={};root.querySelectorAll('[data-perm]').forEach(x=>o[x.dataset.perm]=!!x.checked);return o}
 
   async function storesForCompany(){const cid=companyId();if(!cid)return[];return await api(`stores?company_id=eq.${cid}&select=id,name,code,active&order=name`).catch(()=>[])}
+  // Achado do usuário em 2026-09-04: "GRUPOS DE ATENDIMENTO" no
+  // cadastro do técnico -- mesmo padrão de checkbox-list de
+  // LOJAS LIBERADAS logo acima, só que escopado a role==='TECNICO'
+  // (grupo só faz sentido pra quem executa o atendimento).
+  async function groupsForCompany(){const cid=companyId();if(!cid)return[];return await api(`service_groups?company_id=eq.${cid}&active=eq.true&select=id,name&order=name`).catch(()=>[])}
   async function usersForCompany(){const cid=companyId();if(!cid)return[];return await api('rpc/admin_company_users',{method:'POST',body:JSON.stringify({p_company_id:cid})}).catch(e=>{console.error(e);return[]})}
 
   async function refreshUsers(){
@@ -46,31 +51,41 @@
     const title=card.querySelector('.vx-admin-title h3');if(title)title.textContent='USUÁRIOS DA EMPRESA SELECIONADA';
     const count=card.querySelector('.vx-admin-title span');if(count)count.textContent=String(users.length);
     const table=card.querySelector('table');if(!table)return;
-    table.innerHTML=`<thead><tr><th>USUÁRIO</th><th>E-MAIL</th><th>PERFIL</th><th>TIPO DE ACESSO</th><th>LOJAS LIBERADAS</th><th>SITUAÇÃO</th><th>AÇÕES</th></tr></thead><tbody>${users.length?users.map(u=>`<tr><td><b>${E(u.full_name)}</b></td><td>${E(u.email||'—')}</td><td>${E(u.role||'—')}</td><td>${E(u.access_type||'PERSONALIZADO')}</td><td>${E((u.store_names||[]).join(', ')||'—')}</td><td>${u.active?'<span class="vx-ok">ATIVO</span>':'<span class="vx-off">INATIVO</span>'}</td><td><button type="button" class="vx-user-manage-btn" data-user="${E(u.user_id)}">ALTERAR</button></td></tr>`).join(''):'<tr><td colspan="7">Nenhum usuário vinculado a esta empresa.</td></tr>'}</tbody>`;
+    table.innerHTML=`<thead><tr><th>USUÁRIO</th><th>E-MAIL</th><th>PERFIL</th><th>TIPO DE ACESSO</th><th>LOJAS LIBERADAS</th><th>GRUPOS</th><th>SITUAÇÃO</th><th>AÇÕES</th></tr></thead><tbody>${users.length?users.map(u=>`<tr><td><b>${E(u.full_name)}</b></td><td>${E(u.email||'—')}</td><td>${E(u.role||'—')}</td><td>${E(u.access_type||'PERSONALIZADO')}</td><td>${E((u.store_names||[]).join(', ')||'—')}</td><td>${E((u.service_group_names||[]).join(', ')||'—')}</td><td>${u.active?'<span class="vx-ok">ATIVO</span>':'<span class="vx-off">INATIVO</span>'}</td><td><button type="button" class="vx-user-manage-btn" data-user="${E(u.user_id)}">ALTERAR</button></td></tr>`).join(''):'<tr><td colspan="8">Nenhum usuário vinculado a esta empresa.</td></tr>'}</tbody>`;
     table.querySelectorAll('[data-user]').forEach(b=>b.onclick=()=>openUser(b.dataset.user,users));
   }
 
   async function openUser(id,cache){
     const u=cache.find(x=>String(x.user_id)===String(id));if(!u)return;
-    const stores=await storesForCompany();const current=new Set((u.store_ids||[]).map(String));
+    const [stores,groups]=await Promise.all([storesForCompany(),groupsForCompany()]);
+    const current=new Set((u.store_ids||[]).map(String));
+    const currentGroups=new Set((u.service_group_ids||[]).map(String));
     const m=modal('Alterar usuário',`<form id="vxUserManageForm" class="vx-admin-form">
       <label>NOME COMPLETO *</label><input name="name" value="${E(u.full_name)}" required>
       <label>E-MAIL</label><input value="${E(u.email||'')}" disabled>
       <div class="vx-form-2"><div><label>PERFIL FUNCIONAL *</label><select name="role">${roles.map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select></div><div><label>TIPO DE ACESSO *</label><select name="access">${types.map(t=>`<option ${t===u.access_type?'selected':''}>${t}</option>`).join('')}</select></div></div>
       <label class="vx-toggle"><input type="checkbox" name="active" ${u.active?'checked':''}> USUÁRIO ATIVO</label>
       <label>LOJAS LIBERADAS *</label><div class="vx-store-checks">${stores.map(s=>`<label><input type="checkbox" data-store value="${E(s.id)}" ${current.has(String(s.id))?'checked':''}> <b>${E(s.code||s.name)}</b><span>${E(s.name)}</span></label>`).join('')}</div>
+      <div id="vxUserGroupsBlock" style="display:${u.role==='TECNICO'?'':'none'}"><label>GRUPOS DE ATENDIMENTO</label><div class="vx-store-checks">${groups.length?groups.map(g=>`<label><input type="checkbox" data-group value="${E(g.id)}" ${currentGroups.has(String(g.id))?'checked':''}> <b>${E(g.name)}</b></label>`).join(''):'<span class="vx-sg-empty">Nenhum grupo cadastrado -- crie em "Grupos de Atendimento" nesta mesma tela.</span>'}</div></div>
       <div class="vx-access-head"><div><b>CONTEÚDOS DE ACESSO</b><small>O tipo de acesso aplica um padrão; você pode personalizar abaixo.</small></div><button type="button" class="secondary" id="vxApplyPreset">APLICAR PADRÃO</button></div>
       ${permissionsHtml(u.permissions||{})}
       <div class="vx-admin-form-actions"><button type="button" class="danger" id="vxDeleteUser">EXCLUIR USUÁRIO</button><span class="grow"></span><button type="button" class="secondary" data-cancel>CANCELAR</button><button class="primary">SALVAR ALTERAÇÕES</button></div>
     </form>`);
     const f=m.querySelector('#vxUserManageForm');m.querySelector('[data-cancel]').onclick=()=>m.remove();
+    f.role.addEventListener('change',()=>{const gb=f.querySelector('#vxUserGroupsBlock');if(gb)gb.style.display=f.role.value==='TECNICO'?'':'none';});
     m.querySelector('#vxApplyPreset').onclick=()=>setPerms(f,f.access.value);
     m.querySelector('#vxDeleteUser').onclick=async()=>{
       if(!confirm('Excluir este usuário do uso do VoxAssist? O histórico será preservado e o acesso será inativado.'))return;
       try{await api('rpc/admin_soft_delete_user',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:companyId()})});m.remove();toast('Usuário inativado/excluído do acesso. O histórico foi preservado.');await refreshUsers()}catch(e){toast('Falha ao excluir usuário: '+e.message,'err')}
     };
-    f.onsubmit=async e=>{e.preventDefault();const ss=[...f.querySelectorAll('[data-store]:checked')].map(x=>x.value);if(!ss.length)return toast('Selecione ao menos uma loja para o usuário.','err');const btn=e.submitter;btn.disabled=true;try{
-      await api('rpc/admin_update_user_access',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:companyId(),p_full_name:f.name.value,p_role:f.role.value,p_active:f.active.checked,p_store_ids:ss,p_access_type:f.access.value,p_permissions:readPerms(f)})});
+    f.onsubmit=async e=>{e.preventDefault();const ss=[...f.querySelectorAll('[data-store]:checked')].map(x=>x.value);if(!ss.length)return toast('Selecione ao menos uma loja para o usuário.','err');const btn=e.submitter;btn.disabled=true;
+      // Achado do usuário em 2026-09-04: só manda grupo quando o papel
+      // é TECNICO (bloco visível) -- p_service_group_ids=null significa
+      // "não mexer", evita apagar vínculo de grupo por engano se o
+      // gestor só estava trocando outra coisa num usuário não-técnico.
+      const groupIds=f.role.value==='TECNICO'?[...f.querySelectorAll('[data-group]:checked')].map(x=>x.value):null;
+      try{
+      await api('rpc/admin_update_user_access',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:companyId(),p_full_name:f.name.value,p_role:f.role.value,p_active:f.active.checked,p_store_ids:ss,p_access_type:f.access.value,p_permissions:readPerms(f),p_service_group_ids:groupIds})});
       m.remove();toast('Usuário e permissões atualizados.');await refreshUsers();
     }catch(err){toast('Falha ao atualizar usuário: '+err.message,'err');btn.disabled=false;}};
   }
