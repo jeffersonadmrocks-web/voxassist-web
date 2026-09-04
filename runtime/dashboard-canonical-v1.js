@@ -935,7 +935,7 @@
 
       <div class="vx-c-grid-2">
         <section class="vx-c-feed-card"><div class="vx-c-title"><h3>◉ Feed em Tempo Real</h3><a href="#" id="vxFeedAll">Ver tudo</a></div>
-          ${feed.length?feed.map(h=>`<div class="vx-c-feed-row"><span class="vx-c-feed-dot"></span><div><b>${new Date(h.changed_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</b><span>${E(feedText(h))}</span></div></div>`).join(''):'<p class="vx-c-empty">Nenhuma movimentação recente.</p>'}
+          <div class="vx-c-feed-scroll">${feed.length?feed.map(h=>`<div class="vx-c-feed-row"><span class="vx-c-feed-dot"></span><div><b>${new Date(h.changed_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</b><span>${E(feedText(h))}</span></div></div>`).join(''):'<p class="vx-c-empty">Nenhuma movimentação recente.</p>'}</div>
         </section>
         <section class="vx-c-prod-table-card"><div class="vx-c-title"><h3>★ Produtividade</h3></div>
           <p class="vx-c-prod-total">Total recebido nas OS: <b>${M(totalRecebidoOS)}</b></p>

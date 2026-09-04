@@ -149,6 +149,11 @@ button.vx-c-icon-row:disabled{cursor:default;opacity:1}
 .vx-c-icon-row b{font-weight:800;color:var(--vx-navy)}
 
 /* ---------- Feed + Produtividade ---------- */
+/* Achado do usuário em 2026-09-04: mesmo já limitado a 8 itens
+   (feed.slice(0,8) no JS), a lista inteira ainda esticava a altura do
+   card e mudava o layout do Dash -- mostra só ~4 por vez, com rolagem
+   própria pro resto, igual ao "Meus Casos Enviados" (vx-c-mycases-scroll). */
+.vx-c-feed-scroll{max-height:170px;overflow-y:auto;padding-right:2px}
 .vx-c-feed-row{display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--vx-border);font-size:11px}
 .vx-c-feed-row:first-of-type{border-top:0}
 .vx-c-feed-dot{width:6px;height:6px;border-radius:50%;background:var(--vx-info);margin-top:5px;flex:none}
