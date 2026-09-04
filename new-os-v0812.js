@@ -71,6 +71,7 @@
             ${f('Nº DE SÉRIE','<input id="serial">')}${f('ESTADO DO APARELHO','<select id="condition"><option></option><option>NOVO</option><option>USADO</option><option>ARRANHADO</option><option>AVARIADO</option></select>')}
             ${f('ACESSÓRIOS','<input id="accessories" placeholder="SEM ACESSÓRIOS">')}${f('TIPO DE ATENDIMENTO','<select id="serviceType"><option>INTERNO</option><option>EXTERNO</option></select>')}
             ${f('LOCAL DO PRODUTO','<select id="productLocation"><option>LABORATÓRIO</option><option>CONSUMIDOR</option></select>')}${f('LOJA *','<select id="storeSelect"><option value="">CARREGANDO…</option></select>')}
+            ${f('GRUPO DE ATENDIMENTO','<select id="serviceGroupSelect"><option value="">SEM GRUPO</option></select>','wide')}
             ${f('DEFEITO RELATADO *','<textarea id="reported" required></textarea>','wide')}
           </div>
           <input id="notes" type="hidden" value=""><button type="button" class="vx-newos-f11" id="newNotesBtn">F11 – OBSERVAÇÕES INTERNAS</button>
@@ -91,11 +92,22 @@
     // pré-marcada na loja do próprio perfil quando ele tiver uma só.
     (async()=>{
       const cid=state.profile?.active_company_id;
-      const stores=cid?await api(`stores?company_id=eq.${cid}&active=eq.true&select=id,name&order=name`).catch(()=>[]):[];
-      const sel=document.querySelector('#storeSelect');if(!sel)return;
-      sel.innerHTML=stores.length?`<option value="">SELECIONE…</option>${stores.map(s=>`<option value="${V(s.id)}">${V(s.name)}</option>`).join('')}`:'<option value="">Nenhuma loja cadastrada</option>';
-      if(state.profile?.store_id&&stores.some(s=>String(s.id)===String(state.profile.store_id)))sel.value=state.profile.store_id;
-      else if(stores.length===1)sel.value=stores[0].id;
+      const [stores,groups]=await Promise.all([
+        cid?api(`stores?company_id=eq.${cid}&active=eq.true&select=id,name&order=name`).catch(()=>[]):[],
+        cid?api(`service_groups?company_id=eq.${cid}&active=eq.true&select=id,name&order=name`).catch(()=>[]):[],
+      ]);
+      const sel=document.querySelector('#storeSelect');
+      if(sel){
+        sel.innerHTML=stores.length?`<option value="">SELECIONE…</option>${stores.map(s=>`<option value="${V(s.id)}">${V(s.name)}</option>`).join('')}`:'<option value="">Nenhuma loja cadastrada</option>';
+        if(state.profile?.store_id&&stores.some(s=>String(s.id)===String(state.profile.store_id)))sel.value=state.profile.store_id;
+        else if(stores.length===1)sel.value=stores[0].id;
+      }
+      // Achado do usuário em 2026-09-04: "Grupo de Atendimento" (área de
+      // responsabilidade que o gestor cadastra em Configurações) --
+      // diferente de "GRUPO DO PRODUTO" acima (esse é só sugestão
+      // automática por tipo de aparelho). Escolha manual, opcional.
+      const gsel=document.querySelector('#serviceGroupSelect');
+      if(gsel)gsel.innerHTML=`<option value="">SEM GRUPO</option>${groups.map(g=>`<option value="${V(g.id)}">${V(g.name)}</option>`).join('')}`;
     })();
     const modal=document.querySelector('#newNotesModal'),noteText=document.querySelector('#newNotesText'),noteHidden=document.querySelector('#notes');document.querySelector('#newNotesBtn').onclick=()=>{noteText.value=noteHidden.value||'';modal.classList.remove('hidden');noteText.focus()};document.querySelector('#newNotesCancel').onclick=()=>modal.classList.add('hidden');document.querySelector('#newNotesSave').onclick=()=>{noteHidden.value=U(noteText.value);modal.classList.add('hidden');toast('Observação interna preparada para salvar com a OS.')};
     document.querySelector('#saveAdvance').onclick=e=>saveNewUnified(e,true);
@@ -106,8 +118,9 @@
     try{
       const client=await ensureClient(),product=U($('#productType').value),reported=U($('#reported').value);if(!product||!reported)throw new Error('Informe TIPO DE PRODUTO e DEFEITO RELATADO.');
       const storeId=$('#storeSelect')?.value||null;if(!storeId)throw new Error('Selecione a LOJA desta OS.');
+      const serviceGroupId=$('#serviceGroupSelect')?.value||null;
       const eq=await api('equipments',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({current_client_id:client,product_type:product,brand:U($('#brand').value),model:U($('#model').value),serial_number:U($('#serial').value),accessories:U($('#accessories').value||'SEM ACESSÓRIOS')})});if(!eq?.[0]?.id)throw new Error('Não foi possível criar o equipamento.');
-      const os=await api('service_orders',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({os_number:genOsNumber(),client_id:client,equipment_id:eq[0].id,service_type:$('#serviceType').value,product_location:$('#productLocation').value,device_condition:U($('#condition').value),reported_defect:reported,internal_notes:U($('#notes').value),status:'AGUARDANDO ANALISE',opened_at:new Date().toISOString(),created_by:state.session.user.id,attendant_id:state.session.user.id,store_id:storeId})});if(!os?.[0]?.id)throw new Error('Não foi possível criar a ordem de serviço.');
+      const os=await api('service_orders',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({os_number:genOsNumber(),client_id:client,equipment_id:eq[0].id,service_type:$('#serviceType').value,product_location:$('#productLocation').value,device_condition:U($('#condition').value),reported_defect:reported,internal_notes:U($('#notes').value),status:'AGUARDANDO ANALISE',opened_at:new Date().toISOString(),created_by:state.session.user.id,attendant_id:state.session.user.id,store_id:storeId,service_group_id:serviceGroupId})});if(!os?.[0]?.id)throw new Error('Não foi possível criar a ordem de serviço.');
       await api('os_status_history',{method:'POST',body:JSON.stringify({service_order_id:os[0].id,new_status:'AGUARDANDO ANALISE',change_type:'AUTOMATICO',changed_by:state.session.user.id})});toast('OS salva com sucesso.');await loadCore();render(advance?`os:${os[0].id}`:'os');
     }catch(err){toast('Falha ao salvar OS: '+err.message,'err');btns.forEach(b=>b.disabled=false)}
   }
