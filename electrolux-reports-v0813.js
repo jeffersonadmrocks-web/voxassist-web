@@ -433,7 +433,20 @@
   // 'closed' fica de fora de propósito -- não usa elx.orders (fonte é
   // Supabase, não o poll da Electrolux), então um tick do poll não pode
   // arrancar o usuário da tela de Encerradas de volta pro Início.
-  function rerender(){if(elx.screen==='board')renderDynamic();else if(elx.screen!=='closed')renderHome();}
+  // Achado do usuário em 2026-09-04: mesma causa raiz já corrigida uma
+  // vez pro NPS (ver comentário de vxElxStopPoll abaixo) -- o poll de
+  // 15s chamava renderHome() por baixo do usuário e reconstruía a
+  // barra de busca inteira do zero, apagando o resultado (e o campo
+  // digitado) mesmo sem o usuário clicar em nada. Agora renderHome()
+  // é pulado enquanto a busca está em uso (campo com foco ou resultado
+  // aberto na tela) -- só atualiza métricas/lista quando o usuário sai
+  // da busca.
+  function searchInUse(){
+    const input=document.getElementById('vxElxHomeSearch');
+    const box=document.getElementById('vxElxHomeSearchResults');
+    return !!(input&&document.activeElement===input)||!!(box&&!box.hidden);
+  }
+  function rerender(){if(elx.screen==='board')renderDynamic();else if(elx.screen!=='closed'&&!searchInUse())renderHome();}
 
   async function refresh(){
     elx.loading=elx.orders.length===0;rerender();
