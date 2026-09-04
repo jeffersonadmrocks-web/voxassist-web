@@ -380,6 +380,32 @@
       source('Permissão agenda.view_all',`user_permissions?user_id=eq.${me()}&permission_key=eq.agenda.view_all&allowed=eq.true&select=id&limit=1`,[]),
     ]);
     const by=Object.fromEntries(results.map(r=>[r.label,r]));
+    // Achado do usuário em 2026-09-04: Gestão Visual (e todo overdue*/
+    // prazosCriticos que usa age()) contava OS com mais de 10 dias
+    // aberta como "0 a 7 dias" -- a age() genérica (linha ~42) usa
+    // updated_at||opened_at, e updated_at muda a QUALQUER edição da OS
+    // (telefone do cliente, observação, peça...), não só quando o
+    // status avança. Uma OS parada em AGUARDANDO ANÁLISE há 10 dias
+    // mas editada hoje por outro motivo "resetava" a idade pra 0.
+    // Redefine age() aqui (sombreia a de fora só dentro de discovery(),
+    // onde toda leitura de age() já opera sobre listas filtradas por
+    // status -- overdueAnalysis/overdueApproval/overdueRepair/
+    // readyOverdue*/ageBuckets/prazosCriticos) usando a data real da
+    // ÚLTIMA transição pra ESTE status em os_status_history (fonte já
+    // buscada como "Histórico de status"); sem transição registrada
+    // pra esse status (ex.: AGUARDANDO ANÁLISE é o status inicial, sem
+    // linha de histórico própria), cai pra opened_at -- nunca
+    // updated_at, que é exatamente o campo que causava o bug.
+    const statusEnteredAtMap=new Map();
+    safe(by['Histórico de status'].data).forEach(h=>{
+      const key=`${h.service_order_id}|${norm(h.new_status)}`;
+      const prev=statusEnteredAtMap.get(key);
+      if(!prev||new Date(h.changed_at)>new Date(prev))statusEnteredAtMap.set(key,h.changed_at);
+    });
+    const age=o=>{
+      const enteredAt=statusEnteredAtMap.get(`${o.id}|${norm(o.status)}`)||o.opened_at||o.updated_at||Date.now();
+      return Math.max(0,Math.floor((Date.now()-new Date(enteredAt).getTime())/86400000));
+    };
     // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
     // os indicadores gerais (linha de KPIs do topo) são da EMPRESA
     // SELECIONADA inteira pra qualquer perfil -- RLS já garante o
