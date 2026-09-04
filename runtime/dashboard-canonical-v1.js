@@ -219,13 +219,63 @@
   // 2026-09-01: "Pedidos de Peças" não tinha como ver quais pedidos
   // reais estavam por trás de cada número -- mesmo problema do
   // Gestão Visual, mesma correção: linhas reais, não só a contagem).
+  // Achado do usuário em 2026-09-04: o card "Pedidos de Peças" e este
+  // drill-down eram só leitura -- não tinha como registrar a previsão
+  // de chegada, ver quais estavam atrasados linha a linha, nem marcar
+  // um pedido como recebido. Sem isso, os pedidos criados em
+  // vxOpenSolicitarPecaModal (os-detail-v0812.js) nunca saíam de
+  // "Solicitado" e os contadores Em compra/Aguardando entrega/
+  // Atrasados/Recebidos hoje do card nunca mudavam. Vocabulário de
+  // status alinhado 1:1 com os filtros já existentes (partsCompra
+  // procura "COMPRA" no texto, partsEntrega procura "ENTREGA",
+  // partsRecebidasHoje procura "RECEBID") -- optamos por estes 4
+  // valores canônicos, sem CHECK constraint no schema pra permitir.
+  const PARTS_STATUS_OPTIONS=['SOLICITADO','EM COMPRA','AGUARDANDO ENTREGA','RECEBIDO'];
+  const partsIsLate=p=>!!p.expected_date&&new Date(p.expected_date)<new Date(new Date().toDateString())&&!norm(p.status).includes('RECEBID');
   function partsModal(title,rows){
     document.querySelector('#vxCanonicalModal')?.remove();
     const bg=document.createElement('div');bg.id='vxCanonicalModal';bg.className='vx-c-modal-bg';
-    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Peça</th><th>Código</th><th>Qtd</th><th>Fornecedor</th><th>Situação</th><th>Previsão</th></tr></thead><tbody>${rows.map(p=>`<tr><td><b>${E(p.description||'—')}</b></td><td>${E(p.code||'—')}</td><td>${E(p.quantity||1)}</td><td>${E(p.supplier||'—')}</td><td>${E(norm(p.status)||'—')}</td><td>${p.expected_date?new Date(p.expected_date).toLocaleDateString('pt-BR'):'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
+    function statusOptions(p){
+      const cur=norm(p.status);
+      const opts=PARTS_STATUS_OPTIONS.includes(cur)?PARTS_STATUS_OPTIONS:[...PARTS_STATUS_OPTIONS,cur||'SOLICITADO'];
+      return opts.map(s=>`<option value="${E(s)}"${cur===s?' selected':''}>${E(s.charAt(0)+s.slice(1).toLowerCase())}</option>`).join('');
+    }
+    function row(p){
+      return `<tr data-row="${E(p.id)}"><td><b>${E(p.description||'—')}</b></td><td>${E(p.code||'—')}</td><td>${E(p.quantity||1)}</td><td>${E(p.supplier||'—')}</td>`
+        +`<td><select class="vx-c-parts-status" data-id="${E(p.id)}">${statusOptions(p)}</select></td>`
+        +`<td><input type="date" class="vx-c-parts-date" data-id="${E(p.id)}" value="${p.expected_date?String(p.expected_date).slice(0,10):''}"></td>`
+        +`<td class="vx-c-parts-late-cell">${partsIsLate(p)?'<span class="vx-c-parts-late-badge">⚠ Atrasado</span>':''}</td></tr>`;
+    }
+    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Peça</th><th>Código</th><th>Qtd</th><th>Fornecedor</th><th>Situação</th><th>Previsão</th><th>Atraso</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
     document.body.appendChild(bg);
     bg.querySelector('[data-close]').onclick=()=>bg.remove();
     bg.onclick=e=>{if(e.target===bg)bg.remove();};
+    function refreshLate(tr,p){
+      const cell=tr.querySelector('.vx-c-parts-late-cell');
+      if(cell)cell.innerHTML=partsIsLate(p)?'<span class="vx-c-parts-late-badge">⚠ Atrasado</span>':'';
+    }
+    bg.querySelectorAll('.vx-c-parts-status').forEach(sel=>sel.onchange=async()=>{
+      const id=sel.dataset.id,p=rows.find(r=>String(r.id)===String(id));if(!p)return;
+      const tr=sel.closest('tr');sel.disabled=true;
+      try{
+        await api(`parts_requests?id=eq.${id}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({status:sel.value,updated_at:new Date().toISOString()})});
+        p.status=sel.value;p.updated_at=new Date().toISOString();
+        refreshLate(tr,p);
+        toast?.('Situação do pedido atualizada.');
+      }catch(err){toast?.('Não foi possível atualizar a situação: '+err.message,'err');}
+      sel.disabled=false;
+    });
+    bg.querySelectorAll('.vx-c-parts-date').forEach(inp=>inp.onchange=async()=>{
+      const id=inp.dataset.id,p=rows.find(r=>String(r.id)===String(id));if(!p)return;
+      const tr=inp.closest('tr');inp.disabled=true;
+      try{
+        await api(`parts_requests?id=eq.${id}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({expected_date:inp.value||null})});
+        p.expected_date=inp.value||null;
+        refreshLate(tr,p);
+        toast?.('Previsão de chegada atualizada.');
+      }catch(err){toast?.('Não foi possível atualizar a previsão: '+err.message,'err');}
+      inp.disabled=false;
+    });
   }
 
   // Modal pra ver o histórico completo do Feed (achado do usuário em
