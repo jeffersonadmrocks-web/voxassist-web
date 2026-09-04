@@ -11,11 +11,28 @@
    igual ao heartbeat de presença. */
 (function(){
   const POLL_MS=20000;
-  let watermark=new Date().toISOString(); // nunca alerta sobre histórico antigo
+  const WATERMARK_KEY='vxAlertWatermark_';
+  // Achado do usuário em 2026-09-04 (2ª rodada de teste, ainda sem
+  // aparecer): o watermark em memória reiniciava pra "agora" TODA VEZ
+  // que a página recarregava -- então recarregar a tela da atendente
+  // pra conferir um alerta já perdia justamente a mudança que se
+  // queria ver. Agora persiste por usuário (localStorage, o navegador/
+  // aparelho de quem loga) -- ao voltar a abrir/recarregar, retoma de
+  // onde parou em vez de reiniciar em "agora". Só na PRIMEIRA vez que
+  // este arquivo roda pra um usuário (sem nada salvo ainda) é que cai
+  // em "agora" -- continua nunca inundando a tela com meses de
+  // histórico antigo de teste.
+  let watermark=null; // null = ainda não carregado (carrega no 1º poll, quando já se sabe o myId)
   let myGroupIds=null; // cache -- carregado uma vez, null=ainda não carregado
   let timer=null;
 
   function norm(v){return String(v||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replaceAll('_',' ').replace(/\s+/g,' ').trim();}
+  // 1ª vez pra este usuário (nada salvo ainda): parte de 3h atrás, não
+  // de "agora" -- cobre testes/eventos bem recentes sem arriscar
+  // inundar com histórico antigo de dias.
+  const FIRST_TIME_LOOKBACK_MS=3*60*60*1000;
+  function loadWatermark(myId){try{return localStorage.getItem(WATERMARK_KEY+myId)||new Date(Date.now()-FIRST_TIME_LOOKBACK_MS).toISOString();}catch(_e){return new Date(Date.now()-FIRST_TIME_LOOKBACK_MS).toISOString();}}
+  function saveWatermark(myId,ts){try{localStorage.setItem(WATERMARK_KEY+myId,ts);}catch(_e){}}
 
   async function myGroups(myId){
     if(myGroupIds)return myGroupIds;
@@ -85,9 +102,11 @@
       const myId=window.state?.session?.user?.id;
       const role=norm(window.state?.profile?.role);
       if(!myId||!role||typeof window.api!=='function')return;
+      if(watermark===null)watermark=loadWatermark(myId);
       const rows=await window.api(`os_status_history?changed_at=gt.${encodeURIComponent(watermark)}&select=*,service_orders(os_number,store_id,technician_id,service_group_id)&order=changed_at.asc&limit=50`).catch(()=>[]);
       if(!rows.length)return;
       watermark=rows[rows.length-1].changed_at;
+      saveWatermark(myId,watermark);
       for(const h of rows){
         const alert=await relevantAlert(h,{myId,role});
         if(alert)alertCard(alert.text,alert.osId);
