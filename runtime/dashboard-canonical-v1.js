@@ -89,11 +89,121 @@
   function casesModal(title,rows,ordersById=new Map()){
     document.querySelector('#vxCanonicalModal')?.remove();
     const bg=document.createElement('div');bg.id='vxCanonicalModal';bg.className='vx-c-modal-bg';
-    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Caso</th><th>O.S.</th><th>Prioridade</th><th>Situação</th><th>Aberto em</th></tr></thead><tbody>${rows.map(c=>{const linkedOs=c.service_order_id?ordersById.get(String(c.service_order_id)):null;return `<tr${linkedOs?` data-os="${E(linkedOs.id)}" class="vx-c-row-clickable"`:''}><td><b>${E(c.title)}</b>${c.message?`<br><small>${E(c.message)}</small>`:''}</td><td>${linkedOs?E(linkedOs.os_number||'—'):'—'}</td><td>${E(norm(c.priority)||'—')}</td><td>${E(norm(c.status)||'—')}</td><td>${new Date(c.created_at).toLocaleDateString('pt-BR')}</td></tr>`}).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
+    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Caso</th><th>O.S.</th><th>Prioridade</th><th>Situação</th><th>Aberto em</th></tr></thead><tbody>${rows.map(c=>{const linkedOs=c.service_order_id?ordersById.get(String(c.service_order_id)):null;return `<tr data-case="${E(c.id)}" class="vx-c-row-clickable"><td><b>${E(c.title)}</b>${c.message?`<br><small>${E(c.message)}</small>`:''}</td><td>${linkedOs?E(linkedOs.os_number||'—'):'—'}</td><td>${E(norm(c.priority)||'—')}</td><td>${E(norm(c.status)||'—')}</td><td>${new Date(c.created_at).toLocaleDateString('pt-BR')}</td></tr>`}).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
     document.body.appendChild(bg);
     bg.querySelector('[data-close]').onclick=()=>bg.remove();
     bg.onclick=e=>{if(e.target===bg)bg.remove();};
-    bg.querySelectorAll('[data-os]').forEach(tr=>tr.onclick=()=>{const id=tr.dataset.os;bg.remove();if(typeof window.render==='function')window.render('os:'+id);else if(typeof render==='function')render('os:'+id);});
+    bg.querySelectorAll('tr[data-case]').forEach(tr=>tr.onclick=()=>{const c=rows.find(x=>String(x.id)===tr.dataset.case);bg.remove();if(c)caseDetailModal(c,ordersById);});
+  }
+
+  // Achado do usuário em 2026-09-03: o modal de casos era só leitura --
+  // pediu pra dar pra ver mais dados, responder (comentar) e encaminhar
+  // (reatribuir) sem sair do popup. dashboard_case_comments é uma
+  // tabela nova (migration 20260903070000), append-only, mistura
+  // comentário de verdade (event_type='COMENTARIO') com eventos de
+  // sistema (REASSIGN/STATUS_CHANGE, com previous_data/new_data) num
+  // fio só. Esta função é IRMÃ de renderDashboard (mesmo escopo de
+  // módulo de casesModal) -- só usa parâmetros e o que já é global no
+  // arquivo (E/norm/role/me/api/toast/state), nunca uma variável local
+  // de renderDashboard (foi exatamente esse erro que quebrou o clique
+  // dos casos antes).
+  const CASE_TYPES={INFO:['🚩','Informação importante'],RECLAMACAO:['⚠','Reclamação do cliente'],ATRASO:['⏰','Atraso no atendimento'],CANCELAMENTO:['🔁','Risco de cancelamento'],FINANCEIRO:['💰','Pendência financeira'],OUTRO:['📌','Outro']};
+  const CASE_PRIORITY_LABEL={ALTA:'Alta',MEDIA:'Média',BAIXA:'Baixa',NORMAL:'Normal',URGENTE:'Urgente'};
+  const CASE_STATUS_LABEL={NOVO:'Novo',['EM ANDAMENTO']:'Em andamento',RESOLVIDO:'Resolvido',CANCELADO:'Cancelado'};
+  const CASE_NEXT_ACTIONS={NOVO:[['EM ANDAMENTO','▶ Marcar em andamento'],['CANCELADO','✕ Cancelar']],['EM ANDAMENTO']:[['RESOLVIDO','✓ Marcar resolvido'],['CANCELADO','✕ Cancelar']],RESOLVIDO:[['EM ANDAMENTO','↺ Reabrir']],CANCELADO:[['EM ANDAMENTO','↺ Reabrir']]};
+  let caseProfilesCache=null;
+  async function caseProfilesList(){
+    if(caseProfilesCache)return caseProfilesCache;
+    caseProfilesCache=await api('profiles?select=id,full_name&active=eq.true&order=full_name').catch(()=>[]);
+    return caseProfilesCache;
+  }
+  async function caseDetailModal(c,ordersById){
+    document.querySelector('#vxCaseDetailModal')?.remove();
+    const bg=document.createElement('div');bg.id='vxCaseDetailModal';bg.className='vx-c-modal-bg';
+    const linkedOs=c.service_order_id?ordersById.get(String(c.service_order_id)):null;
+    const typeInfo=CASE_TYPES[c.case_type]||null;
+    const statusLabel=CASE_STATUS_LABEL[norm(c.status)]||norm(c.status)||'—';
+    const priorityLabel=CASE_PRIORITY_LABEL[norm(c.priority)]||norm(c.priority)||'—';
+    const [comments,profiles,clientName]=await Promise.all([
+      api(`dashboard_case_comments?case_id=eq.${c.id}&select=*,profiles(full_name)&order=created_at.asc`).catch(()=>[]),
+      caseProfilesList(),
+      c.client_id&&!linkedOs?api(`clients?id=eq.${c.client_id}&select=name`).then(r=>r?.[0]?.name||null).catch(()=>null):Promise.resolve(null),
+    ]);
+    const linkLine=linkedOs?`<a href="#" data-open-os="${E(linkedOs.id)}">OS ${E(linkedOs.os_number)} →</a>`:(clientName?`<a href="#" data-open-client="${E(c.client_id)}">Cliente: ${E(clientName)} →</a>`:'—');
+    bg.innerHTML=`<div class="vx-c-modal vx-c-case-detail">
+      <div class="vx-c-modal-head">
+        <div><strong>${typeInfo?typeInfo[0]+' ':''}${E(c.title)}</strong><small>${typeInfo?E(typeInfo[1]):'Caso de atenção'}</small></div>
+        <button type="button" data-close>×</button>
+      </div>
+      <div class="vx-c-modal-body vx-c-case-detail-body">
+        <div class="vx-c-case-meta">
+          <span class="vx-c-case-pill priority-${E(norm(c.priority)).toLowerCase()}">${E(priorityLabel)} prioridade</span>
+          <span class="vx-c-case-pill status-${E(norm(c.status)).toLowerCase().replace(/\s+/g,'-')}">${E(statusLabel)}</span>
+          <span class="vx-c-case-meta-item">Aberto por ${E(profiles.find(p=>String(p.id)===String(c.created_by))?.full_name||'—')} em ${new Date(c.created_at).toLocaleString('pt-BR')}</span>
+          <span class="vx-c-case-meta-item">${linkLine}</span>
+        </div>
+        ${c.message?`<p class="vx-c-case-desc">${E(c.message)}</p>`:''}
+        <div class="vx-c-case-actions">
+          ${(CASE_NEXT_ACTIONS[norm(c.status)]||[]).map(([next,label])=>`<button type="button" class="vx-c-case-action-btn" data-status="${E(next)}">${label}</button>`).join('')}
+          <span class="vx-c-case-assign"><select id="vxCaseAssignSelect"><option value="">Atribuir a…</option>${profiles.map(p=>`<option value="${E(p.id)}" ${String(c.assigned_to)===String(p.id)?'selected':''}>${E(p.full_name)}</option>`).join('')}</select><button type="button" id="vxCaseAssignBtn">Encaminhar</button></span>
+        </div>
+        <div class="vx-c-case-thread" id="vxCaseThread">${comments.length?comments.map(caseThreadRow).join(''):'<div class="vx-c-case-thread-empty">Nenhum comentário ainda.</div>'}</div>
+        <div class="vx-c-case-reply"><textarea id="vxCaseReplyText" placeholder="Escrever uma resposta…" rows="2"></textarea><button type="button" id="vxCaseReplyBtn">Responder</button></div>
+      </div>
+    </div>`;
+    document.body.appendChild(bg);
+    const close=()=>bg.remove();
+    bg.querySelector('[data-close]').onclick=close;
+    bg.onclick=e=>{if(e.target===bg)close();};
+    bg.querySelector('[data-open-os]')?.addEventListener('click',e=>{e.preventDefault();close();(window.render||render)('os:'+linkedOs.id);});
+    bg.querySelector('[data-open-client]')?.addEventListener('click',e=>{e.preventDefault();close();(window.render||render)('cliente:'+c.client_id);});
+    async function logAndRefresh(eventType,previousData,newData){
+      await api('dashboard_case_comments',{method:'POST',body:JSON.stringify({case_id:c.id,company_id:c.company_id,event_type:eventType,previous_data:previousData,new_data:newData,created_by:me()})}).catch(()=>{});
+      close();
+      window.renderDashboard?.();
+    }
+    bg.querySelectorAll('[data-status]').forEach(btn=>btn.onclick=async()=>{
+      const next=btn.dataset.status;btn.disabled=true;
+      try{
+        await api(`dashboard_cases?id=eq.${c.id}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({status:next,updated_at:new Date().toISOString()})});
+        await logAndRefresh('STATUS_CHANGE',{status:c.status},{status:next});
+        toast?.('Situação do caso alterada para '+(CASE_STATUS_LABEL[next]||next)+'.');
+      }catch(err){toast?.('Não foi possível alterar a situação: '+err.message,'err');btn.disabled=false;}
+    });
+    bg.querySelector('#vxCaseAssignBtn').onclick=async()=>{
+      const sel=bg.querySelector('#vxCaseAssignSelect');const newId=sel.value;
+      if(!newId){toast?.('Selecione alguém pra encaminhar.','err');return;}
+      const btn=bg.querySelector('#vxCaseAssignBtn');btn.disabled=true;
+      try{
+        await api(`dashboard_cases?id=eq.${c.id}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({assigned_to:newId,updated_at:new Date().toISOString()})});
+        const newName=profiles.find(p=>String(p.id)===String(newId))?.full_name||'—';
+        await logAndRefresh('REASSIGN',{assigned_to:c.assigned_to||null},{assigned_to:newId,assigned_to_name:newName});
+        toast?.('Caso encaminhado para '+newName+'.');
+      }catch(err){toast?.('Não foi possível encaminhar o caso: '+err.message,'err');btn.disabled=false;}
+    };
+    bg.querySelector('#vxCaseReplyBtn').onclick=async()=>{
+      const ta=bg.querySelector('#vxCaseReplyText');const body=ta.value.trim();
+      if(!body){toast?.('Escreva algo antes de responder.','err');return;}
+      const btn=bg.querySelector('#vxCaseReplyBtn');btn.disabled=true;
+      try{
+        await api('dashboard_case_comments',{method:'POST',body:JSON.stringify({case_id:c.id,company_id:c.company_id,event_type:'COMENTARIO',body,created_by:me()})});
+        ta.value='';
+        const thread=bg.querySelector('#vxCaseThread');
+        thread.querySelector('.vx-c-case-thread-empty')?.remove();
+        thread.insertAdjacentHTML('beforeend',caseThreadRow({event_type:'COMENTARIO',body,created_at:new Date().toISOString(),profiles:{full_name:state?.profile?.full_name||'Você'}}));
+        thread.scrollTop=thread.scrollHeight;
+        btn.disabled=false;
+      }catch(err){toast?.('Não foi possível enviar a resposta: '+err.message,'err');btn.disabled=false;}
+    };
+  }
+  function caseThreadRow(m){
+    const author=E(m.profiles?.full_name||'—');
+    const when=new Date(m.created_at).toLocaleString('pt-BR');
+    if(m.event_type==='COMENTARIO'||!m.event_type){
+      return `<div class="vx-c-case-comment"><div class="vx-c-case-comment-head"><b>${author}</b><small>${when}</small></div><p>${E(m.body||'')}</p></div>`;
+    }
+    const detail=m.event_type==='REASSIGN'?`encaminhou para ${E(m.new_data?.assigned_to_name||'—')}`:m.event_type==='STATUS_CHANGE'?`mudou a situação para ${E(CASE_STATUS_LABEL[m.new_data?.status]||m.new_data?.status||'—')}`:m.event_type;
+    return `<div class="vx-c-case-event"><small>${author} ${detail} • ${when}</small></div>`;
   }
 
   // Modal pra linhas de parts_requests (achado do usuário em
