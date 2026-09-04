@@ -111,7 +111,8 @@ button.vx-c-opp-row:hover{background:var(--vx-surface-2,#f6f8fb)}
 
 /* ---------- Gestão Visual (barras de aging) ---------- */
 .vx-c-gv-card{background:var(--vx-surface);border:1px solid var(--vx-border-strong);border-radius:14px;padding:14px 16px;box-shadow:var(--vx-card-shadow)}
-.vx-c-gv-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.vx-c-gv-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:1400px){.vx-c-gv-grid{grid-template-columns:repeat(2,1fr)}}
 .vx-c-gv-panel{border:1px solid var(--vx-border);border-radius:11px;padding:11px}
 .vx-c-gv-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
 .vx-c-gv-head strong{font-size:10.5px;color:var(--vx-navy);letter-spacing:.02em}

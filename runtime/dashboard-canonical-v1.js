@@ -434,6 +434,13 @@
     const analysis=active.filter(o=>norm(o.status)==='AGUARDANDO ANALISE');
     const approval=active.filter(o=>norm(o.status)==='AGUARDANDO APROVACAO');
     const repair=active.filter(o=>['AGUARDANDO CONSERTO','EM CONSERTO'].includes(norm(o.status)));
+    // "repair" acima junta AGUARDANDO CONSERTO + EM CONSERTO de propósito
+    // (métrica já existente de "Oportunidade de faturamento"/
+    // overdueRepair) -- aguardandoConserto é só AGUARDANDO CONSERTO,
+    // pro card novo de Gestão Visual pedido pelo usuário em 2026-09-04
+    // (tempo esperando o conserto COMEÇAR, distinto de já estar em
+    // conserto).
+    const aguardandoConserto=active.filter(o=>norm(o.status)==='AGUARDANDO CONSERTO');
     const ready=active.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA');
     const overdueAnalysis=analysis.filter(o=>age(o)>3), overdueApproval=approval.filter(o=>age(o)>3), overdueRepair=repair.filter(o=>age(o)>7);
     const readyOverdue7=ready.filter(o=>age(o)>7), readyOverdue3=ready.filter(o=>age(o)>3);
@@ -669,13 +676,13 @@
       const oldest=rows.reduce((m,o)=>Math.max(m,age(o)),0);
       return {b,oldest,rowsByBucket};
     }
-    const gvAnalysis=ageBuckets(analysis), gvApproval=ageBuckets(approval), gvReady=ageBuckets(ready);
+    const gvAnalysis=ageBuckets(analysis), gvApproval=ageBuckets(approval), gvConserto=ageBuckets(aguardandoConserto), gvReady=ageBuckets(ready);
     // Drill-down por faixa etária do Gestão Visual -- clicar num
     // número/segmento mostra exatamente quais OS estão naquela faixa
     // (achado do usuário em 2026-09-01: os números eram estáticos, sem
     // forma de ver quais atendimentos estavam por trás do total).
     const gvDrills={};
-    [['gvAnalysis',gvAnalysis,'Aguardando Análise'],['gvApproval',gvApproval,'Aguardando Aprovação'],['gvReady',gvReady,'Prontos para Entrega']].forEach(([key,g,label])=>{
+    [['gvAnalysis',gvAnalysis,'Aguardando Análise'],['gvApproval',gvApproval,'Aguardando Aprovação'],['gvConserto',gvConserto,'Aguardando Conserto'],['gvReady',gvReady,'Prontos para Entrega']].forEach(([key,g,label])=>{
       g.rowsByBucket.forEach((rows,i)=>{gvDrills[`${key}_b${i}`]=rows});
     });
 
@@ -839,7 +846,7 @@
       wireAgendaCard();
     }
 
-    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,oppApproval,oppReady,oppOverdueRepair,oppOverdueApproval:oppApproval.filter(o=>age(o)>3),oppReadyOverdue3,retiradasHojeOrders,prazosCriticosOrders,...gvDrills,...prodDrills};
+    const drills={active,analysis,approval,repair,aguardandoConserto,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,oppApproval,oppReady,oppOverdueRepair,oppOverdueApproval:oppApproval.filter(o=>age(o)>3),oppReadyOverdue3,retiradasHojeOrders,prazosCriticosOrders,...gvDrills,...prodDrills};
     const partsDrills={partsAll,partsPendentes,partsCompra,partsEntrega,partsAtrasadas,partsRecebidasHoje};
     const tasksDrills={tasks};
     const caseDrills={casesAbertos,casesNovos,casesAndamento,casesResolvidos,myCases};
@@ -901,7 +908,7 @@
       </div>
 
       ${role()==='GESTOR'?`<section class="vx-c-gv-card"><div class="vx-c-title"><h3>▥ Gestão Visual <span class="vx-c-info" title="Distribuição das OS por tempo desde a última mudança de situação">ⓘ</span></h3><a href="#" data-drill="active" data-title="Gestão Visual">Ver todos</a></div>
-        <div class="vx-c-gv-grid">${gvPanel('AGUARDANDO ANÁLISE',gvAnalysis,'gvAnalysis')}${gvPanel('AGUARDANDO APROVAÇÃO',gvApproval,'gvApproval')}${gvPanel('PRONTOS PARA ENTREGA',gvReady,'gvReady')}</div>
+        <div class="vx-c-gv-grid">${gvPanel('AGUARDANDO ANÁLISE',gvAnalysis,'gvAnalysis')}${gvPanel('AGUARDANDO APROVAÇÃO',gvApproval,'gvApproval')}${gvPanel('AGUARDANDO CONSERTO',gvConserto,'gvConserto')}${gvPanel('PRONTOS PARA ENTREGA',gvReady,'gvReady')}</div>
       </section>`:''}
 
       <div class="vx-c-grid-3">
