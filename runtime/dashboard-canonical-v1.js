@@ -79,7 +79,14 @@
   // chegar na OS vinculada (sem onclick nenhum) -- ao contrário de
   // modal(), que já linka pra OS via [data-os]. Corrigido: mesma
   // navegação, quando o caso tem service_order_id.
-  function casesModal(title,rows){
+  // Bug real corrigido em 2026-09-03 (achado via console do usuário):
+  // esta função vive no escopo do módulo (irmã de renderDashboard, não
+  // dentro dela), mas usava "ordersById" como se fosse variável global
+  // -- é um const LOCAL de renderDashboard, então todo clique lançava
+  // ReferenceError e o modal nunca chegava a abrir. Corrigido recebendo
+  // ordersById como parâmetro (passado pelo dispatcher, que está no
+  // mesmo escopo de renderDashboard e por isso enxerga a variável).
+  function casesModal(title,rows,ordersById=new Map()){
     document.querySelector('#vxCanonicalModal')?.remove();
     const bg=document.createElement('div');bg.id='vxCanonicalModal';bg.className='vx-c-modal-bg';
     bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Caso</th><th>O.S.</th><th>Prioridade</th><th>Situação</th><th>Aberto em</th></tr></thead><tbody>${rows.map(c=>{const linkedOs=c.service_order_id?ordersById.get(String(c.service_order_id)):null;return `<tr${linkedOs?` data-os="${E(linkedOs.id)}" class="vx-c-row-clickable"`:''}><td><b>${E(c.title)}</b>${c.message?`<br><small>${E(c.message)}</small>`:''}</td><td>${linkedOs?E(linkedOs.os_number||'—'):'—'}</td><td>${E(norm(c.priority)||'—')}</td><td>${E(norm(c.status)||'—')}</td><td>${new Date(c.created_at).toLocaleDateString('pt-BR')}</td></tr>`}).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
@@ -377,8 +384,15 @@
     // pra entrega neste sistema, é outro ciclo de status, ver
     // sync-electrolux-nps).
     const agenda=safe(by['Agenda 5 dias'].data);
-    const readyIds=new Set(oppReady.map(o=>o.id));
-    const retiradasHoje=agenda.filter(a=>a.appointment_date===isoDate(today)&&readyIds.has(a.service_order_id)).length;
+    const todayApptOrderIds=new Set(agenda.filter(a=>a.appointment_date===isoDate(today)).map(a=>a.service_order_id));
+    const retiradasHojeOrders=oppReady.filter(o=>todayApptOrderIds.has(o.id));
+    const retiradasHoje=retiradasHojeOrders.length;
+    // Achado do usuário em 2026-09-03: as 5 linhas do card "Oportunidades
+    // do Dia" eram <div> sem data-drill nenhum -- clicar não fazia
+    // nada (mesma classe de bug do card Casos de Atenção). Rows reais
+    // pra "Prazos críticos" (mesma combinação de filtros já usada só
+    // pra contar).
+    const prazosCriticosOrders=[...oppAnalysis.filter(o=>age(o)===2),...oppApproval.filter(o=>age(o)===2),...oppRepair.filter(o=>age(o)===6)];
 
     // Card "Agenda dos Técnicos" (widget, achado 2026-09-03): une a
     // agenda nativa com a Electrolux, normalizadas no mesmo formato --
@@ -614,13 +628,16 @@
       wireAgendaCard();
     }
 
-    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,oppApproval,oppReady,oppOverdueRepair,oppOverdueApproval:oppApproval.filter(o=>age(o)>3),oppReadyOverdue3,...gvDrills,...prodDrills};
+    const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,oppApproval,oppReady,oppOverdueRepair,oppOverdueApproval:oppApproval.filter(o=>age(o)>3),oppReadyOverdue3,retiradasHojeOrders,prazosCriticosOrders,...gvDrills,...prodDrills};
     const partsDrills={partsAll,partsPendentes,partsCompra,partsEntrega,partsAtrasadas,partsRecebidasHoje};
     const tasksDrills={tasks};
     const caseDrills={casesAbertos,casesNovos,casesAndamento,casesResolvidos};
 
     function kpi(icon,title,value,sub,key){return `<button type="button" class="vx-c-kpi" data-drill="${key}" data-title="${E(title)}"><span class="vx-c-kpi-icon">${icon}</span><span class="vx-c-kpi-label">${E(title)}</span><b>${E(value)}</b><small>${E(sub)}</small></button>`}
-    function oppRow(label,n){return `<div class="vx-c-opp-row"><span>${E(label)}</span><b>${n}</b></div>`}
+    function oppRow(label,n,key){
+      if(!key)return `<div class="vx-c-opp-row"><span>${E(label)}</span><b>${n}</b></div>`;
+      return `<button type="button" class="vx-c-opp-row" data-drill="${key}" data-title="${E(label)}"><span>${E(label)}</span><b>${n}</b></button>`;
+    }
     function taskRow(label,n,key){
       if(!key)return `<div class="vx-c-task-row"><span class="vx-c-task-check">☐</span><span>${E(label)}</span><b>${n}</b></div>`;
       return `<button type="button" class="vx-c-task-row" data-drill="${key}" data-title="${E(label)}"${n?'':' disabled'}><span class="vx-c-task-check">☐</span><span>${E(label)}</span><b>${n}</b></button>`;
@@ -660,11 +677,11 @@
           </div>
         </section>
         <section class="vx-c-opp-card"><div class="vx-c-title"><h3>◎ Oportunidades do Dia</h3><a href="#" data-drill="ready" data-title="Oportunidades do Dia">Ver todas</a></div>
-          ${oppRow('Retiradas previstas para hoje',retiradasHoje)}
-          ${oppRow('Orçamentos sem resposta',oppApproval.length)}
-          ${oppRow('Aparelhos prontos para retirada',oppReady.length)}
-          ${oppRow('Prazos críticos próximos',oppAnalysis.filter(o=>age(o)===2).length+oppApproval.filter(o=>age(o)===2).length+oppRepair.filter(o=>age(o)===6).length)}
-          ${oppRow('Clientes com mais de 1 OS',repeatClients)}
+          ${oppRow('Retiradas previstas para hoje',retiradasHoje,'retiradasHojeOrders')}
+          ${oppRow('Orçamentos sem resposta',oppApproval.length,'oppApproval')}
+          ${oppRow('Aparelhos prontos para retirada',oppReady.length,'oppReady')}
+          ${oppRow('Prazos críticos próximos',prazosCriticosOrders.length,'prazosCriticosOrders')}
+          ${oppRow('Clientes com mais de 1 OS',repeatClients,'repeatClientOrders')}
         </section>
       </div>
 
@@ -731,7 +748,7 @@
       const title=el.dataset.title||el.textContent.trim()||'Detalhamento';
       if(k.startsWith('parts:'))return partsModal(title,partsDrills[k.slice(6)]||[]);
       if(k.startsWith('tasks:'))return tasksModal(title,tasksDrills[k.slice(6)]||[]);
-      if(k.startsWith('cases:')||k==='casesAbertos')return casesModal(title,caseDrills[k==='casesAbertos'?'casesAbertos':k.slice(6)]||[]);
+      if(k.startsWith('cases:')||k==='casesAbertos')return casesModal(title,caseDrills[k==='casesAbertos'?'casesAbertos':k.slice(6)]||[],ordersById);
       if(drills[k])modal(title,drills[k]);
     });
     document.getElementById('vxFeedAll').onclick=(ev)=>{ev.preventDefault();feedModal('Feed em Tempo Real',historyScoped,feedText)};
