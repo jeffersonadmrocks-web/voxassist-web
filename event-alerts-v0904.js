@@ -154,24 +154,34 @@
   // ATENDENTE/GESTOR (mesmo público padrão que já vê o pedido "sem
   // dono" no Dashboard/roleVisible). Nunca alerta quem criou o
   // próprio pedido.
+  // Logs de diagnóstico temporários (achado do usuário em 2026-09-05:
+  // 1º teste real com destinatário certo -- assigned_to batendo com
+  // quem devia ver -- não alertou; preciso enxergar exatamente onde
+  // para, igual fiz pro poll() de status).
   async function pollParts(){
     try{
       const myId=state?.session?.user?.id;
       const role=norm(state?.profile?.role);
-      if(!myId||!role||typeof window.api!=='function')return;
+      if(!myId||!role||typeof window.api!=='function'){
+        console.log('[event-alerts:parts] abortado -- myId:',myId,'role:',role);
+        return;
+      }
       if(partsWatermark===null)partsWatermark=loadWatermark(PARTS_WATERMARK_KEY,myId);
-      const rows=await window.api(`parts_requests?created_at=gt.${encodeURIComponent(partsWatermark)}&select=*,service_orders(os_number)&order=created_at.asc&limit=50`).catch(()=>[]);
+      console.log('[event-alerts:parts] verificando desde',partsWatermark,'-- myId:',myId,'role:',role);
+      const rows=await window.api(`parts_requests?created_at=gt.${encodeURIComponent(partsWatermark)}&select=*,service_orders(os_number)&order=created_at.asc&limit=50`).catch(err=>{console.error('[event-alerts:parts] falha na busca:',err);return[];});
+      console.log('[event-alerts:parts] linhas retornadas:',rows.length,rows);
       if(!rows.length)return;
       partsWatermark=rows[rows.length-1].created_at;
       saveWatermark(PARTS_WATERMARK_KEY,myId,partsWatermark);
       for(const p of rows){
-        if(String(p.requested_by)===String(myId))continue;
+        if(String(p.requested_by)===String(myId)){console.log('[event-alerts:parts] pulado (sou o autor):',p.id);continue;}
         const relevant=p.assigned_to?String(p.assigned_to)===String(myId):(role==='ATENDENTE'||role==='GESTOR');
+        console.log('[event-alerts:parts] pedido',p.id,'assigned_to:',p.assigned_to,'relevante pra mim:',relevant);
         if(!relevant)continue;
         const num=p.service_orders?.os_number;
         alertCard(`🔧 Novo pedido de peça — "${p.description||'peça'}"${num?` (OS #${num})`:''}`,p.service_order_id||null);
       }
-    }catch(_e){/* alerta nunca pode travar nada da tela -- silencioso */}
+    }catch(_e){console.error('[event-alerts:parts] erro inesperado:',_e);}
   }
 
   // Achado do usuário em 2026-09-04: com a aba em segundo plano, o
