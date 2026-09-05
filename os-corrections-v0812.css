@@ -33,8 +33,18 @@
 .vx-parts-launched table{width:100%;min-width:900px}
 .vx-part-desc{min-width:240px}
 .vx-part-actions{white-space:nowrap}
-.vx-mini-edit,.vx-mini-delete{border:0;padding:7px 10px;font-size:11px;font-weight:800;cursor:pointer;margin-right:5px}
+.vx-mini-edit,.vx-mini-delete,.vx-mini-save,.vx-mini-cancel{border:0;padding:7px 10px;font-size:11px;font-weight:800;cursor:pointer;margin-right:5px}
 .vx-mini-edit{background:#eaf2fb;color:#0d4f8b;border:1px solid #a9c6e3}
 .vx-mini-delete{background:#fff0f0;color:#a31d1d;border:1px solid #e0adad}
-.vx-mini-edit:hover,.vx-mini-delete:hover{filter:brightness(.97)}
+.vx-mini-save{background:#e7f6ec;color:#0f7a3d;border:1px solid #a9d9bb}
+.vx-mini-cancel{background:#f3f4f6;color:#4b5563;border:1px solid #d1d5db}
+.vx-mini-edit:hover,.vx-mini-delete:hover,.vx-mini-save:hover,.vx-mini-cancel:hover{filter:brightness(.97)}
+/* Achado do usuário em 2026-09-04: "ALTERAR" virou edição inline
+   (linha da tabela em vez de 5 prompt() sequenciais) -- inputs
+   compactos, do tamanho da célula, sem quebrar o alinhamento da
+   tabela. */
+.vx-part-editing{background:#fbfdff}
+.vx-mini-input{width:100%;min-width:70px;border:1px solid #a9c6e3;border-radius:3px;padding:5px 6px;font-size:11px;font-family:inherit;box-sizing:border-box}
+.vx-mini-input-num{min-width:60px}
+.vx-mini-input:focus{outline:2px solid #0d4f8b33;border-color:#0d4f8b}
 @media(max-width:900px){.vx-summary-parts-table{min-width:680px}}

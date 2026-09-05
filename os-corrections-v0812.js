@@ -61,9 +61,35 @@
     }
   }
 
+  // Achado do usuário em 2026-09-04: "ALTERAR" perguntava campo por
+  // campo com prompt() (5 caixas sequenciais) -- em vez disso, a
+  // própria linha da tabela vira editável (inputs no lugar do texto),
+  // com SALVAR/CANCELAR substituindo ALTERAR/EXCLUIR só nessa linha.
+  // Só uma linha editável por vez (editingPartId); trocar de linha
+  // simplesmente descarta a edição em andamento, sem perguntar.
+  let editingPartId=null;
+
+  function partRow(p,actions){
+    const id=safe(p.id);
+    if(actions&&editingPartId===String(p.id)){
+      const qty=Number(p.quantity||0),unit=Number(p.unit_value||0);
+      return `<tr data-part-id="${id}" class="vx-part-editing">
+        <td><input class="vx-mini-input" id="vxPartEditCode" value="${safe(p.code||'')}"></td>
+        <td class="vx-part-desc"><input class="vx-mini-input" id="vxPartEditDesc" value="${safe(p.description||'')}"></td>
+        <td><input class="vx-mini-input" id="vxPartEditBrand" value="${safe(p.brand||'')}"></td>
+        <td><input class="vx-mini-input vx-mini-input-num" id="vxPartEditQty" type="number" min="0.01" step="0.01" value="${qty}"></td>
+        <td><input class="vx-mini-input vx-mini-input-num" id="vxPartEditUnit" type="number" min="0" step="0.01" value="${unit}"></td>
+        <td>${brl(qty*unit)}</td>
+        <td>${p.move_stock===false?'NÃO':'SIM'}</td>
+        <td class="vx-part-actions"><button type="button" class="vx-mini-save" onclick="vxSaveOsPart('${id}')">SALVAR</button><button type="button" class="vx-mini-cancel" onclick="vxCancelEditOsPart()">CANCELAR</button></td>
+      </tr>`;
+    }
+    return `<tr data-part-id="${id}"><td>${safe(p.code||'—')}</td><td class="vx-part-desc"><b>${safe(p.description||'SEM DESCRIÇÃO')}</b></td><td>${safe(p.brand||'—')}</td><td>${Number(p.quantity||0)}</td><td>${brl(p.unit_value)}</td><td>${brl(Number(p.quantity||0)*Number(p.unit_value||0))}</td>${actions?`<td>${p.move_stock===false?'NÃO':'SIM'}</td><td class="vx-part-actions"><button type="button" class="vx-mini-edit" onclick="vxEditOsPart('${id}')">ALTERAR</button><button type="button" class="vx-mini-delete" onclick="vxDeleteOsPart('${id}')">EXCLUIR</button></td>`:''}</tr>`;
+  }
+
   function partRows(parts,actions=true){
     if(!parts?.length)return `<tr><td colspan="${actions?8:6}" class="vx-empty">Nenhuma peça lançada nesta O.S.</td></tr>`;
-    return parts.map(p=>`<tr data-part-id="${safe(p.id)}"><td>${safe(p.code||'—')}</td><td class="vx-part-desc"><b>${safe(p.description||'SEM DESCRIÇÃO')}</b></td><td>${safe(p.brand||'—')}</td><td>${Number(p.quantity||0)}</td><td>${brl(p.unit_value)}</td><td>${brl(Number(p.quantity||0)*Number(p.unit_value||0))}</td>${actions?`<td>${p.move_stock===false?'NÃO':'SIM'}</td><td class="vx-part-actions"><button type="button" class="vx-mini-edit" onclick="vxEditOsPart('${safe(p.id)}')">ALTERAR</button><button type="button" class="vx-mini-delete" onclick="vxDeleteOsPart('${safe(p.id)}')">EXCLUIR</button></td>`:''}</tr>`).join('');
+    return parts.map(p=>partRow(p,actions)).join('');
   }
 
   function ensureSummaryParts(){
@@ -94,19 +120,31 @@
     box.innerHTML=`<h3 class="vx-title green">PEÇAS LANÇADAS NESTA O.S.</h3><div class="vx-table-scroll"><table class="vx-grid-table"><thead><tr><th>CÓDIGO</th><th>DESCRIÇÃO / PEÇA</th><th>MARCA</th><th>QTD.</th><th>UNITÁRIO</th><th>TOTAL</th><th>MOV. ESTOQUE</th><th>AÇÕES</th></tr></thead><tbody>${partRows(parts,true)}</tbody></table></div>`;
   }
 
-  window.vxEditOsPart=async function(id){
+  window.vxEditOsPart=function(id){
+    editingPartId=String(id);
+    ensureBudgetParts();
+  };
+
+  window.vxCancelEditOsPart=function(){
+    editingPartId=null;
+    ensureBudgetParts();
+  };
+
+  window.vxSaveOsPart=async function(id){
     const p=(window.__vxCurrentParts||[]).find(x=>String(x.id)===String(id));
     if(!p)return toast('Peça não encontrada.','err');
-    const description=prompt('Descrição / peça:',p.description||'');if(description===null)return;
-    const code=prompt('Código:',p.code||'');if(code===null)return;
-    const brand=prompt('Marca:',p.brand||'');if(brand===null)return;
-    const quantity=prompt('Quantidade:',String(p.quantity||1));if(quantity===null)return;
-    const unit=prompt('Valor unitário (R$):',String(p.unit_value||0));if(unit===null)return;
-    const qty=Number(String(quantity).replace(',','.')),unitValue=Number(String(unit).replace(',','.'));
-    if(!(qty>0)||Number.isNaN(unitValue)||unitValue<0)return toast('Quantidade ou valor inválido.','err');
+    const description=q('#vxPartEditDesc')?.value||'';
+    const code=q('#vxPartEditCode')?.value||'';
+    const brand=q('#vxPartEditBrand')?.value||'';
+    const qty=Number(String(q('#vxPartEditQty')?.value||'').replace(',','.'));
+    const unitValue=Number(String(q('#vxPartEditUnit')?.value||'').replace(',','.'));
+    if(!description.trim())return toast('Informe a descrição da peça.','err');
+    if(!(qty>0))return toast('Informe uma quantidade maior que zero.','err');
+    if(Number.isNaN(unitValue)||unitValue<0)return toast('Informe um valor unitário válido.','err');
     try{
       await api(`os_parts?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({description:up(description),code:up(code),brand:up(brand),quantity:qty,unit_value:unitValue})});
       toast('Peça alterada com sucesso.');
+      editingPartId=null;
       await window.renderOsDetail(state.activeOs.id,'orcamento');
     }catch(e){toast('Erro ao alterar peça: '+e.message,'err')}
   };
