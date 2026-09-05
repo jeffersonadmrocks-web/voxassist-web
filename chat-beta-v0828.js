@@ -1094,6 +1094,17 @@
     document.querySelector('#vxMsgForm textarea[name=body]')?.addEventListener('keydown',e=>{
       if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.getElementById('vxMsgForm')?.requestSubmit();}
     });
+    // Achado do usuário em 2026-09-05: campo só mostrava 1 linha (rows=1,
+    // resize:none) mesmo com texto maior, obrigando a rolar dentro de
+    // uma caixa minúscula -- pediu o mesmo conceito do WhatsApp: cresce
+    // sozinho conforme digita, até um limite (CSS já tinha max-height:
+    // 140px/overflow-y:auto prontos, só faltava a lógica de altura).
+    {
+      const bodyEl=document.querySelector('#vxMsgForm textarea[name=body]');
+      const autoGrow=()=>{bodyEl.style.height='auto';bodyEl.style.height=bodyEl.scrollHeight+'px'};
+      bodyEl?.addEventListener('input',autoGrow);
+      autoGrow();
+    }
     document.getElementById('vxAttachBtn').onclick=()=>document.getElementById('vxAttachFileInput').click();
     document.getElementById('vxAttachCameraBtn').onclick=()=>document.getElementById('vxAttachCameraInput').click();
     document.getElementById('vxAttachFileInput').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)handleAttachmentPick(f)};
@@ -1954,6 +1965,7 @@
         }
       }
       input.value='';
+      input.style.height='auto';
       replyingTo=null;
       renderReplyBanner();
       await refreshMensagens();
