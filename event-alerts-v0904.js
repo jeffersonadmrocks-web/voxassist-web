@@ -97,34 +97,32 @@
     if(osId)card.querySelector('[data-open]').onclick=()=>{card.remove();(window.render||render)('os:'+osId)};
   }
 
-  // Achado do usuário em 2026-09-04 (4ª rodada de teste, ainda sem
-  // aparecer, mesmo com deploy confirmado e Ctrl+F5 feito): o catch
-  // silencioso não deixava ver SE havia algum erro real acontecendo.
-  // Logs temporários de diagnóstico (console.log/console.error) --
-  // não mudam nenhum comportamento visível, só ajudam a enxergar onde
-  // exatamente o fluxo para: sem myId/role, sem linhas retornadas, ou
-  // relevantAlert descartando o evento.
+  // Achado do usuário em 2026-09-04 (causa real, achada pelos logs de
+  // diagnóstico -- 4ª rodada de teste): `state` em app.js é `const
+  // state={...}` no topo do arquivo. Uma declaração const/let no
+  // escopo global de um <script> clássico NUNCA vira propriedade de
+  // `window` (diferente de `function`, que vira) -- por isso
+  // `window.state` sempre foi `undefined` aqui, mesmo com `state`
+  // (sem "window.") funcionando normalmente em TODO o resto do app
+  // (os-detail-v0812.js, dashboard-canonical-v1.js etc. só usam
+  // `state`, nunca `window.state`). O poll abortava silenciosamente
+  // em 100% das vezes desde o início -- corrigido usando `state`
+  // direto, igual a todo o resto do código.
   async function poll(){
     try{
-      const myId=window.state?.session?.user?.id;
-      const role=norm(window.state?.profile?.role);
-      if(!myId||!role||typeof window.api!=='function'){
-        console.log('[event-alerts] poll abortado -- myId:',myId,'role:',role,'api disponível:',typeof window.api==='function');
-        return;
-      }
+      const myId=state?.session?.user?.id;
+      const role=norm(state?.profile?.role);
+      if(!myId||!role||typeof window.api!=='function')return;
       if(watermark===null)watermark=loadWatermark(myId);
-      console.log('[event-alerts] verificando eventos desde',watermark,'-- myId:',myId,'role:',role);
-      const rows=await window.api(`os_status_history?changed_at=gt.${encodeURIComponent(watermark)}&select=*,service_orders(os_number,store_id,technician_id,service_group_id)&order=changed_at.asc&limit=50`).catch(err=>{console.error('[event-alerts] falha ao buscar histórico:',err);return[];});
-      console.log('[event-alerts] linhas retornadas:',rows.length,rows);
+      const rows=await window.api(`os_status_history?changed_at=gt.${encodeURIComponent(watermark)}&select=*,service_orders(os_number,store_id,technician_id,service_group_id)&order=changed_at.asc&limit=50`).catch(()=>[]);
       if(!rows.length)return;
       watermark=rows[rows.length-1].changed_at;
       saveWatermark(myId,watermark);
       for(const h of rows){
         const alert=await relevantAlert(h,{myId,role});
-        console.log('[event-alerts] evento',h.id,'status',h.previous_status,'->',h.new_status,'-- alerta:',alert);
         if(alert)alertCard(alert.text,alert.osId);
       }
-    }catch(_e){console.error('[event-alerts] erro inesperado no poll:',_e);}
+    }catch(_e){/* alerta nunca pode travar nada da tela -- silencioso */}
   }
 
   // Achado do usuário em 2026-09-04: com a aba em segundo plano, o
