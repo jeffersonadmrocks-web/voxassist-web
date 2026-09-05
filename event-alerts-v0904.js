@@ -12,6 +12,14 @@
 (function(){
   const POLL_MS=20000;
   const WATERMARK_KEY='vxAlertWatermark_';
+  // Achado do usuário em 2026-09-05: "Solicitar peça" não gerava
+  // NENHUM alerta pra quem recebe -- pedidos de peça vivem numa tabela
+  // à parte (parts_requests), sem relação com os_status_history, e o
+  // Dashboard não tem atualização automática dos próprios cartões
+  // (só recarrega ao dar F5 ou sair/voltar da tela de Início) -- quem
+  // não estivesse olhando o card na hora nunca saberia. Watermark
+  // separado (chave própria), mesmo padrão de persistência do de cima.
+  const PARTS_WATERMARK_KEY='vxAlertPartsWatermark_';
   // Achado do usuário em 2026-09-04 (2ª rodada de teste, ainda sem
   // aparecer): o watermark em memória reiniciava pra "agora" TODA VEZ
   // que a página recarregava -- então recarregar a tela da atendente
@@ -23,6 +31,7 @@
   // em "agora" -- continua nunca inundando a tela com meses de
   // histórico antigo de teste.
   let watermark=null; // null = ainda não carregado (carrega no 1º poll, quando já se sabe o myId)
+  let partsWatermark=null; // idem, pra pollParts()
   let myGroupIds=null; // cache -- carregado uma vez, null=ainda não carregado
   let timer=null;
 
@@ -31,8 +40,8 @@
   // de "agora" -- cobre testes/eventos bem recentes sem arriscar
   // inundar com histórico antigo de dias.
   const FIRST_TIME_LOOKBACK_MS=3*60*60*1000;
-  function loadWatermark(myId){try{return localStorage.getItem(WATERMARK_KEY+myId)||new Date(Date.now()-FIRST_TIME_LOOKBACK_MS).toISOString();}catch(_e){return new Date(Date.now()-FIRST_TIME_LOOKBACK_MS).toISOString();}}
-  function saveWatermark(myId,ts){try{localStorage.setItem(WATERMARK_KEY+myId,ts);}catch(_e){}}
+  function loadWatermark(key,myId){try{return localStorage.getItem(key+myId)||new Date(Date.now()-FIRST_TIME_LOOKBACK_MS).toISOString();}catch(_e){return new Date(Date.now()-FIRST_TIME_LOOKBACK_MS).toISOString();}}
+  function saveWatermark(key,myId,ts){try{localStorage.setItem(key+myId,ts);}catch(_e){}}
 
   async function myGroups(myId){
     if(myGroupIds)return myGroupIds;
@@ -126,14 +135,41 @@
       const myId=state?.session?.user?.id;
       const role=norm(state?.profile?.role);
       if(!myId||!role||typeof window.api!=='function')return;
-      if(watermark===null)watermark=loadWatermark(myId);
+      if(watermark===null)watermark=loadWatermark(WATERMARK_KEY,myId);
       const rows=await window.api(`os_status_history?changed_at=gt.${encodeURIComponent(watermark)}&select=*,service_orders(os_number,store_id,technician_id,service_group_id)&order=changed_at.asc&limit=50`).catch(()=>[]);
       if(!rows.length)return;
       watermark=rows[rows.length-1].changed_at;
-      saveWatermark(myId,watermark);
+      saveWatermark(WATERMARK_KEY,myId,watermark);
       for(const h of rows){
         const alert=await relevantAlert(h,{myId,role});
         if(alert)alertCard(alert.text,alert.osId);
+      }
+    }catch(_e){/* alerta nunca pode travar nada da tela -- silencioso */}
+  }
+
+  // Solicitação de peça -- tabela própria (parts_requests), sem
+  // relação com os_status_history, por isso é um poll separado com
+  // watermark próprio. Alerta o destinatário específico
+  // (assigned_to) quando marcado; sem destinatário, alerta
+  // ATENDENTE/GESTOR (mesmo público padrão que já vê o pedido "sem
+  // dono" no Dashboard/roleVisible). Nunca alerta quem criou o
+  // próprio pedido.
+  async function pollParts(){
+    try{
+      const myId=state?.session?.user?.id;
+      const role=norm(state?.profile?.role);
+      if(!myId||!role||typeof window.api!=='function')return;
+      if(partsWatermark===null)partsWatermark=loadWatermark(PARTS_WATERMARK_KEY,myId);
+      const rows=await window.api(`parts_requests?created_at=gt.${encodeURIComponent(partsWatermark)}&select=*,service_orders(os_number)&order=created_at.asc&limit=50`).catch(()=>[]);
+      if(!rows.length)return;
+      partsWatermark=rows[rows.length-1].created_at;
+      saveWatermark(PARTS_WATERMARK_KEY,myId,partsWatermark);
+      for(const p of rows){
+        if(String(p.requested_by)===String(myId))continue;
+        const relevant=p.assigned_to?String(p.assigned_to)===String(myId):(role==='ATENDENTE'||role==='GESTOR');
+        if(!relevant)continue;
+        const num=p.service_orders?.os_number;
+        alertCard(`🔧 Novo pedido de peça — "${p.description||'peça'}"${num?` (OS #${num})`:''}`,p.service_order_id||null);
       }
     }catch(_e){/* alerta nunca pode travar nada da tela -- silencioso */}
   }
@@ -144,8 +180,9 @@
   // em que a aba volta a ficar visível cobre exatamente o caso mais
   // comum de teste -- alguém troca de aba, faz a mudança em outro
   // lugar, volta -- sem precisar reduzir o intervalo geral.
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')poll();});
+  function pollAll(){poll();pollParts();}
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollAll();});
 
-  function start(){if(timer)return;timer=setInterval(poll,POLL_MS);}
+  function start(){if(timer)return;timer=setInterval(pollAll,POLL_MS);}
   start();
 })();
