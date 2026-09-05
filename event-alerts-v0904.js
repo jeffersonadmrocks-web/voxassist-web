@@ -94,7 +94,11 @@
     card.innerHTML=`<span class="vx-alert-card-msg">${esc(msg)}</span><div class="vx-alert-card-actions">${osId?'<button type="button" data-open>Abrir OS →</button>':''}<button type="button" data-dismiss aria-label="Fechar">✕</button></div>`;
     stack.prepend(card);
     card.querySelector('[data-dismiss]').onclick=()=>card.remove();
-    if(osId)card.querySelector('[data-open]').onclick=()=>{card.remove();(window.render||render)('os:'+osId)};
+    // Achado do usuário em 2026-09-04: abre em NOVA aba (não navega a
+    // atual) -- é um alerta, o operador pode estar no meio de uma ação
+    // importante na aba de origem (window.vxOpenOsInNewTab,
+    // open-os-newtab-v0904.js).
+    if(osId)card.querySelector('[data-open]').onclick=()=>{card.remove();window.vxOpenOsInNewTab?.(osId)};
   }
 
   // Achado do usuário em 2026-09-04 (causa real, achada pelos logs de
