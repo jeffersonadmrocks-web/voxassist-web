@@ -130,6 +130,31 @@
     ensureBudgetParts();
   };
 
+  // Achado do usuário em 2026-09-04: alterar um valor já lançado na OS
+  // (peça, no caso) não deixava nenhum rastro -- pediu que a mudança
+  // apareça no HISTÓRICO DA ORDEM DE SERVIÇO (os_status_history, a
+  // mesma tabela/tela que ele já usa pra acompanhar situação), pra
+  // conferência futura de qual valor foi salvo. Não é uma transição de
+  // situação de verdade -- grava previous_status=new_status=situação
+  // atual (não mexe no fluxo automático de status) só com o MOTIVO
+  // descrevendo o que mudou de/para, igual ao resto do histórico.
+  function partDiffSummary(before,after){
+    const rows=[];
+    if(before.description!==after.description)rows.push(`Descrição "${before.description||'—'}" → "${after.description||'—'}"`);
+    if(before.code!==after.code)rows.push(`Código "${before.code||'—'}" → "${after.code||'—'}"`);
+    if(before.brand!==after.brand)rows.push(`Marca "${before.brand||'—'}" → "${after.brand||'—'}"`);
+    if(Number(before.quantity)!==Number(after.quantity))rows.push(`Qtd ${before.quantity} → ${after.quantity}`);
+    if(Number(before.unit_value)!==Number(after.unit_value))rows.push(`Valor unitário ${brl(before.unit_value)} → ${brl(after.unit_value)}`);
+    return rows;
+  }
+
+  async function logValueChange(reason){
+    const o=state?.activeOs;if(!o?.id||!reason)return;
+    try{
+      await api('os_status_history',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({service_order_id:o.id,previous_status:o.status,new_status:o.status,change_type:'MANUAL',reason,changed_by:state.session?.user?.id||state.profile?.id||null,changed_at:new Date().toISOString()})});
+    }catch(e){console.warn('Não foi possível registrar no histórico:',e)}
+  }
+
   window.vxSaveOsPart=async function(id){
     const p=(window.__vxCurrentParts||[]).find(x=>String(x.id)===String(id));
     if(!p)return toast('Peça não encontrada.','err');
@@ -141,8 +166,11 @@
     if(!description.trim())return toast('Informe a descrição da peça.','err');
     if(!(qty>0))return toast('Informe uma quantidade maior que zero.','err');
     if(Number.isNaN(unitValue)||unitValue<0)return toast('Informe um valor unitário válido.','err');
+    const after={description:up(description),code:up(code),brand:up(brand),quantity:qty,unit_value:unitValue};
     try{
-      await api(`os_parts?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({description:up(description),code:up(code),brand:up(brand),quantity:qty,unit_value:unitValue})});
+      await api(`os_parts?id=eq.${id}`,{method:'PATCH',body:JSON.stringify(after)});
+      const diff=partDiffSummary(p,after);
+      if(diff.length)await logValueChange(`Peça "${after.description}" alterada — `+diff.join('; '));
       toast('Peça alterada com sucesso.');
       editingPartId=null;
       await window.renderOsDetail(state.activeOs.id,'orcamento');
