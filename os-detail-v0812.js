@@ -333,7 +333,26 @@
   // secundária embaixo do número da OS (não mais numa fileira única
   // com divisores); Voltar sai do topo e vai pra faixa de baixo,
   // alinhado à direita (embaixo de Ações).
+  // Achado do usuário em 2026-09-05: quem está dentro da OS não tinha
+  // como saber que já existe um pedido de peça em aberto pra ela --
+  // indicador sutil (selo pequeno ao lado de SOLICITAR PEÇA, só
+  // aparece quando existe pelo menos 1) que clica pra ver a
+  // situação, reaproveitando o MESMO modal do Dashboard
+  // (window.vxOpenPartRequestModal/vxOpenPartsListModal, expostos em
+  // runtime/dashboard-canonical-v1.js) -- nunca duplica a UI de
+  // pedido de peça em dois arquivos.
+  function partRequestBadge(){
+    const list=ctx?.partRequests||[];
+    if(!list.length)return '';
+    return `<button type="button" class="vx-peca-req-badge" onclick="${list.length===1?`window.vxOpenPartRequestModal?.(window.__vxPartReqList[0],window.__vxPartReqOsMap)`:`window.vxOpenPartsListModal?.('Pedidos de peça desta OS',window.__vxPartReqList,window.__vxPartReqOsMap)`}" title="${list.length===1?'1 pedido de peça — clique para ver a situação':`${list.length} pedidos de peça — clique para ver a situação`}">🔧 ${val(list.length)}</button>`;
+  }
   function header(o){
+    // Achado do usuário em 2026-09-05: guarda numa global só no
+    // momento do clique (não como atributo inline, que exigiria
+    // serializar objetos em HTML) -- mesma técnica simples usada pra
+    // outros popovers pontuais desta tela.
+    window.__vxPartReqList=ctx?.partRequests||[];
+    window.__vxPartReqOsMap=new Map([[String(o.id),o]]);
     const openedFmt=o.opened_at?new Date(o.opened_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
     return `<div class="vx-os-head">
       <div class="vx-os-head-top">
@@ -352,7 +371,7 @@
         <div class="vx-os-head-actions">
           <button class="vx-action vx-os-agendar-btn" onclick="vxOpenAgendarForOs('${val(o.id)}')">📅 Agendar</button>
           <button class="vx-action attention" onclick="vxOpenCasoAtencaoModal()">+ Caso de atenção</button>
-          <button class="vx-action parts" onclick="vxOpenSolicitarPecaModal()">SOLICITAR PEÇA</button>
+          <button class="vx-action parts" onclick="vxOpenSolicitarPecaModal()">SOLICITAR PEÇA</button>${partRequestBadge()}
           <button class="vx-action" onclick="showVxOsSection('orcamento')">GERAR PARECER ▼</button>
           <button class="vx-action" onclick="printOs()">GERAR PDF</button>
           <button class="vx-action" onclick="window.print()">IMPRIMIR ▼</button>
@@ -408,11 +427,11 @@
     // por vários arquivos Whirlpool (o.profiles?.full_name); atendente
     // e loja são embeds NOVOS e aditivos, com alias pra não colidir.
     const arr=await api(`service_orders?id=eq.${id}&select=*,clients(*),equipments(*),profiles!service_orders_technician_id_fkey(full_name),attendant:profiles!service_orders_attendant_id_fkey(full_name),stores(name)`);const o=arr?.[0];if(!o){document.querySelector('#app').innerHTML='<div class="card">OS não encontrada.</div>';return}
-    state.activeOs=o;const [hist,parts,finRows,atts,payments,techs,phones,addresses,docs,stores,clientOrders,clientEquipments,serviceGroups]=await Promise.all([
-      api(`os_status_history?service_order_id=eq.${id}&select=*,profiles(full_name)&order=changed_at.desc`).catch(()=>[]),api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`).catch(()=>[]),api(`os_financial?service_order_id=eq.${id}&select=*`).catch(()=>[]),api(`attachments?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`payments?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`profiles?role=eq.TECNICO&active=eq.true&select=id,full_name`).catch(()=>[]),api(`client_phones?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`client_addresses?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`technical_documents?select=*&order=created_at.desc`).catch(()=>[]),api('stores?active=eq.true&select=id,name,code').catch(()=>[]),api(`service_orders?client_id=eq.${o.client_id}&select=*,equipments(product_type,brand,model,serial_number),stores(name)&order=opened_at.desc`).catch(()=>[]),api(`equipments?current_client_id=eq.${o.client_id}&select=*&order=created_at.desc`).catch(()=>[]),api(`service_groups?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=name`).catch(()=>[])
+    state.activeOs=o;const [hist,parts,finRows,atts,payments,techs,phones,addresses,docs,stores,clientOrders,clientEquipments,serviceGroups,partRequests]=await Promise.all([
+      api(`os_status_history?service_order_id=eq.${id}&select=*,profiles(full_name)&order=changed_at.desc`).catch(()=>[]),api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`).catch(()=>[]),api(`os_financial?service_order_id=eq.${id}&select=*`).catch(()=>[]),api(`attachments?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`payments?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`profiles?role=eq.TECNICO&active=eq.true&select=id,full_name`).catch(()=>[]),api(`client_phones?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`client_addresses?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`technical_documents?select=*&order=created_at.desc`).catch(()=>[]),api('stores?active=eq.true&select=id,name,code').catch(()=>[]),api(`service_orders?client_id=eq.${o.client_id}&select=*,equipments(product_type,brand,model,serial_number),stores(name)&order=opened_at.desc`).catch(()=>[]),api(`equipments?current_client_id=eq.${o.client_id}&select=*&order=created_at.desc`).catch(()=>[]),api(`service_groups?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=name`).catch(()=>[]),api(`parts_requests?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[])
     ]);
     const filteredDocs=(docs||[]).filter(d=>(!d.model||d.model===o.equipments?.model)&&(!d.product_type||d.product_type===o.equipments?.product_type));
-    ctx={o,c:o.clients||{},e:o.equipments||{},hist,parts,fin:finRows?.[0]||{},atts,payments,techs,phones,addresses,docs:filteredDocs,stores,clientOrders,clientEquipments,serviceGroups,activeTab:tab,selectedPayment:null,profileName:state.profile?.full_name||'USUÁRIO'};
+    ctx={o,c:o.clients||{},e:o.equipments||{},hist,parts,fin:finRows?.[0]||{},atts,payments,techs,phones,addresses,docs:filteredDocs,stores,clientOrders,clientEquipments,serviceGroups,partRequests,activeTab:tab,selectedPayment:null,profileName:state.profile?.full_name||'USUÁRIO'};
     const title=document.querySelector('#title');if(title)title.textContent='OS '+o.os_number;document.querySelector('#app').innerHTML=`<div class="vx-os-wrap"><div class="vx-os-sticky-top">${header(o)}${tabs()}</div>${osPanel()}${equipPanel()}${clientPanel()}${budgetPanel()}${attachmentsPanel()}${financePanel()}${historyPanel()}</div>`;
     bind();if(tab==='orcamento')ensureAnalysisDate();
   };

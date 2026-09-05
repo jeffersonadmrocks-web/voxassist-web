@@ -224,24 +224,30 @@
   // de chegada, ver quais estavam atrasados linha a linha, nem marcar
   // um pedido como recebido. Sem isso, os pedidos criados em
   // vxOpenSolicitarPecaModal (os-detail-v0812.js) nunca saíam de
-  // "Solicitado" e os contadores Em compra/Aguardando entrega/
-  // Atrasados/Recebidos hoje do card nunca mudavam. Vocabulário de
-  // status alinhado 1:1 com os filtros já existentes (partsCompra
+  // "Solicitado" e os contadores do card nunca mudavam. Vocabulário de
+  // status alinhado 1:1 com os filtros já existentes (partsCotacao
   // procura "COMPRA" no texto, partsEntrega procura "ENTREGA",
-  // partsRecebidasHoje procura "RECEBID") -- optamos por estes 4
-  // valores canônicos, sem CHECK constraint no schema pra permitir.
+  // partsEntregues procura "RECEBID") -- optamos por estes 4 valores
+  // canônicos, sem CHECK constraint no schema pra permitir. Rótulos
+  // dos baldes renomeados em 2026-09-05 (Em Aberto/Aguardando cotação
+  // -- fornecedor/Aguardando Entrega/Atrasados/Entregues), o
+  // vocabulário de status por trás continua o mesmo.
   const PARTS_STATUS_OPTIONS=['SOLICITADO','EM COMPRA','AGUARDANDO ENTREGA','RECEBIDO'];
+  // Rótulos exibidos (select da situação, selo da lista) -- valor
+  // gravado no banco continua o canônico acima, só o texto mudou pra
+  // bater com os nomes novos dos baldes do card.
+  const PARTS_STATUS_LABELS={SOLICITADO:'Em Aberto','EM COMPRA':'Aguardando cotação/fornecedor','AGUARDANDO ENTREGA':'Aguardando Entrega',RECEBIDO:'Entregue'};
+  const partsStatusLabel=s=>PARTS_STATUS_LABELS[norm(s)]||(s?s.charAt(0).toUpperCase()+s.slice(1).toLowerCase():'—');
   const partsIsLate=p=>!!p.expected_date&&new Date(p.expected_date)<new Date(new Date().toDateString())&&!norm(p.status).includes('RECEBID');
   function partsStatusOptionsHtml(p){
     const cur=norm(p.status);
     const opts=PARTS_STATUS_OPTIONS.includes(cur)?PARTS_STATUS_OPTIONS:[...PARTS_STATUS_OPTIONS,cur||'SOLICITADO'];
-    return opts.map(s=>`<option value="${E(s)}"${cur===s?' selected':''}>${E(s.charAt(0)+s.slice(1).toLowerCase())}</option>`).join('');
+    return opts.map(s=>`<option value="${E(s)}"${cur===s?' selected':''}>${E(partsStatusLabel(s))}</option>`).join('');
   }
   function partsStatusBadge(p){
     const cur=norm(p.status);
     const tone=cur.includes('RECEBID')?'ok':cur.includes('COMPRA')?'info':cur.includes('ENTREGA')?'warn':'muted';
-    const label=p.status?p.status.charAt(0).toUpperCase()+p.status.slice(1).toLowerCase():'—';
-    return `<span class="vx-c-parts-status-badge tone-${tone}">${E(label)}</span>`;
+    return `<span class="vx-c-parts-status-badge tone-${tone}">${E(partsStatusLabel(p.status))}</span>`;
   }
   // Achado do usuário em 2026-09-05: a lista ficou difícil de ler com
   // situação/previsão editáveis direto na linha (texto muito denso, e
@@ -573,11 +579,30 @@
       return roleVisible(null,null,p.service_order_id);
     }
     const partsAll=safe(by['Peças'].data).filter(partVisible);
-    const partsPendentes=partsAll.filter(p=>['PENDENTE','SOLICITADO'].includes(norm(p.status)));
-    const partsCompra=partsAll.filter(p=>norm(p.status).includes('COMPRA'));
+    // Achado do usuário em 2026-09-05: renomeação dos baldes do card
+    // "Pedidos de Peças" -- vocabulário de status (SOLICITADO/EM
+    // COMPRA/AGUARDANDO ENTREGA/RECEBIDO) continua o mesmo por trás
+    // (é o que os_status_history-equivalente aqui, parts_requests,
+    // grava de verdade e o que o detalhe/edição usa) -- só o RÓTULO
+    // visível nos cards mudou: "Em Aberto" (era "Pendentes de
+    // aprovação"), "Aguardando cotação/fornecedor" (era "Em compra").
+    const partsAbertos=partsAll.filter(p=>['PENDENTE','SOLICITADO'].includes(norm(p.status)));
+    const partsCotacao=partsAll.filter(p=>norm(p.status).includes('COMPRA'));
     const partsEntrega=partsAll.filter(p=>norm(p.status).includes('ENTREGA'));
     const partsAtrasadas=partsAll.filter(p=>p.expected_date&&new Date(p.expected_date)<today&&!norm(p.status).includes('RECEBID'));
-    const partsRecebidasHoje=partsAll.filter(p=>norm(p.status).includes('RECEBID')&&p.updated_at&&isoDate(new Date(p.updated_at))===isoDate(today));
+    // "Entregues": renomeado de "Recebidos hoje" -- agora é uma janela
+    // de 30 dias (não só hoje) E só quando a OS vinculada AINDA NÃO
+    // terminou (nem FINALIZADA nem PRONTO PARA ENTREGA) -- é um aviso
+    // de acompanhamento ("a peça já chegou, mas essa OS ainda não
+    // avançou"), não só uma contagem de recebimentos do dia. Sem OS
+    // vinculada, entra mesmo assim (não há "OS travada" pra checar).
+    const partsEntregues=partsAll.filter(p=>{
+      if(!norm(p.status).includes('RECEBID'))return false;
+      if(!p.updated_at||new Date(p.updated_at)<days30Ago)return false;
+      const linked=p.service_order_id?ordersById.get(String(p.service_order_id)):null;
+      if(!linked)return true;
+      return !['FINALIZADA','PRONTO PARA ENTREGA'].includes(norm(linked.status));
+    });
     const finMap=new Map(safe(by['Financeiro'].data).map(f=>[String(f.service_order_id),f]));
     const partsTotalMap=new Map();
     safe(by['Peças do Orçamento'].data).forEach(p=>{
@@ -894,7 +919,7 @@
     }
 
     const drills={active,analysis,approval,repair,ready,noTech,urgent,overdueAnalysis,overdueApproval,overdueRepair,readyOverdue7,readyOverdue3,orcamentosMes:orcamentosMes.rows,entreguesMes:entreguesMes.rows,repeatClientOrders,oppApproval,oppReady,oppOverdueRepair,oppOverdueApproval:oppApproval.filter(o=>age(o)>3),oppReadyOverdue3,retiradasHojeOrders,prazosCriticosOrders,...gvDrills,...prodDrills};
-    const partsDrills={partsAll,partsPendentes,partsCompra,partsEntrega,partsAtrasadas,partsRecebidasHoje};
+    const partsDrills={partsAll,partsAbertos,partsCotacao,partsEntrega,partsAtrasadas,partsEntregues};
     const tasksDrills={tasks};
     const caseDrills={casesAbertos,casesNovos,casesAndamento,casesResolvidos,myCases};
 
@@ -963,15 +988,15 @@
           ${taskRow('Tirar novos casos de atenção',casesNovos.length,'cases:casesNovos')}
           ${taskRow('Retornar clientes pendentes',tasks.length,'tasks:tasks')}
           ${taskRow('Acompanhar orçamentos sem resposta',oppApproval.length,'oppApproval')}
-          ${taskRow('Aprovar pedidos de peças',partsPendentes.length,'parts:partsPendentes')}
+          ${taskRow('Aprovar pedidos de peças',partsAbertos.length,'parts:partsAbertos')}
           ${taskRow('Confirmar aparelhos prontos',oppReady.length,'oppReady')}
         </section>
         <section class="vx-c-list-card vx-c-list-parts"><div class="vx-c-title"><h3>▦ Pedidos de Peças</h3><a href="#" data-drill="parts:partsAll" data-title="Pedidos de Peças">Ver todas</a></div>
-          ${iconRow('◷','Pendentes de aprovação',partsPendentes.length,'','parts:partsPendentes')}
-          ${iconRow('🛒','Em compra',partsCompra.length,'','parts:partsCompra')}
-          ${iconRow('🚚','Aguardando entrega',partsEntrega.length,'','parts:partsEntrega')}
+          ${iconRow('◷','Em Aberto',partsAbertos.length,'','parts:partsAbertos')}
+          ${iconRow('🛒','Aguardando cotação/fornecedor',partsCotacao.length,'','parts:partsCotacao')}
+          ${iconRow('🚚','Aguardando Entrega',partsEntrega.length,'','parts:partsEntrega')}
           ${iconRow('⚠','Atrasados',partsAtrasadas.length,'warn','parts:partsAtrasadas')}
-          ${iconRow('✓','Recebidos hoje',partsRecebidasHoje.length,'ok','parts:partsRecebidasHoje')}
+          ${iconRow('✓','Entregues',partsEntregues.length,'ok','parts:partsEntregues')}
         </section>
         ${role()!=='TECNICO'?`<section class="vx-c-list-card vx-c-list-exception"><div class="vx-c-title"><h3>⚠ Gestão por Exceção</h3></div>
           ${iconRow('⚠','OS paradas há mais de 7 dias',oppOverdueRepair.length,'warn','oppOverdueRepair')}
@@ -1033,6 +1058,13 @@
   // window.vxOsStatusLabel/window.vxOpenAgendarForOs já usados nesta
   // sessão pra reaproveitar função de um arquivo em outro sem duplicar.
   window.vxOpenCaseDetail=caseDetailModal;
+  // Achado do usuário em 2026-09-05: quem está dentro da OS não tinha
+  // como saber que já existe um pedido de peça em aberto pra ela --
+  // exposto aqui pro badge sutil de os-detail-v0812.js reaproveitar o
+  // MESMO modal de detalhe/lista (nunca duplicar a UI de pedidos de
+  // peça em dois arquivos).
+  window.vxOpenPartRequestModal=partRequestModal;
+  window.vxOpenPartsListModal=partsModal;
 
   window.VoxAssistRuntime=window.VoxAssistRuntime||{};
   window.VoxAssistRuntime.dashboard={name:'Dashboard Canônico V1',version:'2.0.0',owner:'runtime/dashboard-canonical-v1.js'};
