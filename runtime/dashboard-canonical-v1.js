@@ -233,20 +233,28 @@
   // -- fornecedor/Aguardando Entrega/Atrasados/Entregues), o
   // vocabulário de status por trás continua o mesmo.
   const PARTS_STATUS_OPTIONS=['SOLICITADO','EM COMPRA','AGUARDANDO ENTREGA','RECEBIDO'];
+  // Achado do usuário em 2026-09-05: precisava dar pra cancelar um
+  // pedido, tanto por quem enviou quanto por quem recebeu -- em vez de
+  // um botão/permissão à parte (o resto da edição já é aberta pra
+  // qualquer um da empresa que abrir o pedido, sem checagem de dono),
+  // CANCELADO vira só mais uma opção na mesma situação já editável.
+  const PARTS_CANCEL_STATUS='CANCELADO';
   // Rótulos exibidos (select da situação, selo da lista) -- valor
   // gravado no banco continua o canônico acima, só o texto mudou pra
   // bater com os nomes novos dos baldes do card.
-  const PARTS_STATUS_LABELS={SOLICITADO:'Em Aberto','EM COMPRA':'Aguardando cotação/fornecedor','AGUARDANDO ENTREGA':'Aguardando Entrega',RECEBIDO:'Entregue'};
+  const PARTS_STATUS_LABELS={SOLICITADO:'Em Aberto','EM COMPRA':'Aguardando cotação/fornecedor','AGUARDANDO ENTREGA':'Aguardando Entrega',RECEBIDO:'Entregue',CANCELADO:'Cancelado'};
   const partsStatusLabel=s=>PARTS_STATUS_LABELS[norm(s)]||(s?s.charAt(0).toUpperCase()+s.slice(1).toLowerCase():'—');
-  const partsIsLate=p=>!!p.expected_date&&new Date(p.expected_date)<new Date(new Date().toDateString())&&!norm(p.status).includes('RECEBID');
+  const partsIsCancelled=p=>norm(p.status)===PARTS_CANCEL_STATUS;
+  const partsIsLate=p=>!!p.expected_date&&new Date(p.expected_date)<new Date(new Date().toDateString())&&!norm(p.status).includes('RECEBID')&&!partsIsCancelled(p);
   function partsStatusOptionsHtml(p){
     const cur=norm(p.status);
-    const opts=PARTS_STATUS_OPTIONS.includes(cur)?PARTS_STATUS_OPTIONS:[...PARTS_STATUS_OPTIONS,cur||'SOLICITADO'];
+    const base=[...PARTS_STATUS_OPTIONS,PARTS_CANCEL_STATUS];
+    const opts=base.includes(cur)?base:[...base,cur||'SOLICITADO'];
     return opts.map(s=>`<option value="${E(s)}"${cur===s?' selected':''}>${E(partsStatusLabel(s))}</option>`).join('');
   }
   function partsStatusBadge(p){
     const cur=norm(p.status);
-    const tone=cur.includes('RECEBID')?'ok':cur.includes('COMPRA')?'info':cur.includes('ENTREGA')?'warn':'muted';
+    const tone=cur===PARTS_CANCEL_STATUS?'cancel':cur.includes('RECEBID')?'ok':cur.includes('COMPRA')?'info':cur.includes('ENTREGA')?'warn':'muted';
     return `<span class="vx-c-parts-status-badge tone-${tone}">${E(partsStatusLabel(p.status))}</span>`;
   }
   // Achado do usuário em 2026-09-05: a lista ficou difícil de ler com
@@ -312,9 +320,11 @@
     bg.onclick=e=>{if(e.target===bg)close()};
     if(linkedOs)bg.querySelector('[data-open-os]')?.addEventListener('click',e=>{e.preventDefault();close();(window.render||render)('os:'+linkedOs.id)});
     bg.querySelector('[data-save]').onclick=async()=>{
+      const newStatus=bg.querySelector('#vxPartReqStatus').value;
+      if(newStatus===PARTS_CANCEL_STATUS&&norm(p.status)!==PARTS_CANCEL_STATUS&&!confirm('Cancelar este pedido de peça?'))return;
       const btn=bg.querySelector('[data-save]');btn.disabled=true;
       const body={
-        status:bg.querySelector('#vxPartReqStatus').value,
+        status:newStatus,
         expected_date:bg.querySelector('#vxPartReqDate').value||null,
         supplier:bg.querySelector('#vxPartReqSupplier').value.trim()||null,
         order_number:bg.querySelector('#vxPartReqOrderNumber').value.trim()||null,
@@ -589,7 +599,7 @@
     const partsAbertos=partsAll.filter(p=>['PENDENTE','SOLICITADO'].includes(norm(p.status)));
     const partsCotacao=partsAll.filter(p=>norm(p.status).includes('COMPRA'));
     const partsEntrega=partsAll.filter(p=>norm(p.status).includes('ENTREGA'));
-    const partsAtrasadas=partsAll.filter(p=>p.expected_date&&new Date(p.expected_date)<today&&!norm(p.status).includes('RECEBID'));
+    const partsAtrasadas=partsAll.filter(p=>p.expected_date&&new Date(p.expected_date)<today&&!norm(p.status).includes('RECEBID')&&norm(p.status)!==PARTS_CANCEL_STATUS);
     // "Entregues": renomeado de "Recebidos hoje" -- agora é uma janela
     // de 30 dias (não só hoje) E só quando a OS vinculada AINDA NÃO
     // terminou (nem FINALIZADA nem PRONTO PARA ENTREGA) -- é um aviso
