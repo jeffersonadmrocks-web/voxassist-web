@@ -94,11 +94,20 @@
     card.innerHTML=`<span class="vx-alert-card-msg">${esc(msg)}</span><div class="vx-alert-card-actions">${osId?'<button type="button" data-open>Abrir OS →</button>':''}<button type="button" data-dismiss aria-label="Fechar">✕</button></div>`;
     stack.prepend(card);
     card.querySelector('[data-dismiss]').onclick=()=>card.remove();
-    // Achado do usuário em 2026-09-04: abre em NOVA aba (não navega a
-    // atual) -- é um alerta, o operador pode estar no meio de uma ação
-    // importante na aba de origem (window.vxOpenOsInNewTab,
-    // open-os-newtab-v0904.js).
-    if(osId)card.querySelector('[data-open]').onclick=()=>{card.remove();window.vxOpenOsInNewTab?.(osId)};
+    // Achado do usuário em 2026-09-04 (correção de interpretação: o
+    // pedido era abrir numa aba do PRÓPRIO SISTEMA -- o app já tem seu
+    // próprio sistema de abas, state.openTabs/renderTabs em app.js --
+    // não uma nova aba do NAVEGADOR, que foi o que a versão anterior
+    // fez por engano). Só adiciona a OS como uma aba nova na barra de
+    // abas do app, SEM trocar pra ela -- a tela atual do operador
+    // continua exatamente como estava; ele abre a aba nova quando
+    // quiser, clicando nela.
+    if(osId)card.querySelector('[data-open]').onclick=()=>{
+      card.remove();
+      const view='os:'+osId;
+      if(typeof state!=='undefined'&&!state.openTabs.includes(view))state.openTabs.push(view);
+      if(typeof renderTabs==='function')renderTabs();
+    };
   }
 
   // Achado do usuário em 2026-09-04 (causa real, achada pelos logs de
