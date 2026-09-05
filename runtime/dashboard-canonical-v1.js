@@ -1068,4 +1068,25 @@
 
   window.VoxAssistRuntime=window.VoxAssistRuntime||{};
   window.VoxAssistRuntime.dashboard={name:'Dashboard Canônico V1',version:'2.0.0',owner:'runtime/dashboard-canonical-v1.js'};
+
+  // Achado do usuário em 2026-09-05: pediu atualização periódica do
+  // próprio Dashboard, ALÉM do alerta persistente (event-alerts-
+  // v0904.js, que já cobre eventos individuais) -- hoje os cartões só
+  // recarregam com F5 ou ao sair/voltar da tela de Início. Refaz
+  // renderDashboard() sozinho a cada 60s, SÓ enquanto o Dashboard é a
+  // tela ativa (state.view==='dashboard') -- nunca sobrescreve #app
+  // se o usuário estiver em outra tela (OS, chat etc.). Preserva a
+  // posição de rolagem, já que um refresh completo remonta o #app
+  // inteiro (senão voltaria pro topo a cada ciclo).
+  const DASHBOARD_REFRESH_MS=60000;
+  async function refreshDashboardIfActive(){
+    if(typeof state==='undefined'||state.view!=='dashboard')return;
+    const scrollY=window.scrollY;
+    try{
+      await window.renderDashboard();
+      window.scrollTo(0,scrollY);
+    }catch(_e){/* atualização automática nunca pode travar a tela */}
+  }
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshDashboardIfActive();});
+  setInterval(refreshDashboardIfActive,DASHBOARD_REFRESH_MS);
 })();
