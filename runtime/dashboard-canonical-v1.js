@@ -1073,12 +1073,12 @@
   // próprio Dashboard, ALÉM do alerta persistente (event-alerts-
   // v0904.js, que já cobre eventos individuais) -- hoje os cartões só
   // recarregam com F5 ou ao sair/voltar da tela de Início. Refaz
-  // renderDashboard() sozinho a cada 60s, SÓ enquanto o Dashboard é a
+  // renderDashboard() sozinho a cada 10min, SÓ enquanto o Dashboard é a
   // tela ativa (state.view==='dashboard') -- nunca sobrescreve #app
   // se o usuário estiver em outra tela (OS, chat etc.). Preserva a
   // posição de rolagem, já que um refresh completo remonta o #app
   // inteiro (senão voltaria pro topo a cada ciclo).
-  const DASHBOARD_REFRESH_MS=60000;
+  const DASHBOARD_REFRESH_MS=600000;
   async function refreshDashboardIfActive(){
     if(typeof state==='undefined'||state.view!=='dashboard')return;
     const scrollY=window.scrollY;
