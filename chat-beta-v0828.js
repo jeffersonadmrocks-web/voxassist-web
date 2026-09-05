@@ -1008,7 +1008,12 @@
       }
       await new Promise(r=>setTimeout(r,60));
     }
-    if(input){input.value=draftText;input.focus()}
+    // Achado do usuário em 2026-09-05: rascunho preenchido por aqui
+    // (draftText via .value=) não dispara o evento "input" -- o
+    // auto-crescimento do campo (chat-beta-v0828.js, listener no
+    // 'input') só reagia depois de alguma digitação manual (ex.: um
+    // Shift+Enter). Ajusta a altura direto aqui também, mesma técnica.
+    if(input){input.value=draftText;input.style.height='auto';input.style.height=input.scrollHeight+'px';input.focus()}
   };
 
   async function selectConversa(id,skipListRerender){
@@ -1353,7 +1358,9 @@
     const q=cache.quickReplies.find(x=>String(x.id)===String(id));
     if(!q)return;
     const input=document.querySelector('#vxMsgForm textarea[name=body]');
-    if(input)input.value=q.body;
+    // Mesmo achado da linha ~1016 (draft do NPS): .value= direto não
+    // dispara "input", então o auto-crescimento não reagia sozinho.
+    if(input){input.value=q.body;input.style.height='auto';input.style.height=input.scrollHeight+'px'}
     quickReplyPopoverOpen=false;
     document.getElementById('vxQuickReplyPopover').hidden=true;
     input?.focus();
