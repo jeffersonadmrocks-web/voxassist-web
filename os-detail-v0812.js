@@ -287,9 +287,14 @@
       const myId=state.session?.user?.id||state.profile?.id||null;
       const companyId=state.profile?.active_company_id;
       const assignedTo=bg.querySelector('#vxPecaAssignedTo').value||null;
+      // Achado do usuário em 2026-09-05: juntar peça + observação numa
+      // string só (description) ficava ilegível na lista do Dashboard
+      // e não dava pra separar os dois depois -- agora vão em colunas
+      // separadas (parts_requests.notes é aditiva, migration
+      // 20260905010000).
       const rows=sel.length
-        ?sel.map(p=>({service_order_id:o.id,description:obs?`${p.desc} — ${obs}`:p.desc,code:p.code,quantity:p.qty,status:'SOLICITADO',requested_by:myId,assigned_to:assignedTo,company_id:companyId}))
-        :[{service_order_id:o.id,description:obs,code:null,quantity:1,status:'SOLICITADO',requested_by:myId,assigned_to:assignedTo,company_id:companyId}];
+        ?sel.map(p=>({service_order_id:o.id,description:p.desc,code:p.code,quantity:p.qty,notes:obs||null,status:'SOLICITADO',requested_by:myId,assigned_to:assignedTo,company_id:companyId}))
+        :[{service_order_id:o.id,description:obs,code:null,quantity:1,notes:null,status:'SOLICITADO',requested_by:myId,assigned_to:assignedTo,company_id:companyId}];
       try{
         await api('parts_requests',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(rows)});
         toast?.('Solicitação de peça enviada.');

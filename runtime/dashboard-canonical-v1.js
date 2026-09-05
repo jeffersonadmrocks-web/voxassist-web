@@ -232,50 +232,96 @@
   // valores canônicos, sem CHECK constraint no schema pra permitir.
   const PARTS_STATUS_OPTIONS=['SOLICITADO','EM COMPRA','AGUARDANDO ENTREGA','RECEBIDO'];
   const partsIsLate=p=>!!p.expected_date&&new Date(p.expected_date)<new Date(new Date().toDateString())&&!norm(p.status).includes('RECEBID');
-  function partsModal(title,rows){
+  function partsStatusOptionsHtml(p){
+    const cur=norm(p.status);
+    const opts=PARTS_STATUS_OPTIONS.includes(cur)?PARTS_STATUS_OPTIONS:[...PARTS_STATUS_OPTIONS,cur||'SOLICITADO'];
+    return opts.map(s=>`<option value="${E(s)}"${cur===s?' selected':''}>${E(s.charAt(0)+s.slice(1).toLowerCase())}</option>`).join('');
+  }
+  function partsStatusBadge(p){
+    const cur=norm(p.status);
+    const tone=cur.includes('RECEBID')?'ok':cur.includes('COMPRA')?'info':cur.includes('ENTREGA')?'warn':'muted';
+    const label=p.status?p.status.charAt(0).toUpperCase()+p.status.slice(1).toLowerCase():'—';
+    return `<span class="vx-c-parts-status-badge tone-${tone}">${E(label)}</span>`;
+  }
+  // Achado do usuário em 2026-09-05: a lista ficou difícil de ler com
+  // situação/previsão editáveis direto na linha (texto muito denso, e
+  // description vinha com a observação inteira concatenada). Lista
+  // agora é só um resumo limpo e CLICÁVEL; o detalhe completo (campos
+  // separados, igual ao modal de solicitar) abre num popup próprio
+  // (partRequestModal) -- é lá que fica a edição de verdade.
+  function partsModal(title,rows,ordersById=new Map()){
     document.querySelector('#vxCanonicalModal')?.remove();
     const bg=document.createElement('div');bg.id='vxCanonicalModal';bg.className='vx-c-modal-bg';
-    function statusOptions(p){
-      const cur=norm(p.status);
-      const opts=PARTS_STATUS_OPTIONS.includes(cur)?PARTS_STATUS_OPTIONS:[...PARTS_STATUS_OPTIONS,cur||'SOLICITADO'];
-      return opts.map(s=>`<option value="${E(s)}"${cur===s?' selected':''}>${E(s.charAt(0)+s.slice(1).toLowerCase())}</option>`).join('');
-    }
     function row(p){
-      return `<tr data-row="${E(p.id)}"><td><b>${E(p.description||'—')}</b></td><td>${E(p.code||'—')}</td><td>${E(p.quantity||1)}</td><td>${E(p.supplier||'—')}</td>`
-        +`<td><select class="vx-c-parts-status" data-id="${E(p.id)}">${statusOptions(p)}</select></td>`
-        +`<td><input type="date" class="vx-c-parts-date" data-id="${E(p.id)}" value="${p.expected_date?String(p.expected_date).slice(0,10):''}"></td>`
-        +`<td class="vx-c-parts-late-cell">${partsIsLate(p)?'<span class="vx-c-parts-late-badge">⚠ Atrasado</span>':''}</td></tr>`;
+      return `<tr data-row="${E(p.id)}" class="vx-c-parts-row"><td><b>${E(p.description||'—')}</b>${p.notes?' <span class="vx-c-parts-note-flag" title="Tem observação">📝</span>':''}</td><td>${E(p.code||'—')}</td><td>${E(p.quantity||1)}</td><td>${partsStatusBadge(p)}</td><td>${p.expected_date?new Date(p.expected_date+'T00:00:00').toLocaleDateString('pt-BR'):'—'}</td><td>${partsIsLate(p)?'<span class="vx-c-parts-late-badge">⚠ Atrasado</span>':''}</td></tr>`;
     }
-    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'}</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Peça</th><th>Código</th><th>Qtd</th><th>Fornecedor</th><th>Situação</th><th>Previsão</th><th>Atraso</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
+    bg.innerHTML=`<div class="vx-c-modal"><div class="vx-c-modal-head"><div><strong>${E(title)}</strong><small>${rows.length} registro${rows.length===1?'':'s'} • clique numa linha pra ver o detalhe</small></div><button type="button" data-close>×</button></div><div class="vx-c-modal-body">${rows.length?`<table><thead><tr><th>Peça</th><th>Código</th><th>Qtd</th><th>Situação</th><th>Previsão</th><th>Atraso</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table>`:'<div class="vx-c-empty">Nenhum registro encontrado.</div>'}</div></div>`;
     document.body.appendChild(bg);
     bg.querySelector('[data-close]').onclick=()=>bg.remove();
     bg.onclick=e=>{if(e.target===bg)bg.remove();};
-    function refreshLate(tr,p){
-      const cell=tr.querySelector('.vx-c-parts-late-cell');
-      if(cell)cell.innerHTML=partsIsLate(p)?'<span class="vx-c-parts-late-badge">⚠ Atrasado</span>':'';
-    }
-    bg.querySelectorAll('.vx-c-parts-status').forEach(sel=>sel.onchange=async()=>{
-      const id=sel.dataset.id,p=rows.find(r=>String(r.id)===String(id));if(!p)return;
-      const tr=sel.closest('tr');sel.disabled=true;
-      try{
-        await api(`parts_requests?id=eq.${id}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({status:sel.value,updated_at:new Date().toISOString()})});
-        p.status=sel.value;p.updated_at=new Date().toISOString();
-        refreshLate(tr,p);
-        toast?.('Situação do pedido atualizada.');
-      }catch(err){toast?.('Não foi possível atualizar a situação: '+err.message,'err');}
-      sel.disabled=false;
+    bg.querySelectorAll('tr[data-row]').forEach(tr=>tr.onclick=()=>{
+      const p=rows.find(r=>String(r.id)===tr.dataset.row);
+      if(p)partRequestModal(p,ordersById);
     });
-    bg.querySelectorAll('.vx-c-parts-date').forEach(inp=>inp.onchange=async()=>{
-      const id=inp.dataset.id,p=rows.find(r=>String(r.id)===String(id));if(!p)return;
-      const tr=inp.closest('tr');inp.disabled=true;
+  }
+
+  // Detalhe de UM pedido de peça, campos separados (peça, código,
+  // quantidade, OS vinculada, quem pediu, observação) + edição de
+  // situação/previsão/fornecedor/nº do pedido/responsável, tudo salvo
+  // junto num só "Salvar alterações" (em vez de auto-salvar campo a
+  // campo, que era o que a lista fazia antes).
+  async function partRequestModal(p,ordersById){
+    document.querySelector('#vxPartReqModal')?.remove();
+    const bg=document.createElement('div');bg.id='vxPartReqModal';bg.className='vx-c-modal-bg';
+    const linkedOs=p.service_order_id?ordersById.get(String(p.service_order_id)):null;
+    const profiles=await caseProfilesList();
+    const nameOf=id=>id?(profiles.find(x=>String(x.id)===String(id))?.full_name||'—'):'—';
+    bg.innerHTML=`<div class="vx-c-modal vx-c-partreq-modal">
+      <div class="vx-c-modal-head"><div><strong>🔧 ${E(p.description||'Peça')}</strong><small>${linkedOs?`OS ${E(linkedOs.os_number)}`:'Sem OS vinculada'}</small></div><button type="button" data-close>×</button></div>
+      <div class="vx-c-modal-body vx-c-partreq-body">
+        <div class="vx-c-partreq-grid">
+          <div><label>Peça / Descrição</label><div class="vx-c-partreq-value">${E(p.description||'—')}</div></div>
+          <div><label>Código</label><div class="vx-c-partreq-value">${E(p.code||'—')}</div></div>
+          <div><label>Quantidade</label><div class="vx-c-partreq-value">${E(p.quantity||1)}</div></div>
+          <div><label>OS vinculada</label><div class="vx-c-partreq-value">${linkedOs?`<a href="#" data-open-os="${E(linkedOs.id)}">OS ${E(linkedOs.os_number)} →</a>`:'—'}</div></div>
+          <div><label>Solicitado por</label><div class="vx-c-partreq-value">${E(nameOf(p.requested_by))}</div></div>
+          <div><label>Criado em</label><div class="vx-c-partreq-value">${p.created_at?new Date(p.created_at).toLocaleString('pt-BR'):'—'}</div></div>
+        </div>
+        ${p.notes?`<div class="vx-c-partreq-notes"><label>Observações</label><p>${E(p.notes)}</p></div>`:''}
+        <div class="vx-c-partreq-divider"></div>
+        <div class="vx-c-partreq-grid">
+          <div><label>Situação</label><select id="vxPartReqStatus">${partsStatusOptionsHtml(p)}</select></div>
+          <div><label>Previsão de chegada</label><input type="date" id="vxPartReqDate" value="${p.expected_date?String(p.expected_date).slice(0,10):''}"></div>
+          <div><label>Fornecedor</label><input id="vxPartReqSupplier" value="${E(p.supplier||'')}"></div>
+          <div><label>Nº do pedido</label><input id="vxPartReqOrderNumber" value="${E(p.order_number||'')}"></div>
+          <div class="vx-field-wide"><label>Atribuído a</label><select id="vxPartReqAssigned"><option value="">Sem responsável específico</option>${profiles.map(pr=>`<option value="${E(pr.id)}"${String(p.assigned_to)===String(pr.id)?' selected':''}>${E(pr.full_name)}</option>`).join('')}</select></div>
+        </div>
+        ${partsIsLate(p)?'<div class="vx-c-parts-late-badge">⚠ Atrasado</div>':''}
+      </div>
+      <div class="vx-modal-actions vx-c-partreq-actions"><div></div><div><button type="button" data-close>Fechar</button><button type="button" class="primary" data-save>💾 Salvar alterações</button></div></div>
+    </div>`;
+    document.body.appendChild(bg);
+    const close=()=>bg.remove();
+    bg.querySelectorAll('[data-close]').forEach(b=>b.onclick=close);
+    bg.onclick=e=>{if(e.target===bg)close()};
+    if(linkedOs)bg.querySelector('[data-open-os]')?.addEventListener('click',e=>{e.preventDefault();close();(window.render||render)('os:'+linkedOs.id)});
+    bg.querySelector('[data-save]').onclick=async()=>{
+      const btn=bg.querySelector('[data-save]');btn.disabled=true;
+      const body={
+        status:bg.querySelector('#vxPartReqStatus').value,
+        expected_date:bg.querySelector('#vxPartReqDate').value||null,
+        supplier:bg.querySelector('#vxPartReqSupplier').value.trim()||null,
+        order_number:bg.querySelector('#vxPartReqOrderNumber').value.trim()||null,
+        assigned_to:bg.querySelector('#vxPartReqAssigned').value||null,
+        updated_at:new Date().toISOString(),
+      };
       try{
-        await api(`parts_requests?id=eq.${id}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({expected_date:inp.value||null})});
-        p.expected_date=inp.value||null;
-        refreshLate(tr,p);
-        toast?.('Previsão de chegada atualizada.');
-      }catch(err){toast?.('Não foi possível atualizar a previsão: '+err.message,'err');}
-      inp.disabled=false;
-    });
+        await api(`parts_requests?id=eq.${p.id}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(body)});
+        Object.assign(p,body);
+        toast?.('Pedido de peça atualizado.');
+        close();
+      }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');btn.disabled=false;}
+    };
   }
 
   // Modal pra ver o histórico completo do Feed (achado do usuário em
@@ -969,7 +1015,7 @@
       ev.preventDefault();
       const k=el.dataset.drill;
       const title=el.dataset.title||el.textContent.trim()||'Detalhamento';
-      if(k.startsWith('parts:'))return partsModal(title,partsDrills[k.slice(6)]||[]);
+      if(k.startsWith('parts:'))return partsModal(title,partsDrills[k.slice(6)]||[],ordersById);
       if(k.startsWith('tasks:'))return tasksModal(title,tasksDrills[k.slice(6)]||[]);
       if(k.startsWith('cases:')||k==='casesAbertos')return casesModal(title,caseDrills[k==='casesAbertos'?'casesAbertos':k.slice(6)]||[],ordersById);
       if(k.startsWith('mycase:')){const c=myCases.find(x=>String(x.id)===k.slice(7));if(c)return caseDetailModal(c,ordersById);return;}
