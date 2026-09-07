@@ -16,14 +16,20 @@
   // Achado do usuário em 2026-09-07: cada card novo de Configurações
   // (Grupos/Lojas/Integrações/Agenda) ia direto pra .vx-admin-page,
   // que é grid de UMA coluna só -- empilhava tudo numa lista longa.
-  // .vx-admin-grid (2 colunas) já existe e é usado no resto desse
-  // mesmo painel -- um wrapper compartilhado (mesmo id, criado pelo
-  // primeiro card que rodar, reaproveitado pelos demais) deixa os 4
-  // cards lado a lado em vez de empilhados, sem os arquivos
-  // precisarem se conhecer entre si.
+  // Primeira tentativa reaproveitou a classe .vx-admin-grid já
+  // existente nesse painel -- ERRADO: essa classe é usada como GATILHO
+  // de ativação por pelo menos 4 arquivos antigos e adormecidos
+  // (company-hierarchy-v0813.js, company-management-final-v0813.js,
+  // company-multilist-fix-v0813.js, company-store-model-v0813.js),
+  // cada um esperando encontrar `.vx-admin-grid .vx-admin-card:
+  // first-child`/`:nth-child(2)` = EMPRESAS/USUÁRIOS (de uma versão
+  // antiga da tela que não existe mais) pra sequestrar/duplicar
+  // conteúdo. Criar QUALQUER elemento com essa classe "acorda" os
+  // quatro ao mesmo tempo. Classe própria (vx-config-extras-grid,
+  // CSS novo abaixo) evita esse gatilho por completo.
   function extrasGrid(page){
     let grid=page.querySelector('#vxAdminExtrasGrid');
-    if(!grid){grid=document.createElement('div');grid.id='vxAdminExtrasGrid';grid.className='vx-admin-grid';page.appendChild(grid);}
+    if(!grid){grid=document.createElement('div');grid.id='vxAdminExtrasGrid';grid.className='vx-config-extras-grid';page.appendChild(grid);}
     return grid;
   }
 
@@ -103,6 +109,6 @@
   new MutationObserver(()=>{if(state?.view==='usuarios')scheduleEnhance();}).observe(appRoot,{childList:true,subtree:true});
 
   const style=document.createElement('style');
-  style.textContent=`.vx-sg-help{font-size:10px;color:#6c7e90;margin:0 0 10px}.vx-sg-list{margin-bottom:10px}.vx-sg-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #edf2f6}.vx-sg-row:first-child{border-top:0}.vx-sg-row b{flex:1;font-size:11.5px}.vx-sg-row.inactive b{color:#8a96a3;text-decoration:line-through}.vx-sg-row span{font-size:9px;font-weight:800;color:#496176;background:#eef3f8;border-radius:4px;padding:2px 6px}.vx-sg-row.inactive span{color:#8a96a3}.vx-sg-row-actions{display:flex;gap:6px}.vx-sg-row-actions button{font-size:9.5px;border:1px solid #cbd7e2;background:#fff;border-radius:5px;padding:4px 8px;cursor:pointer}.vx-sg-row-actions button:hover{background:#f4f8fb}.vx-sg-empty{font-size:11px;color:#8a96a3;margin:0 0 10px}`;
+  style.textContent=`.vx-sg-help{font-size:10px;color:#6c7e90;margin:0 0 10px}.vx-sg-list{margin-bottom:10px}.vx-sg-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #edf2f6}.vx-sg-row:first-child{border-top:0}.vx-sg-row b{flex:1;font-size:11.5px}.vx-sg-row.inactive b{color:#8a96a3;text-decoration:line-through}.vx-sg-row span{font-size:9px;font-weight:800;color:#496176;background:#eef3f8;border-radius:4px;padding:2px 6px}.vx-sg-row.inactive span{color:#8a96a3}.vx-sg-row-actions{display:flex;gap:6px}.vx-sg-row-actions button{font-size:9.5px;border:1px solid #cbd7e2;background:#fff;border-radius:5px;padding:4px 8px;cursor:pointer}.vx-sg-row-actions button:hover{background:#f4f8fb}.vx-sg-empty{font-size:11px;color:#8a96a3;margin:0 0 10px}.vx-config-extras-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:760px){.vx-config-extras-grid{grid-template-columns:1fr}}`;
   document.head.appendChild(style);
 })();

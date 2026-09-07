@@ -21,7 +21,7 @@
   // existente nesse painel) que os outros cards novos usam.
   function extrasGrid(page){
     let grid=page.querySelector('#vxAdminExtrasGrid');
-    if(!grid){grid=document.createElement('div');grid.id='vxAdminExtrasGrid';grid.className='vx-admin-grid';page.appendChild(grid);}
+    if(!grid){grid=document.createElement('div');grid.id='vxAdminExtrasGrid';grid.className='vx-config-extras-grid';page.appendChild(grid);}
     return grid;
   }
 
