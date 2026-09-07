@@ -10,6 +10,7 @@
    Grupos de Atendimento/Lojas/Integrações: GESTOR-only,
    MutationObserver com debounce. */
 (function(){
+  console.log('[cfg-debug] settings-schedule-v0907.js carregou');
   const E=window.esc||((v='')=>String(v??''));
   const DAYS=[['1','Seg'],['2','Ter'],['3','Qua'],['4','Qui'],['5','Sex'],['6','Sáb'],['7','Dom']];
 
@@ -28,6 +29,8 @@
   }
 
   async function enhance(){
+   try{
+    console.log('[cfg-debug] schedule enhance() rodou -- view:',state?.view,'gestor:',isGestor());
     if(state?.view!=='usuarios'||!isGestor())return;
     const page=document.querySelector('.vx-admin-page');
     if(!page||page.dataset.vxSchedule==='1')return;
@@ -38,6 +41,8 @@
     card.id='vxScheduleCard';
     extrasGrid(page).appendChild(card);
     await renderCard(card,cid);
+    console.log('[cfg-debug] schedule card injetado com sucesso');
+   }catch(err){console.error('[cfg-debug] schedule enhance() ERRO:',err);}
   }
 
   async function renderCard(card,cid){

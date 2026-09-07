@@ -12,6 +12,7 @@
    cria tabela nova. RPC admin_upsert_store, migration
    20260907020000. */
 (function(){
+  console.log('[cfg-debug] service-stores-admin-v0907.js carregou');
   const E=window.esc||((v='')=>String(v??''));
 
   function companyId(){return state?.profile?.active_company_id}
@@ -28,6 +29,8 @@
   }
 
   async function enhance(){
+   try{
+    console.log('[cfg-debug] stores-admin enhance() rodou -- view:',state?.view,'gestor:',isGestor());
     if(state?.view!=='usuarios'||!isGestor())return;
     const page=document.querySelector('.vx-admin-page');
     if(!page||page.dataset.vxStoresAdmin==='1')return;
@@ -38,6 +41,8 @@
     card.id='vxStoresAdminCard';
     extrasGrid(page).appendChild(card);
     await renderCard(card,cid);
+    console.log('[cfg-debug] stores-admin card injetado com sucesso');
+   }catch(err){console.error('[cfg-debug] stores-admin enhance() ERRO:',err);}
   }
 
   async function renderCard(card,cid){

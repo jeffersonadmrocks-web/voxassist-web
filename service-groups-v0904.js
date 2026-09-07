@@ -8,6 +8,7 @@
    (MutationObserver + wrap de window.render), reaproveitando o mesmo
    CSS .vx-admin-card/.vx-admin-overlay/.vx-admin-modal já existente. */
 (function(){
+  console.log('[cfg-debug] service-groups-v0904.js carregou');
   const E=window.esc||((v='')=>String(v??''));
 
   function companyId(){return state?.profile?.active_company_id}
@@ -34,6 +35,8 @@
   }
 
   async function enhance(){
+   try{
+    console.log('[cfg-debug] service-groups enhance() rodou -- view:',state?.view,'gestor:',isGestor(),'page:',!!document.querySelector('.vx-admin-page'));
     if(state?.view!=='usuarios'||!isGestor())return;
     const page=document.querySelector('.vx-admin-page');
     if(!page||page.dataset.vxServiceGroups==='1')return;
@@ -44,6 +47,8 @@
     card.id='vxServiceGroupsCard';
     extrasGrid(page).appendChild(card);
     await renderCard(card,cid);
+    console.log('[cfg-debug] service-groups card injetado com sucesso');
+   }catch(err){console.error('[cfg-debug] service-groups enhance() ERRO:',err);}
   }
 
   async function renderCard(card,cid){
