@@ -10,7 +10,6 @@
    Mesmo padrão de injeção validado nesta sessão pra Grupos de
    Atendimento/Lojas: GESTOR-only, MutationObserver com debounce. */
 (function(){
-  console.log('[cfg-debug] settings-integrations-v0907.js carregou');
   const E=window.esc||((v='')=>String(v??''));
 
   function companyId(){return state?.profile?.active_company_id}
@@ -28,7 +27,6 @@
 
   async function enhance(){
    try{
-    console.log('[cfg-debug] integrations enhance() rodou -- view:',state?.view,'gestor:',isGestor());
     if(state?.view!=='usuarios'||!isGestor())return;
     const page=document.querySelector('.vx-admin-page');
     if(!page||page.dataset.vxIntegrations==='1')return;
@@ -39,8 +37,7 @@
     card.id='vxIntegrationsCard';
     extrasGrid(page).appendChild(card);
     await renderCard(card,cid);
-    console.log('[cfg-debug] integrations card injetado com sucesso');
-   }catch(err){console.error('[cfg-debug] integrations enhance() ERRO:',err);}
+   }catch(err){console.error('[integrations] falha ao injetar card:',err);}
   }
 
   async function renderCard(card,cid){
