@@ -620,7 +620,14 @@
       partsTotalMap.set(key,(partsTotalMap.get(key)||0)+Number(p.quantity||0)*Number(p.unit_value||0));
     });
     const validPayments=safe(by['Pagamentos'].data).filter(p=>p.paid_at&&!['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA'].includes(norm(p.status)));
-    const receivedMonth=validPayments.filter(p=>new Date(p.paid_at)>=month0).reduce((s,p)=>s+Number(p.amount||0),0);
+    // Achado do usuário em 2026-09-07: método "DESCONTO" (concedido no
+    // fechamento da OS, na guia Finalizar OS -- fecha o saldo sem virar
+    // receita) não pode entrar em faturamento/ticket médio. Continua
+    // contando em "validPayments" (paidByOrder, saldo já coberto de uma
+    // OS) -- senão uma OS fechada com desconto pareceria eternamente
+    // "a receber" pelo valor que já foi perdoado.
+    const revenuePayments=validPayments.filter(p=>norm(p.method)!=='DESCONTO');
+    const receivedMonth=revenuePayments.filter(p=>new Date(p.paid_at)>=month0).reduce((s,p)=>s+Number(p.amount||0),0);
 
     // Resumo Financeiro -- 6 métricas. Definição original dada pelo
     // usuário em 2026-09-01 (a imagem de referência é só o layout; as
@@ -658,7 +665,7 @@
       return s+Math.max(0,bud-paid);
     },0);
     const mediaDiaria=receivedMonth/Math.max(1,today.getDate());
-    const paidThisMonthOrderIds=new Set(validPayments.filter(p=>new Date(p.paid_at)>=month0).map(p=>String(p.service_order_id)));
+    const paidThisMonthOrderIds=new Set(revenuePayments.filter(p=>new Date(p.paid_at)>=month0).map(p=>String(p.service_order_id)));
     const ticketMedioRecebido=paidThisMonthOrderIds.size?receivedMonth/paidThisMonthOrderIds.size:0;
     const oportunidadeFaturamento=repair.reduce((s,o)=>s+budget(finMap.get(String(o.id)),partsTotalMap.get(String(o.id))),0);
     const failures=results.filter(r=>!r.ok).map(r=>r.label);

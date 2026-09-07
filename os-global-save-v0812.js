@@ -29,9 +29,8 @@
         <label class="vx-field"><span>DATA DA DECISÃO</span><input class="vx-control" type="date" data-entity="order" data-name="approval_date" value="${o.approval_date||''}"></label>
         <label class="vx-field"><span>APROVADO/RECUSADO POR</span><input class="vx-control" data-entity="order" data-name="approval_by" placeholder="NEM SEMPRE É O PRÓPRIO CLIENTE" value="${String(o.approval_by||'').replace(/</g,'&lt;')}"></label>
         <label class="vx-field"><span>PRONTO</span><input class="vx-control" type="datetime-local" data-entity="order" data-name="ready_at" value="${dtLocal(o.ready_at)}"></label>
-        <label class="vx-field"><span>ENTREGA / SAÍDA</span><input class="vx-control" type="datetime-local" data-entity="order" data-name="delivery_at" value="${dtLocal(o.delivery_at)}"></label>
         <label class="vx-field" id="vxRejectReasonWrap" style="grid-column:1/-1;${o.approval_decision==='RECUSADO'?'':'display:none'}"><span>MOTIVO DA RECUSA</span><textarea class="vx-control" data-entity="order" data-name="rejection_reason" style="min-height:64px">${String(o.rejection_reason||'').replace(/</g,'&lt;')}</textarea></label>
-      </div><div style="font-size:10px;color:#687b8e;margin-top:8px">A recusa preserva análise, peças e valores da OS, mas não gera recebimento nem movimentação automática de caixa.</div>`;
+      </div><div style="font-size:10px;color:#687b8e;margin-top:8px">A recusa preserva análise, peças e valores da OS, mas não gera recebimento nem movimentação automática de caixa. Data de entrega/saída e financeiro agora ficam na guia FINALIZAR OS.</div>`;
     host.appendChild(box);
     const decision=q('[data-name="approval_decision"]',box),date=q('[data-name="approval_date"]',box),wrap=q('#vxRejectReasonWrap',box);
     decision.onchange=()=>{wrap.style.display=decision.value==='RECUSADO'?'block':'none';if(decision.value&&!date.value)date.value=today();setDirty(true);};
