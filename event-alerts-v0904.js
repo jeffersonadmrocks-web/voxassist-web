@@ -107,15 +107,18 @@
     // pedido era abrir numa aba do PRÓPRIO SISTEMA -- o app já tem seu
     // próprio sistema de abas, state.openTabs/renderTabs em app.js --
     // não uma nova aba do NAVEGADOR, que foi o que a versão anterior
-    // fez por engano). Só adiciona a OS como uma aba nova na barra de
-    // abas do app, SEM trocar pra ela -- a tela atual do operador
-    // continua exatamente como estava; ele abre a aba nova quando
-    // quiser, clicando nela.
+    // fez por engano). Adiciona a OS como aba na barra de abas do app.
+    // Achado do usuário em 2026-09-07: só adicionar a aba sem trocar
+    // pra ela deixava o botão "Abrir OS →" sem efeito nenhum visível --
+    // o alerta simplesmente sumia e nada parecia acontecer. O botão diz
+    // "Abrir", então precisa realmente abrir (navegar), não só deixar a
+    // aba disponível pra quem reparar que ela apareceu.
     if(osId)card.querySelector('[data-open]').onclick=()=>{
       card.remove();
       const view='os:'+osId;
       if(typeof state!=='undefined'&&!state.openTabs.includes(view))state.openTabs.push(view);
       if(typeof renderTabs==='function')renderTabs();
+      if(typeof render==='function')render(view);
     };
   }
 
