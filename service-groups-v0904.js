@@ -13,6 +13,20 @@
   function companyId(){return state?.profile?.active_company_id}
   function isGestor(){return String(state?.profile?.role||'').toUpperCase()==='GESTOR'}
 
+  // Achado do usuário em 2026-09-07: cada card novo de Configurações
+  // (Grupos/Lojas/Integrações/Agenda) ia direto pra .vx-admin-page,
+  // que é grid de UMA coluna só -- empilhava tudo numa lista longa.
+  // .vx-admin-grid (2 colunas) já existe e é usado no resto desse
+  // mesmo painel -- um wrapper compartilhado (mesmo id, criado pelo
+  // primeiro card que rodar, reaproveitado pelos demais) deixa os 4
+  // cards lado a lado em vez de empilhados, sem os arquivos
+  // precisarem se conhecer entre si.
+  function extrasGrid(page){
+    let grid=page.querySelector('#vxAdminExtrasGrid');
+    if(!grid){grid=document.createElement('div');grid.id='vxAdminExtrasGrid';grid.className='vx-admin-grid';page.appendChild(grid);}
+    return grid;
+  }
+
   async function enhance(){
     if(state?.view!=='usuarios'||!isGestor())return;
     const page=document.querySelector('.vx-admin-page');
@@ -22,7 +36,7 @@
     const card=document.createElement('section');
     card.className='vx-admin-card';
     card.id='vxServiceGroupsCard';
-    page.appendChild(card);
+    extrasGrid(page).appendChild(card);
     await renderCard(card,cid);
   }
 

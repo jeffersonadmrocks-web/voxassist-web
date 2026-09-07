@@ -17,6 +17,16 @@
   function companyId(){return state?.profile?.active_company_id}
   function isGestor(){return String(state?.profile?.role||'').toUpperCase()==='GESTOR'}
 
+  // Achado do usuário em 2026-09-07: card ia direto pra .vx-admin-page
+  // (grid de 1 coluna só) -- empilhava numa lista longa. Reaproveita a
+  // mesma grade compartilhada de 2 colunas (.vx-admin-grid, já
+  // existente nesse painel) que os outros cards novos usam.
+  function extrasGrid(page){
+    let grid=page.querySelector('#vxAdminExtrasGrid');
+    if(!grid){grid=document.createElement('div');grid.id='vxAdminExtrasGrid';grid.className='vx-admin-grid';page.appendChild(grid);}
+    return grid;
+  }
+
   async function enhance(){
     if(state?.view!=='usuarios'||!isGestor())return;
     const page=document.querySelector('.vx-admin-page');
@@ -26,7 +36,7 @@
     const card=document.createElement('section');
     card.className='vx-admin-card';
     card.id='vxStoresAdminCard';
-    page.appendChild(card);
+    extrasGrid(page).appendChild(card);
     await renderCard(card,cid);
   }
 
