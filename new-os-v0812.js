@@ -34,7 +34,7 @@
   async function ensureClient(){
     if(selectedClient)return selectedClient.id;
     const body={name:U($('#newClientName').value),document:U($('#newClientDoc').value),phone_primary:U($('#newClientPhone').value),phone_secondary:U($('#newClientPhone2').value),email:$('#newClientEmail').value.trim(),zip_code:U($('#newClientZip').value),address:U($('#newClientAddress').value),address_number:U($('#newClientNumber').value),complement:U($('#newClientComplement').value),neighborhood:U($('#newClientNeighborhood').value),city:U($('#newClientCity').value),state:U($('#newClientState').value),person_type:norm($('#newClientDoc').value).length>11?'PJ':'PF'};
-    if(!body.name||!body.phone_primary)throw new Error('Informe NOME e TELEFONE do cliente.');
+    if(!body.name||!body.phone_primary||!body.document)throw new Error('Informe NOME, TELEFONE e CPF/CNPJ do cliente.');
     if(body.document){
       const found=(state.clients||[]).find(c=>norm(c.document)===norm(body.document));if(found){selectedClient=found;return found.id}
       const q=await api(`clients?document=eq.${encodeURIComponent(body.document)}&select=*`).catch(()=>[]);if(q?.length){selectedClient=q[0];return q[0].id}
@@ -52,7 +52,7 @@
         <div class="vx-newos-box"><h3>1. RESUMO DO CLIENTE</h3>
           <div class="new-client-search-grid">
             ${f('NOME / RAZÃO SOCIAL *','<input id="newClientName" required autocomplete="off">')}
-            ${f('CPF / CNPJ','<input id="newClientDoc" autocomplete="off">')}
+            ${f('CPF / CNPJ *','<input id="newClientDoc" required autocomplete="off">')}
             ${f('TELEFONE PRINCIPAL *','<input id="newClientPhone" required autocomplete="off">')}
           </div>
           <div id="newClientMatches" class="new-client-matches"><span class="new-client-hint">Nome, CPF/CNPJ e telefone são ao mesmo tempo campos de pesquisa e cadastro.</span></div>
@@ -66,7 +66,7 @@
         <div class="vx-newos-box"><h3>2. RESUMO DO EQUIPAMENTO / ORDEM DE SERVIÇO</h3>
           <div class="vx-newos-field-grid two">
             ${f('TIPO DE PRODUTO *','<input id="productType" required placeholder="TV / REFRIGERADOR / AR-CONDICIONADO">')}
-            ${f('GRUPO DE ATENDIMENTO','<select id="serviceGroupSelect"><option value="">SEM GRUPO</option></select>')}
+            ${f('GRUPO DE ATENDIMENTO *','<select id="serviceGroupSelect" required><option value="">CARREGANDO…</option></select>')}
             ${f('MARCA','<input id="brand">')}${f('MODELO','<input id="model">')}
             ${f('Nº DE SÉRIE','<input id="serial">')}${f('ESTADO DO APARELHO','<select id="condition"><option></option><option>NOVO</option><option>USADO</option><option>ARRANHADO</option><option>AVARIADO</option></select>')}
             ${f('ACESSÓRIOS','<input id="accessories" placeholder="SEM ACESSÓRIOS">')}${f('TIPO DE ATENDIMENTO','<select id="serviceType"><option>INTERNO</option><option>EXTERNO</option></select>')}
@@ -108,8 +108,12 @@
       // lado a lado confundiam; só o de atendimento é funcional
       // (filtra/encaminha pro técnico responsável). Fica logo após
       // TIPO DE PRODUTO, no lugar onde o campo removido estava.
+      // Achado do usuário em 2026-09-07: "SEM GRUPO" permitia criar OS
+      // sem nenhum grupo de atendimento vinculado -- passa a ser
+      // seleção obrigatória (mesmo padrão do storeSelect: placeholder
+      // vazio "SELECIONE…" força escolha real, sem opção de pular).
       const gsel=document.querySelector('#serviceGroupSelect');
-      if(gsel)gsel.innerHTML=`<option value="">SEM GRUPO</option>${groups.map(g=>`<option value="${V(g.id)}">${V(g.name)}</option>`).join('')}`;
+      if(gsel)gsel.innerHTML=groups.length?`<option value="">SELECIONE…</option>${groups.map(g=>`<option value="${V(g.id)}">${V(g.name)}</option>`).join('')}`:'<option value="">Nenhum grupo cadastrado</option>';
     })();
     const modal=document.querySelector('#newNotesModal'),noteText=document.querySelector('#newNotesText'),noteHidden=document.querySelector('#notes');document.querySelector('#newNotesBtn').onclick=()=>{noteText.value=noteHidden.value||'';modal.classList.remove('hidden');noteText.focus()};document.querySelector('#newNotesCancel').onclick=()=>modal.classList.add('hidden');document.querySelector('#newNotesSave').onclick=()=>{noteHidden.value=U(noteText.value);modal.classList.add('hidden');toast('Observação interna preparada para salvar com a OS.')};
     document.querySelector('#saveAdvance').onclick=e=>saveNewUnified(e,true);
@@ -120,7 +124,7 @@
     try{
       const client=await ensureClient(),product=U($('#productType').value),reported=U($('#reported').value);if(!product||!reported)throw new Error('Informe TIPO DE PRODUTO e DEFEITO RELATADO.');
       const storeId=$('#storeSelect')?.value||null;if(!storeId)throw new Error('Selecione a LOJA desta OS.');
-      const serviceGroupId=$('#serviceGroupSelect')?.value||null;
+      const serviceGroupId=$('#serviceGroupSelect')?.value||null;if(!serviceGroupId)throw new Error('Selecione o GRUPO DE ATENDIMENTO desta OS.');
       const eq=await api('equipments',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({current_client_id:client,product_type:product,brand:U($('#brand').value),model:U($('#model').value),serial_number:U($('#serial').value),accessories:U($('#accessories').value||'SEM ACESSÓRIOS')})});if(!eq?.[0]?.id)throw new Error('Não foi possível criar o equipamento.');
       const os=await api('service_orders',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({os_number:genOsNumber(),client_id:client,equipment_id:eq[0].id,service_type:$('#serviceType').value,product_location:$('#productLocation').value,device_condition:U($('#condition').value),reported_defect:reported,internal_notes:U($('#notes').value),status:'AGUARDANDO ANALISE',opened_at:new Date().toISOString(),created_by:state.session.user.id,attendant_id:state.session.user.id,store_id:storeId,service_group_id:serviceGroupId})});if(!os?.[0]?.id)throw new Error('Não foi possível criar a ordem de serviço.');
       await api('os_status_history',{method:'POST',body:JSON.stringify({service_order_id:os[0].id,new_status:'AGUARDANDO ANALISE',change_type:'AUTOMATICO',changed_by:state.session.user.id})});toast('OS salva com sucesso.');await loadCore();render(advance?`os:${os[0].id}`:'os');
