@@ -70,7 +70,7 @@
             ${f('MARCA','<input id="brand">')}${f('MODELO','<input id="model">')}
             ${f('Nº DE SÉRIE','<input id="serial">')}${f('ESTADO DO APARELHO','<select id="condition"><option></option><option>NOVO</option><option>USADO</option><option>ARRANHADO</option><option>AVARIADO</option></select>')}
             ${f('ACESSÓRIOS','<input id="accessories" placeholder="SEM ACESSÓRIOS">')}${f('TIPO DE ATENDIMENTO','<select id="serviceType"><option>INTERNO</option><option>EXTERNO</option></select>')}
-            ${f('LOCAL DO PRODUTO','<select id="productLocation"><option>LABORATÓRIO</option><option>CONSUMIDOR</option></select>')}${f('LOJA *','<select id="storeSelect"><option value="">CARREGANDO…</option></select>')}
+            ${f('LOCAL DO PRODUTO','<select id="productLocation"><option>EXTERNO</option><option>OFICINA</option></select>')}
             ${f('DEFEITO RELATADO *','<textarea id="reported" required></textarea>','wide')}
           </div>
           <input id="notes" type="hidden" value=""><button type="button" class="vx-newos-f11" id="newNotesBtn">F11 – OBSERVAÇÕES INTERNAS</button>
@@ -83,23 +83,14 @@
 
     ['newClientName','newClientDoc','newClientPhone'].forEach(id=>document.querySelector('#'+id).addEventListener('input',()=>{document.querySelector('#'+id).value=U(document.querySelector('#'+id).value);lookupClient()}));
     ['newClientPhone2','newClientZip','newClientAddress','newClientNumber','newClientComplement','newClientNeighborhood','newClientCity','newClientState','productType','brand','model','serial','accessories','reported'].forEach(id=>document.querySelector('#'+id)?.addEventListener('input',()=>{document.querySelector('#'+id).value=U(document.querySelector('#'+id).value)}));
-    // Achado do usuário em 2026-09-04: store_id ficava null quando quem
-    // cria a OS não tem profiles.store_id fixo (ex.: gestor com acesso
-    // a mais de uma loja) -- a OS nunca sabia "de qual loja" ela era,
-    // e o cabeçalho ficava sem mostrar LOJA. Seleção manual, obrigatória,
-    // pré-marcada na loja do próprio perfil quando ele tiver uma só.
+    // Achado do usuário em 2026-09-07: campo LOJA removido -- a OS já é
+    // isolada pela empresa ativa no momento do cadastro (trigger
+    // trg_fill_company preenche service_orders.company_id sozinho antes
+    // do insert); store_id continua existindo na tabela (nullable), só
+    // não é mais uma escolha manual obrigatória aqui.
     (async()=>{
       const cid=state.profile?.active_company_id;
-      const [stores,groups]=await Promise.all([
-        cid?api(`stores?company_id=eq.${cid}&active=eq.true&select=id,name&order=name`).catch(()=>[]):[],
-        cid?api(`service_groups?company_id=eq.${cid}&active=eq.true&select=id,name&order=name`).catch(()=>[]):[],
-      ]);
-      const sel=document.querySelector('#storeSelect');
-      if(sel){
-        sel.innerHTML=stores.length?`<option value="">SELECIONE…</option>${stores.map(s=>`<option value="${V(s.id)}">${V(s.name)}</option>`).join('')}`:'<option value="">Nenhuma loja cadastrada</option>';
-        if(state.profile?.store_id&&stores.some(s=>String(s.id)===String(state.profile.store_id)))sel.value=state.profile.store_id;
-        else if(stores.length===1)sel.value=stores[0].id;
-      }
+      const groups=cid?await api(`service_groups?company_id=eq.${cid}&active=eq.true&select=id,name&order=name`).catch(()=>[]):[];
       // Achado do usuário em 2026-09-04: "Grupo de Atendimento" (área de
       // responsabilidade que o gestor cadastra em Configurações),
       // escolha manual, opcional. Achado do usuário em 2026-09-07: o
@@ -123,10 +114,9 @@
     e?.preventDefault?.();const btns=[...document.querySelectorAll('.vx-newos-actions button')];btns.forEach(b=>b.disabled=true);
     try{
       const client=await ensureClient(),product=U($('#productType').value),reported=U($('#reported').value);if(!product||!reported)throw new Error('Informe TIPO DE PRODUTO e DEFEITO RELATADO.');
-      const storeId=$('#storeSelect')?.value||null;if(!storeId)throw new Error('Selecione a LOJA desta OS.');
       const serviceGroupId=$('#serviceGroupSelect')?.value||null;if(!serviceGroupId)throw new Error('Selecione o GRUPO DE ATENDIMENTO desta OS.');
       const eq=await api('equipments',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({current_client_id:client,product_type:product,brand:U($('#brand').value),model:U($('#model').value),serial_number:U($('#serial').value),accessories:U($('#accessories').value||'SEM ACESSÓRIOS')})});if(!eq?.[0]?.id)throw new Error('Não foi possível criar o equipamento.');
-      const os=await api('service_orders',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({os_number:genOsNumber(),client_id:client,equipment_id:eq[0].id,service_type:$('#serviceType').value,product_location:$('#productLocation').value,device_condition:U($('#condition').value),reported_defect:reported,internal_notes:U($('#notes').value),status:'AGUARDANDO ANALISE',opened_at:new Date().toISOString(),created_by:state.session.user.id,attendant_id:state.session.user.id,store_id:storeId,service_group_id:serviceGroupId})});if(!os?.[0]?.id)throw new Error('Não foi possível criar a ordem de serviço.');
+      const os=await api('service_orders',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({os_number:genOsNumber(),client_id:client,equipment_id:eq[0].id,service_type:$('#serviceType').value,product_location:$('#productLocation').value,device_condition:U($('#condition').value),reported_defect:reported,internal_notes:U($('#notes').value),status:'AGUARDANDO ANALISE',opened_at:new Date().toISOString(),created_by:state.session.user.id,attendant_id:state.session.user.id,service_group_id:serviceGroupId})});if(!os?.[0]?.id)throw new Error('Não foi possível criar a ordem de serviço.');
       await api('os_status_history',{method:'POST',body:JSON.stringify({service_order_id:os[0].id,new_status:'AGUARDANDO ANALISE',change_type:'AUTOMATICO',changed_by:state.session.user.id})});toast('OS salva com sucesso.');await loadCore();render(advance?`os:${os[0].id}`:'os');
     }catch(err){toast('Falha ao salvar OS: '+err.message,'err');btns.forEach(b=>b.disabled=false)}
   }
