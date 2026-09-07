@@ -57,6 +57,25 @@
     card.querySelector('#vxEditStatus').onclick=()=>{close();window.manualStatus();};
   };
 
+  // Achado do usuário em 2026-09-07: window.vxEditOrder (modal "ALTERAR
+  // ORDEM DE SERVIÇO" -- EDITAR DADOS DA O.S. / ALTERAR SITUAÇÃO, logo
+  // acima) nunca tinha um botão de verdade na tela que o chamasse --
+  // ficava morto, sem nenhum jeito de o usuário chegar até "EDITAR
+  // DADOS DA O.S." (o gatilho real do desbloqueio dos campos,
+  // os-edit-data-fix-v0812.js/os-summary-lock-alignment-v0812.js, que
+  // ouvem clique em #vxEditData). Botão "ALTERAR" no espaço vazio à
+  // direita das guias (.vx-os-tabs já é flex -- margin-left:auto empurra
+  // pra ponta), único lugar visível pra entrar nesse fluxo.
+  function injectAlterarButton(){
+    const tabs=document.querySelector('.vx-os-tabs');if(!tabs||tabs.querySelector('#vxAlterarBtn'))return;
+    const b=document.createElement('button');b.type='button';b.id='vxAlterarBtn';b.className='vx-alterar-btn';b.textContent='ALTERAR';
+    b.onclick=()=>window.vxEditOrder?.();
+    tabs.appendChild(b);
+  }
+  const alterarStyle=document.createElement('style');
+  alterarStyle.textContent=`.vx-os-tabs #vxAlterarBtn{margin-left:auto;height:28px;padding:0 16px;border:1px solid #cddaf0;border-radius:999px;background:#fff;color:#1976d2;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}.vx-os-tabs #vxAlterarBtn:hover{background:#eef4fc}`;
+  document.head.appendChild(alterarStyle);
+
   window.manualStatus=function(){
     const o=state?.activeOs;if(!o?.id)return toast('Nenhuma OS aberta.','err');if(!roleAllowed())return toast('Seu perfil não possui permissão para alterar a situação manualmente.','err');closeModal();
     const overlay=document.createElement('div');overlay.id='vxStatusModal';overlay.style.cssText='position:fixed;inset:0;background:rgba(8,30,50,.34);z-index:20000;display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -68,5 +87,5 @@
     card.querySelector('#vxStatusConfirm').onclick=async function(){const next=select.value,why=String(reason.value||'').trim();if(next===current)return toast('Selecione uma situação diferente da atual.','err');if(needsReason()&&!why){reason.focus();return toast('Informe o motivo desta alteração de situação.','err');}this.disabled=true;this.textContent='SALVANDO...';try{const now=new Date().toISOString();await api(`service_orders?id=eq.${encodeURIComponent(o.id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({status:next,updated_at:now})});await api('os_status_history',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({service_order_id:o.id,previous_status:current,new_status:next,change_type:'MANUAL',reason:why||null,changed_by:state?.session?.user?.id||null,changed_at:now})});o.status=next;const core=state.orders?.find(x=>x.id===o.id);if(core)core.status=next;closeModal();toast('Situação da OS alterada para '+labelOf(next)+'.');await render('os:'+o.id);}catch(err){this.disabled=false;this.textContent='CONFIRMAR ALTERAÇÃO';toast('Falha ao alterar situação: '+err.message,'err');}};
   };
 
-  const baseDetail=window.renderOsDetail;if(typeof baseDetail==='function')window.renderOsDetail=async function(){const r=await baseDetail.apply(this,arguments);injectStatus();return r;};
+  const baseDetail=window.renderOsDetail;if(typeof baseDetail==='function')window.renderOsDetail=async function(){const r=await baseDetail.apply(this,arguments);injectStatus();injectAlterarButton();return r;};
 })();
