@@ -69,7 +69,17 @@
     if(!rows.length){wrap?.remove();return;}
     if(!wrap){
       wrap=document.createElement('label');wrap.id='vxStableCompanyWrap';wrap.className='vx-stable-company';
-      const user=header.querySelector('.user')||header;user.prepend(wrap);
+      // Achado do usuário em 2026-09-07: inserir DENTRO de .user (como
+      // antes) faz esse bloco conter ao mesmo tempo o <select> da
+      // empresa E o #logout -- header-layout-final-v0813.js classifica
+      // cada filho do header por heurística e dá as DUAS classes
+      // (vx-header-company + vx-header-exit, grid-column conflitantes)
+      // ao mesmo elemento, estourando a largura do cabeçalho e
+      // empurrando SAIR pra fora da área visível. Como irmão de .user
+      // (filho direto do header), cada bloco recebe uma classe só.
+      const user=header.querySelector('.user');
+      if(user&&user.parentElement)user.parentElement.insertBefore(wrap,user);
+      else header.prepend(wrap);
     }
     const active=String(getState()?.profile?.active_company_id||'');
     wrap.innerHTML=`<small>EMPRESA ATIVA</small><select id="vxStableCompanySelect">${rows.map(r=>`<option value="${E(r.company_id)}" ${String(r.company_id)===active?'selected':''}>${E(r.companies?.trade_name||r.companies?.legal_name||'EMPRESA')}</option>`).join('')}</select>`;

@@ -1,3 +1,73 @@
-/* Nova OS no mesmo padrão visual da consulta/detalhe */
-.vx-newos-wrap{background:#eef2f5;border:1px solid #aab3bc;padding:8px;min-height:calc(100vh - 140px);font-family:Arial,sans-serif;color:#111}.vx-newos-head{min-height:56px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:1px solid #c5cdd5;padding:7px 10px;margin-bottom:8px}.vx-newos-title{font-size:20px;color:#075fd4;font-weight:500}.vx-newos-status{height:38px;border:0;background:#60758d;color:#fff;padding:0 18px;font-size:15px;font-weight:700}.vx-newos-tabs{height:35px;display:flex;align-items:flex-end;margin:0 0 4px}.vx-newos-tabs button{height:35px;border:1px solid #9d9d9d;border-right:0;background:#c9c5bd;padding:0 18px;font-size:11px;cursor:pointer}.vx-newos-tabs button:last-child{border-right:1px solid #9d9d9d}.vx-newos-tabs button.active{background:#fff;border-bottom-color:#fff;font-weight:700}.vx-newos-tabs button:disabled{opacity:.55;cursor:default}.vx-newos-panel{background:#fff;border:1px solid #8d8d8d;padding:4px 6px 76px;min-height:650px}.vx-newos-grid{display:grid;grid-template-columns:46.5% 53.5%;gap:8px}.vx-newos-box{border:1px solid #0867e7;background:#fff;padding:14px 10px 12px;min-height:610px}.vx-newos-box h3{font-size:16px;font-weight:400;color:#075ed7;margin:0 0 15px 5px}.vx-newos-field-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px 16px}.vx-newos-field-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}.vx-newos-field.wide{grid-column:1/-1}.vx-newos-field.span2{grid-column:span 2}.vx-newos-field label{display:block;font-size:10px;color:#5e7188;text-transform:uppercase;margin:0 0 5px 2px}.vx-newos-field input,.vx-newos-field select,.vx-newos-field textarea{width:100%;height:30px;border:1px solid #121d27;border-radius:0;background:#fff;color:#111;padding:0 5px;font-size:12px}.vx-newos-field textarea{height:58px;padding:6px;resize:vertical}.new-client-search-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:10px;margin-bottom:8px}.new-client-matches{border:1px solid #cbd7e4;background:#f7f9fb;min-height:42px;margin:4px 0 14px;padding:5px;overflow:auto}.new-client-matches button{width:100%;display:flex;justify-content:space-between;gap:12px;align-items:center;border:0;border-bottom:1px solid #e1e6eb;background:#fff;padding:7px 8px;text-align:left;cursor:pointer;font-size:11px}.new-client-matches button:hover{background:#eef6ff}.new-client-matches button span{color:#607185}.new-client-hint{display:block;color:#607185;font-size:10px;padding:7px}.new-client-found{display:block;color:#087b3d;background:#eaf7ef;border:1px solid #b9dec8;padding:8px;font-size:11px}.vx-newos-f11{height:37px;margin-top:12px;border:0;background:#edf3f7;padding:0 15px;font-weight:700;font-size:11px;cursor:pointer}.new-os-events{margin-top:20px}.vx-newos-actions{position:sticky;bottom:0;margin:8px -6px -76px;background:#fff;border-top:1px solid #ccd4db;padding:10px 8px;display:flex;gap:8px;justify-content:flex-end}.vx-newos-actions button{height:38px;border:0;padding:0 18px;font-size:11px;font-weight:700;cursor:pointer}.vx-newos-actions .save{background:#176cd2;color:#fff}.vx-newos-actions .advance{background:#078f46;color:#fff}.vx-newos-actions .cancel{background:#edf3f7;color:#10253d}.vx-newos-modal{position:fixed;inset:0;background:rgba(10,20,30,.45);display:flex;align-items:center;justify-content:center;z-index:9999}.vx-newos-modal.hidden{display:none}.vx-newos-modal-card{width:min(780px,92vw);background:#fff;border:1px solid #7f8c98;padding:16px;box-shadow:0 15px 40px rgba(0,0,0,.25)}.vx-newos-modal-card h3{margin:0 0 10px;color:#075ed7}.vx-newos-modal-card textarea{width:100%;min-height:280px;border:1px solid #121d27;padding:10px;font:13px Arial;resize:vertical}.vx-newos-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}.vx-newos-modal-actions button{height:36px;border:0;padding:0 16px;font-weight:700}.vx-newos-modal-actions .save{background:#176cd2;color:#fff}.vx-newos-modal-actions .cancel{background:#edf3f7}
-@media(max-width:1200px){.vx-newos-grid{grid-template-columns:1fr}.vx-newos-box{min-height:auto}.new-client-search-grid{grid-template-columns:1fr 1fr}}@media(max-width:760px){.vx-newos-field-grid,.vx-newos-field-grid.two,.new-client-search-grid{grid-template-columns:1fr}.vx-newos-field.span2{grid-column:auto}.vx-newos-head{align-items:flex-start;flex-direction:column}}
+/* Nova OS no mesmo padrão visual da tela de OS aberta (ver
+   os-detail-redesign-v0813.css) -- reaproveita os tokens (--os-*)
+   definidos lá (:root, carregado sempre junto no index.html), mesma
+   linguagem visual (cabeçalho em gradiente, guias em pílula, cards
+   arredondados com sombra leve). Achado do usuário em 2026-09-07: esta
+   tela nunca tinha recebido o redesign visual que a tela de OS aberta
+   já tem (RETROCESSO reportado era, na verdade, essa lacuna). Puramente
+   visual -- nenhum seletor, id ou classe usado por new-os-v0812.js foi
+   renomeado, só reestilizado. */
+.vx-newos-wrap{background:var(--os-bg,#eef2f6);border:0;padding:14px;min-height:calc(100vh - 140px);font-family:Arial,sans-serif;color:var(--os-ink,#12324e);display:flex;flex-direction:column;gap:12px;box-sizing:border-box}
+.vx-newos-wrap *{box-sizing:border-box}
+
+.vx-newos-head{min-height:auto;background:linear-gradient(135deg,#1c4a73,#2c6291);border:0;border-radius:var(--os-radius,12px);padding:14px 22px;margin-bottom:0;box-shadow:0 3px 10px rgba(20,55,90,.14);display:flex;align-items:center;justify-content:space-between;gap:14px}
+.vx-newos-title{font-size:19px;color:#fff;font-weight:800;letter-spacing:.01em}
+.vx-newos-status{height:30px;border:0;background:rgba(255,255,255,.14);color:#e4eefa;padding:0 16px;font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:999px;cursor:default}
+
+.vx-newos-tabs{height:auto;display:flex;align-items:center;gap:4px;margin:0;padding:6px;background:var(--os-surface,#fff);border:1px solid var(--os-line,#e1e8ef);border-radius:999px;overflow-x:auto;box-shadow:0 1px 3px rgba(15,42,68,.05)}
+.vx-newos-tabs button{height:36px;border:0;background:transparent;color:var(--os-ink-soft,#5e7188);padding:0 16px;font-size:11.5px;font-weight:700;white-space:nowrap;border-radius:999px;cursor:pointer;transition:background .15s ease,color .15s ease}
+.vx-newos-tabs button:hover{background:#f1f5f9}
+.vx-newos-tabs button.active{background:var(--os-accent,#1976d2);color:#fff;box-shadow:0 2px 6px rgba(25,118,210,.35)}
+.vx-newos-tabs button:disabled{opacity:.45;cursor:default}
+.vx-newos-tabs button:disabled:hover{background:transparent}
+
+.vx-newos-panel{background:transparent;border:0;padding:0;min-height:auto}
+.vx-newos-grid{display:grid;grid-template-columns:46.5% 53.5%;gap:12px}
+.vx-newos-box{border:1px solid var(--os-line,#e1e8ef);background:var(--os-surface,#fff);padding:18px 20px 20px;border-radius:var(--os-radius,12px);box-shadow:0 1px 3px rgba(15,42,68,.06);min-height:auto}
+.vx-newos-box h3{font-size:14px;font-weight:800;color:var(--os-accent,#1976d2);margin:0 0 16px;letter-spacing:.02em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.vx-newos-box h3::before{content:'👤';font-size:14px}
+.vx-newos-grid .vx-newos-box:nth-child(2) h3::before{content:'📦'}
+
+.vx-newos-field-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 18px}
+.vx-newos-field-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.vx-newos-field.wide{grid-column:1/-1}
+.vx-newos-field.span2{grid-column:span 2}
+.vx-newos-field label{display:block;font-size:10px;color:var(--os-ink-soft,#5e7188);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:0 0 6px 1px}
+.vx-newos-field input,.vx-newos-field select,.vx-newos-field textarea{width:100%;height:36px;border:1px solid #d5dde5;border-radius:var(--os-radius-sm,8px);background:#fff;color:var(--os-ink,#12324e);padding:0 11px;font-size:12.5px;transition:border-color .15s ease,box-shadow .15s ease}
+.vx-newos-field input:focus,.vx-newos-field select:focus,.vx-newos-field textarea:focus{outline:none;border-color:var(--os-accent,#1976d2);box-shadow:0 0 0 3px rgba(25,118,210,.12)}
+.vx-newos-field textarea{height:auto;min-height:58px;padding:9px 11px;resize:vertical}
+
+.new-client-search-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:12px;margin-bottom:10px}
+.new-client-matches{border:1px solid var(--os-line,#e1e8ef);border-radius:var(--os-radius-sm,8px);background:#f8fafc;min-height:42px;margin:4px 0 16px;padding:5px;overflow:auto}
+.new-client-matches button{width:100%;display:flex;justify-content:space-between;gap:12px;align-items:center;border:0;border-bottom:1px solid var(--os-line,#e1e8ef);background:transparent;padding:9px 10px;text-align:left;cursor:pointer;font-size:11.5px;border-radius:0}
+.new-client-matches button:first-child{border-radius:calc(var(--os-radius-sm,8px) - 2px) calc(var(--os-radius-sm,8px) - 2px) 0 0}
+.new-client-matches button:last-child{border-bottom:0;border-radius:0 0 calc(var(--os-radius-sm,8px) - 2px) calc(var(--os-radius-sm,8px) - 2px)}
+.new-client-matches button:hover{background:#eef6ff}
+.new-client-matches button span{color:var(--os-ink-soft,#5e7188)}
+.new-client-hint{display:block;color:var(--os-ink-soft,#5e7188);font-size:10.5px;padding:7px}
+.new-client-found{display:block;color:#0b6b34;background:#e6f4ea;border:1px solid #bfe3cb;border-radius:var(--os-radius-sm,8px);padding:9px 10px;font-size:11.5px}
+
+.vx-newos-f11{height:34px;margin-top:12px;border:0;background:#eef3f8;color:var(--os-ink,#12324e);padding:0 14px;font-weight:700;font-size:11px;border-radius:var(--os-radius-sm,8px);cursor:pointer}
+.vx-newos-f11:hover{background:#e3ebf3}
+.new-os-events{margin-top:20px}
+
+.vx-newos-actions{position:sticky;bottom:0;margin:0;background:rgba(238,242,246,.96);backdrop-filter:blur(2px);border-top:1px solid var(--os-line,#e1e8ef);padding:12px 2px 2px;display:flex;gap:10px;justify-content:flex-end}
+.vx-newos-actions button{height:38px;border:0;padding:0 20px;font-size:11.5px;font-weight:700;border-radius:var(--os-radius-sm,8px);cursor:pointer;transition:filter .15s ease}
+.vx-newos-actions button:hover{filter:brightness(.96)}
+.vx-newos-actions .save{background:var(--os-accent,#1976d2);color:#fff}
+.vx-newos-actions .advance{background:var(--os-green,#0b8a4a);color:#fff}
+.vx-newos-actions .cancel{background:#eef3f8;color:var(--os-ink,#12324e)}
+
+.vx-newos-modal{position:fixed;inset:0;background:rgba(10,20,30,.45);display:flex;align-items:center;justify-content:center;z-index:9999}
+.vx-newos-modal.hidden{display:none}
+.vx-newos-modal-card{width:min(780px,92vw);background:#fff;border:0;border-radius:var(--os-radius,12px);padding:20px;box-shadow:0 20px 55px rgba(15,42,68,.28)}
+.vx-newos-modal-card h3{margin:0 0 10px;color:var(--os-accent,#1976d2);font-size:15px;font-weight:800}
+.vx-newos-modal-card textarea{width:100%;min-height:280px;border:1px solid #d5dde5;border-radius:var(--os-radius-sm,8px);padding:11px;font:13px Arial;resize:vertical}
+.vx-newos-modal-card textarea:focus{outline:none;border-color:var(--os-accent,#1976d2);box-shadow:0 0 0 3px rgba(25,118,210,.12)}
+.vx-newos-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.vx-newos-modal-actions button{height:36px;border:0;padding:0 16px;font-weight:700;font-size:11.5px;border-radius:var(--os-radius-sm,8px);cursor:pointer}
+.vx-newos-modal-actions .save{background:var(--os-accent,#1976d2);color:#fff}
+.vx-newos-modal-actions .cancel{background:#eef3f8;color:var(--os-ink,#12324e)}
+
+@media(max-width:1200px){.vx-newos-grid{grid-template-columns:1fr}.vx-newos-box{min-height:auto}.new-client-search-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.vx-newos-field-grid,.vx-newos-field-grid.two,.new-client-search-grid{grid-template-columns:1fr}.vx-newos-field.span2{grid-column:auto}.vx-newos-head{border-radius:var(--os-radius,12px);flex-direction:column;align-items:flex-start;gap:10px}}
