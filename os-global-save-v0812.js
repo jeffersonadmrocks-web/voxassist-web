@@ -49,8 +49,17 @@
   // de novo é exatamente o que a migration anterior já pedia pra nunca
   // fazer.
 
+  const isGestor=()=>String(state?.profile?.role||'').toUpperCase()==='GESTOR';
+
   async function saveAll(){
-    const o=state?.activeOs;if(!o?.id||saving)return;const b=btn();saving=true;if(b)b.disabled=true;setDirty(dirty);
+    const o=state?.activeOs;if(!o?.id||saving)return;
+    // Achado do usuário em 2026-09-07: OS FINALIZADA só pode ser
+    // alterada pelo GESTOR (segurança -- migration 20260907060000).
+    // Aviso claro aqui em vez de deixar o SALVAR falhar com erro cru
+    // de RLS pra quem tentar salvar peças/pagamento/cronograma numa OS
+    // já finalizada sem ser gestor.
+    if(String(o.status||'').toUpperCase()==='FINALIZADA'&&!isGestor())return toast('OS finalizada só pode ser alterada pelo GESTOR.','err');
+    const b=btn();saving=true;if(b)b.disabled=true;setDirty(dirty);
     try{
       const orderBody=collect('order'),equipmentBody=collect('equipment'),clientBody=collect('client'),financialBody=collect('financial');
       const jobs=[];

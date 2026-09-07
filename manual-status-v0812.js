@@ -12,6 +12,7 @@
   // picker (needsReason() depende da posição no array).
   const labelOf=s=>window.vxOsStatusLabel?window.vxOsStatusLabel(s):(FLOW.find(x=>x[0]===String(s||'').replaceAll('_',' '))?.[1]||String(s||'').replaceAll('_',' '));
   const roleAllowed=()=>!['TECNICO','ESTOQUE'].includes(String(state?.profile?.role||'').toUpperCase());
+  const isGestor=()=>String(state?.profile?.role||'').toUpperCase()==='GESTOR';
   function statusTone(s){
     const n=String(s||'').toUpperCase();
     if(n.includes('CANCEL'))return '#8b95a3';
@@ -47,6 +48,12 @@
 
   window.vxEditOrder=function(){
     if(!state?.activeOs?.id)return toast('Nenhuma OS aberta.','err');
+    // Achado do usuário em 2026-09-07: OS FINALIZADA só pode ser
+    // alterada pelo GESTOR (segurança -- migration 20260907060000,
+    // policies restritivas em service_orders/os_parts/os_financial/
+    // payments). Aviso aqui evita deixar o operador destravar campos
+    // e só descobrir o bloqueio (erro de RLS) na hora de salvar.
+    if(String(state.activeOs.status||'').toUpperCase()==='FINALIZADA'&&!isGestor())return toast('OS finalizada só pode ser alterada pelo GESTOR.','err');
     document.querySelector('#vxEditOrderModal')?.remove();
     const ov=document.createElement('div');ov.id='vxEditOrderModal';ov.style.cssText='position:fixed;inset:0;background:rgba(8,30,50,.30);z-index:19990;display:flex;align-items:center;justify-content:center;padding:20px;';
     const card=document.createElement('div');card.style.cssText='width:min(430px,100%);background:#fff;border:1px solid #cbd7e3;box-shadow:0 16px 42px rgba(0,0,0,.2);padding:18px;';

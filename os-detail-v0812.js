@@ -6,6 +6,17 @@
   const num=v=>Number(v||0);
   const dateOnly=v=>v?String(v).slice(0,10):'';
   const dtLocal=v=>v?String(v).slice(0,16):'';
+  // Achado do usuário em 2026-09-07: OS FINALIZADA só pode ser alterada
+  // pelo GESTOR (segurança -- migration 20260907060000, policies
+  // restritivas em service_orders/os_parts/os_financial/payments).
+  // Checagem aqui evita erro cru de RLS pra quem tentar registrar/
+  // editar/excluir pagamento numa OS já finalizada sem ser gestor.
+  const blockedFinalized=()=>{
+    if(String(ctx?.o?.status||'').toUpperCase()!=='FINALIZADA')return false;
+    if(String(state?.profile?.role||'').toUpperCase()==='GESTOR')return false;
+    toast('OS finalizada só pode ser alterada pelo GESTOR.','err');
+    return true;
+  };
   const localDateISO=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const fmtDate=v=>v?new Date(String(v).slice(0,10)+'T12:00:00').toLocaleDateString('pt-BR'):'—';
   const inferGroup=t=>{t=String(t||'').toUpperCase();if(t.includes('TV'))return 'TV';if(/REFRIG|FREEZER|AR-COND|GELADEIRA/.test(t))return 'REFRIGERAÇÃO';if(/MICRO|FOG|LAVA|BEBED/.test(t))return 'LINHA BRANCA';if(/AUDIO|SOM/.test(t))return 'ÁUDIO';return 'GERAL'};
@@ -481,7 +492,7 @@
   window.vxOpenAttachment=()=>{const id=document.querySelector('input[name=vxAttSel]:checked')?.value;if(!id)return toast('Selecione um anexo.','err');const a=ctx.atts.find(x=>x.id===id);if(a?.storage_path)window.open(a.storage_path,'_blank');else toast('Arquivo registrado sem Storage físico nesta etapa de homologação.');};
   window.vxDeleteAttachment=async()=>{const id=document.querySelector('input[name=vxAttSel]:checked')?.value;if(!id)return toast('Selecione um anexo.','err');if(!confirm('Excluir anexo selecionado?'))return;try{await api(`attachments?id=eq.${id}`,{method:'DELETE'});toast('Anexo excluído.');reload()}catch(e){toast(e.message,'err')}};
   window.vxSelectPayment=(id,tr)=>{ctx.selectedPayment=id;document.querySelectorAll('.vx-payment-table tr').forEach(x=>x.classList.remove('selected'));tr.classList.add('selected')};
-  window.vxRegisterPayment=async()=>{const amount=num(document.querySelector('#vxPayAmount')?.value),method=document.querySelector('#vxPayMethod')?.value,due_date=document.querySelector('#vxPayDate')?.value,installments=Math.max(1,parseInt(document.querySelector('#vxPayInstallments')?.value||'1')),notes=up(document.querySelector('#vxPayNotes')?.value||'');if(!amount||!method)return toast('Informe valor e forma de pagamento.','err');try{await api('payments',{method:'POST',body:JSON.stringify({service_order_id:ctx.o.id,amount,method,status:'RECEBIDO',due_date,paid_at:new Date().toISOString(),installments,notes,created_by:state.session.user.id})});toast('Pagamento registrado.');reload()}catch(e){toast(e.message,'err')}};
-  window.vxEditPendingPayment=async()=>{const p=ctx.payments.find(x=>x.id===ctx.selectedPayment);if(!p)return toast('Selecione um pagamento.','err');if(String(p.status).toUpperCase()!=='PENDENTE')return toast('Somente pagamentos pendentes podem ser editados.','err');const amount=num(String(prompt('Valor:',p.amount)||p.amount).replace(',','.'));try{await api(`payments?id=eq.${p.id}`,{method:'PATCH',body:JSON.stringify({amount})});toast('Pendente atualizado.');reload()}catch(e){toast(e.message,'err')}};
-  window.vxDeletePendingPayment=async()=>{const p=ctx.payments.find(x=>x.id===ctx.selectedPayment);if(!p)return toast('Selecione um pagamento.','err');if(String(p.status).toUpperCase()!=='PENDENTE')return toast('Somente pagamentos pendentes podem ser excluídos.','err');if(!confirm('Excluir pagamento pendente?'))return;try{await api(`payments?id=eq.${p.id}`,{method:'DELETE'});toast('Pendente excluído.');reload()}catch(e){toast(e.message,'err')}};
+  window.vxRegisterPayment=async()=>{if(blockedFinalized())return;const amount=num(document.querySelector('#vxPayAmount')?.value),method=document.querySelector('#vxPayMethod')?.value,due_date=document.querySelector('#vxPayDate')?.value,installments=Math.max(1,parseInt(document.querySelector('#vxPayInstallments')?.value||'1')),notes=up(document.querySelector('#vxPayNotes')?.value||'');if(!amount||!method)return toast('Informe valor e forma de pagamento.','err');try{await api('payments',{method:'POST',body:JSON.stringify({service_order_id:ctx.o.id,amount,method,status:'RECEBIDO',due_date,paid_at:new Date().toISOString(),installments,notes,created_by:state.session.user.id})});toast('Pagamento registrado.');reload()}catch(e){toast(e.message,'err')}};
+  window.vxEditPendingPayment=async()=>{if(blockedFinalized())return;const p=ctx.payments.find(x=>x.id===ctx.selectedPayment);if(!p)return toast('Selecione um pagamento.','err');if(String(p.status).toUpperCase()!=='PENDENTE')return toast('Somente pagamentos pendentes podem ser editados.','err');const amount=num(String(prompt('Valor:',p.amount)||p.amount).replace(',','.'));try{await api(`payments?id=eq.${p.id}`,{method:'PATCH',body:JSON.stringify({amount})});toast('Pendente atualizado.');reload()}catch(e){toast(e.message,'err')}};
+  window.vxDeletePendingPayment=async()=>{if(blockedFinalized())return;const p=ctx.payments.find(x=>x.id===ctx.selectedPayment);if(!p)return toast('Selecione um pagamento.','err');if(String(p.status).toUpperCase()!=='PENDENTE')return toast('Somente pagamentos pendentes podem ser excluídos.','err');if(!confirm('Excluir pagamento pendente?'))return;try{await api(`payments?id=eq.${p.id}`,{method:'DELETE'});toast('Pendente excluído.');reload()}catch(e){toast(e.message,'err')}};
 })();

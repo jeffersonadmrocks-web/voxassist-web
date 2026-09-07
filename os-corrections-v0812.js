@@ -155,7 +155,19 @@
     }catch(e){console.warn('Não foi possível registrar no histórico:',e)}
   }
 
+  // Achado do usuário em 2026-09-07: OS FINALIZADA só pode ser alterada
+  // pelo GESTOR (segurança -- migration 20260907060000). Checagem aqui
+  // evita erro cru de RLS ao tentar alterar/excluir peça de uma OS já
+  // finalizada sem ser gestor.
+  function blockedFinalized(){
+    if(String(state?.activeOs?.status||'').toUpperCase()!=='FINALIZADA')return false;
+    if(String(state?.profile?.role||'').toUpperCase()==='GESTOR')return false;
+    toast('OS finalizada só pode ser alterada pelo GESTOR.','err');
+    return true;
+  }
+
   window.vxSaveOsPart=async function(id){
+    if(blockedFinalized())return;
     const p=(window.__vxCurrentParts||[]).find(x=>String(x.id)===String(id));
     if(!p)return toast('Peça não encontrada.','err');
     const description=q('#vxPartEditDesc')?.value||'';
@@ -178,6 +190,7 @@
   };
 
   window.vxDeleteOsPart=async function(id){
+    if(blockedFinalized())return;
     const p=(window.__vxCurrentParts||[]).find(x=>String(x.id)===String(id));
     if(!confirm(`Excluir a peça "${p?.description||''}" desta O.S.?`))return;
     try{
