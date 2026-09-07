@@ -30,10 +30,11 @@
     const editing=forceEditing===true || panel.classList.contains('vx-editing-os-data');
     const orderType=fieldByLabel('TIPO DE ORDEM DE SERVIÇO *')||fieldByLabel('TIPO DE ORDEM DE SERVIÇO');
     const serviceType=fieldByLabel('TIPO DE ATENDIMENTO');
+    const local=fieldByLabel('LOCAL DO PRODUTO');
     configureField(orderType,'order','order_type',editing);
     configureField(serviceType,'order','service_type',editing);
+    configureField(local,'order','product_location',editing);
 
-    const local=fieldByLabel('LOCAL DO PRODUTO');
     [orderType,serviceType,local].forEach(f=>f?.classList.add('vx-attendance-aligned'));
   }
 
@@ -43,13 +44,24 @@
     setTimeout(()=>applyProtection(true),20);
   },true);
 
-  /* Toda abertura/reconstrução da OS volta protegida por padrão. */
-  const mo=new MutationObserver(()=>{
-    const panel=q('#vx-os');if(panel&&!panel.dataset.vxProtectedReady){
-      panel.dataset.vxProtectedReady='1';
-      setTimeout(()=>applyProtection(false),20);
-    }
-  });
+  // Achado do usuário em 2026-09-07: "TIPO DE ORDEM DE SERVIÇO" ficava
+  // permanentemente destravado (select sempre habilitado, mesmo sem
+  // clicar ALTERAR) -- causa real: essa proteção só rodava UMA VEZ por
+  // painel (guard panel.dataset.vxProtectedReady), na primeira mutação
+  // que cria #vx-os -- exatamente quando os-corrections-v0812.js ainda
+  // está com sua própria busca (`await api('os_parts?...')`) pendente,
+  // ANTES de injetar o próprio campo (ensureOrderType(), select criado
+  // depois). Quando esse select finalmente aparece, o guard já tinha
+  // travado em "pronto", então a proteção nunca rodava de novo pra
+  // travá-lo. Troca pra debounce (reage a QUALQUER mutação de #vx-os,
+  // sempre, sem trava única) -- mesmo padrão já usado nos cards novos
+  // de Configurações nesta sessão (scheduleEnhance).
+  let protectDebounce=null;
+  function scheduleProtection(){
+    if(protectDebounce)clearTimeout(protectDebounce);
+    protectDebounce=setTimeout(()=>applyProtection(false),120);
+  }
+  const mo=new MutationObserver(()=>{if(q('#vx-os'))scheduleProtection();});
   mo.observe(document.documentElement,{childList:true,subtree:true});
   setTimeout(()=>applyProtection(false),300);
 
