@@ -66,12 +66,11 @@
         <div class="vx-newos-box"><h3>2. RESUMO DO EQUIPAMENTO / ORDEM DE SERVIÇO</h3>
           <div class="vx-newos-field-grid two">
             ${f('TIPO DE PRODUTO *','<input id="productType" required placeholder="TV / REFRIGERADOR / AR-CONDICIONADO">')}
-            ${f('GRUPO DO PRODUTO','<input id="productGroup" readonly placeholder="AUTOMÁTICO">')}
+            ${f('GRUPO DE ATENDIMENTO','<select id="serviceGroupSelect"><option value="">SEM GRUPO</option></select>')}
             ${f('MARCA','<input id="brand">')}${f('MODELO','<input id="model">')}
             ${f('Nº DE SÉRIE','<input id="serial">')}${f('ESTADO DO APARELHO','<select id="condition"><option></option><option>NOVO</option><option>USADO</option><option>ARRANHADO</option><option>AVARIADO</option></select>')}
             ${f('ACESSÓRIOS','<input id="accessories" placeholder="SEM ACESSÓRIOS">')}${f('TIPO DE ATENDIMENTO','<select id="serviceType"><option>INTERNO</option><option>EXTERNO</option></select>')}
             ${f('LOCAL DO PRODUTO','<select id="productLocation"><option>LABORATÓRIO</option><option>CONSUMIDOR</option></select>')}${f('LOJA *','<select id="storeSelect"><option value="">CARREGANDO…</option></select>')}
-            ${f('GRUPO DE ATENDIMENTO','<select id="serviceGroupSelect"><option value="">SEM GRUPO</option></select>','wide')}
             ${f('DEFEITO RELATADO *','<textarea id="reported" required></textarea>','wide')}
           </div>
           <input id="notes" type="hidden" value=""><button type="button" class="vx-newos-f11" id="newNotesBtn">F11 – OBSERVAÇÕES INTERNAS</button>
@@ -84,7 +83,6 @@
 
     ['newClientName','newClientDoc','newClientPhone'].forEach(id=>document.querySelector('#'+id).addEventListener('input',()=>{document.querySelector('#'+id).value=U(document.querySelector('#'+id).value);lookupClient()}));
     ['newClientPhone2','newClientZip','newClientAddress','newClientNumber','newClientComplement','newClientNeighborhood','newClientCity','newClientState','productType','brand','model','serial','accessories','reported'].forEach(id=>document.querySelector('#'+id)?.addEventListener('input',()=>{document.querySelector('#'+id).value=U(document.querySelector('#'+id).value)}));
-    const group=document.querySelector('#productGroup'),type=document.querySelector('#productType');const infer=t=>{t=U(t);if(t.includes('TV'))return'TV';if(/REFRIG|FREEZER|AR-COND|GELADEIRA/.test(t))return'REFRIGERAÇÃO';if(/MICRO|FOG|LAVA|BEBED/.test(t))return'LINHA BRANCA';if(/AUDIO|SOM/.test(t))return'ÁUDIO';return t?'GERAL':''};type.addEventListener('input',()=>group.value=infer(type.value));
     // Achado do usuário em 2026-09-04: store_id ficava null quando quem
     // cria a OS não tem profiles.store_id fixo (ex.: gestor com acesso
     // a mais de uma loja) -- a OS nunca sabia "de qual loja" ela era,
@@ -103,9 +101,13 @@
         else if(stores.length===1)sel.value=stores[0].id;
       }
       // Achado do usuário em 2026-09-04: "Grupo de Atendimento" (área de
-      // responsabilidade que o gestor cadastra em Configurações) --
-      // diferente de "GRUPO DO PRODUTO" acima (esse é só sugestão
-      // automática por tipo de aparelho). Escolha manual, opcional.
+      // responsabilidade que o gestor cadastra em Configurações),
+      // escolha manual, opcional. Achado do usuário em 2026-09-07: o
+      // campo "GRUPO DO PRODUTO" (sugestão automática por tipo de
+      // aparelho, nunca persistida) foi removido -- os dois "grupo"
+      // lado a lado confundiam; só o de atendimento é funcional
+      // (filtra/encaminha pro técnico responsável). Fica logo após
+      // TIPO DE PRODUTO, no lugar onde o campo removido estava.
       const gsel=document.querySelector('#serviceGroupSelect');
       if(gsel)gsel.innerHTML=`<option value="">SEM GRUPO</option>${groups.map(g=>`<option value="${V(g.id)}">${V(g.name)}</option>`).join('')}`;
     })();
