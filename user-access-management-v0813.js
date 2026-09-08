@@ -5,21 +5,36 @@
   const companyId=()=>state?.profile?.active_company_id||null;
   const roles=['GESTOR','ATENDENTE','TECNICO','ESTOQUE','FINANCEIRO'];
   const types=['GESTOR COMPLETO','ATENDENTE PADRÃO','TÉCNICO EXTERNO','TÉCNICO OFICINA','FINANCEIRO','ESTOQUE','PERSONALIZADO'];
+  // Achado do usuário em 2026-09-08 (Matriz Mestra de Configurações,
+  // item C3): este catálogo usava nomes de chave DIFERENTES dos outros
+  // 2 arquivos que editam permissão do mesmo usuário (company-only-
+  // mode-v0813.js/user-permissions-ui-v0813.js -- financeiro.*/
+  // estoque.*/config.*), gravando na MESMA tabela user_permissions sem
+  // nenhuma validação de chave na RPC. Levantamento em produção (2026-
+  // 09-08) confirmou: nenhum dado real usava as chaves antigas deste
+  // arquivo (finance.*/stock.*/settings.*) -- corrigido pra usar o
+  // catálogo canônico já em uso real, sem migração de dado necessária.
+  // os.whirlpool virou whirlpool.view+whirlpool.edit (já existiam nos
+  // outros arquivos, mais granular, mesmo conceito). Chaves que só
+  // existiam aqui (os.print, os.financial, agenda.view_own, agenda.drag,
+  // financeiro.export, relatorios.export, config.companies) mantidas --
+  // não removem nenhuma permissão já concedida, só não colidem mais com
+  // as dos outros 2 arquivos.
   const perms=[
-    ['OS','os.view','Visualizar O.S.'],['OS','os.create','Criar O.S.'],['OS','os.edit','Alterar O.S.'],['OS','os.status','Alterar situação'],['OS','os.cancel','Cancelar O.S.'],['OS','os.print','Imprimir / PDF'],['OS','os.financial','Acessar financeiro da O.S.'],['OS','os.whirlpool','Modo Whirlpool'],
+    ['OS','os.view','Visualizar O.S.'],['OS','os.create','Criar O.S.'],['OS','os.edit','Alterar O.S.'],['OS','os.status','Alterar situação'],['OS','os.cancel','Cancelar O.S.'],['OS','os.print','Imprimir / PDF'],['OS','os.financial','Acessar financeiro da O.S.'],['OS','whirlpool.view','Visualizar modo Whirlpool'],['OS','whirlpool.edit','Preencher / editar atendimento Whirlpool'],
     ['AGENDA','agenda.view_all','Visualizar todas as agendas'],['AGENDA','agenda.view_own','Visualizar própria agenda'],['AGENDA','agenda.edit','Agendar / reagendar'],['AGENDA','agenda.drag','Arrastar entre técnicos / ordem'],['AGENDA','agenda.block','Bloquear períodos'],
-    ['FINANCEIRO','finance.view','Visualizar financeiro'],['FINANCEIRO','finance.edit','Lançar / alterar recebimentos'],['FINANCEIRO','finance.export','Exportar financeiro'],
-    ['ESTOQUE','stock.view','Visualizar estoque'],['ESTOQUE','stock.edit','Movimentar estoque'],
-    ['RELATÓRIOS','reports.view','Visualizar relatórios'],['RELATÓRIOS','reports.export','Exportar relatórios'],
-    ['CONFIGURAÇÕES','settings.view','Acessar configurações'],['CONFIGURAÇÕES','settings.users','Gerenciar usuários'],['CONFIGURAÇÕES','settings.companies','Gerenciar empresas / lojas']
+    ['FINANCEIRO','financeiro.view','Visualizar financeiro'],['FINANCEIRO','financeiro.edit','Lançar / alterar recebimentos'],['FINANCEIRO','financeiro.export','Exportar financeiro'],
+    ['ESTOQUE','estoque.view','Visualizar estoque'],['ESTOQUE','estoque.edit','Movimentar estoque'],
+    ['RELATÓRIOS','relatorios.view','Visualizar relatórios'],['RELATÓRIOS','relatorios.export','Exportar relatórios'],
+    ['CONFIGURAÇÕES','config.view','Acessar configurações'],['CONFIGURAÇÕES','config.users','Gerenciar usuários'],['CONFIGURAÇÕES','config.companies','Gerenciar empresas / lojas']
   ];
   const presets={
     'GESTOR COMPLETO':'*',
-    'ATENDENTE PADRÃO':['os.view','os.create','os.edit','os.status','os.print','os.financial','os.whirlpool','agenda.view_all','agenda.edit','agenda.drag','reports.view'],
-    'TÉCNICO EXTERNO':['os.view','os.edit','os.whirlpool','agenda.view_own'],
-    'TÉCNICO OFICINA':['os.view','os.edit','os.status','os.print','stock.view'],
-    'FINANCEIRO':['finance.view','finance.edit','finance.export','os.view','os.financial','reports.view'],
-    'ESTOQUE':['stock.view','stock.edit','os.view'],
+    'ATENDENTE PADRÃO':['os.view','os.create','os.edit','os.status','os.print','os.financial','whirlpool.view','whirlpool.edit','agenda.view_all','agenda.edit','agenda.drag','relatorios.view'],
+    'TÉCNICO EXTERNO':['os.view','os.edit','whirlpool.view','whirlpool.edit','agenda.view_own'],
+    'TÉCNICO OFICINA':['os.view','os.edit','os.status','os.print','estoque.view'],
+    'FINANCEIRO':['financeiro.view','financeiro.edit','financeiro.export','os.view','os.financial','relatorios.view'],
+    'ESTOQUE':['estoque.view','estoque.edit','os.view'],
     'PERSONALIZADO':[]
   };
 

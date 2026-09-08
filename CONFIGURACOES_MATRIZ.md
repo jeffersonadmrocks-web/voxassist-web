@@ -1,0 +1,140 @@
+# VoxAssist — Matriz Mestra de Configurações
+
+Rastreamento vivo da reestruturação do menu Configurações em 9 áreas. Atualizado a cada rodada de trabalho — nunca reescrito do zero. Ver `docs internos`/conversa 2026-09-08 para o diagnóstico completo (5 agentes de pesquisa, schema.sql + migrations + grep completo do JS).
+
+Princípio de execução: **corrigir o crítico + construir o seguro em paralelo**. Um item BLOQUEADO nunca bloqueia os demais.
+
+Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCIA` · `EM IMPLEMENTAÇÃO` · `IMPLEMENTADO` · `TESTADO` · `HOMOLOGADO`
+
+---
+
+## Conflitos estruturais críticos (prioridade imediata)
+
+| # | Item | Classificação | Dependência | Ação | Status |
+|---|---|---|---|---|---|
+| C1 | Aviso falso "Não existe Loja/Unidade operacional" | CONSOLIDAR | nenhuma | Remover/corrigir texto em `company-only-mode-v0813.js` | **IMPLEMENTADO** (2026-09-08) |
+| C2 | Funções sem migration versionada (`admin_soft_delete_user`, `admin_update_user_access_company_only`) | REVISAR | nenhuma pra documentar; bloqueia só alterações futuras nessas RPCs | Extraídas via `pg_get_functiondef`, documentadas em `20260908010000_document_admin_user_access_rpcs.sql` (corpo idêntico, zero mudança de comportamento). Achado extra: `admin_update_user_access_company_only` já grava `audit_log` -- corrige a suposição de "zero escritores" pra ações de usuário (continua zero pra OS/financeiro/estoque). | **IMPLEMENTADO** (2026-09-08) |
+| C3 | 3 catálogos de chaves de permissão incompatíveis (`financeiro.*`×`finance.*`, `estoque.*`×`stock.*`, `config.*`×`settings.*`) gravando em `user_permissions` sem validação | REVISAR → CONSOLIDAR | bloqueia só a finalização de Permissões (Área 01); não bloqueia as demais 8 áreas | Levantamento em produção: **nenhum dado real usa as chaves divergentes** (só o catálogo A já em uso). `user-access-management-v0813.js` corrigido pra usar as chaves canônicas -- sem migração de dado necessária. Falta: endurecer a RPC pra rejeitar chave fora do catálogo (ainda não feito). | **EM IMPLEMENTAÇÃO** |
+| C4 | 4 seletores de "empresa ativa" concorrentes (`company-only-mode`, `company-selector-singleton`, `user-logoff`, resíduo em `user-permissions-ui`) | CONSOLIDAR | nenhuma pra outras áreas | Escolher 1 fonte canônica, remover os outros 3 MutationObservers/queries duplicadas | **PENDENTE** |
+| C5 | 3 telas "Alterar Usuário" concorrentes no mesmo botão (`company-only-mode`, `user-permissions-ui`, `user-access-management`) | CONSOLIDAR | bloqueia só polimento de Área 01 | Mapear campos/RPCs de cada uma, escolher canônica (`user-access-management-v0813.js` parece a mais completa — LOJAS+GRUPOS+permissões granulares) | **PENDENTE** |
+| C6 | 2 formulários de cadastro/edição de empresa com cobertura de campos diferente | CONSOLIDAR | nenhuma pra outras áreas | Unificar em 1 formulário completo (usar `company-profile-complete-v0812.js` como base, é o mais completo) | **PENDENTE** |
+
+---
+
+## Área 01 — Empresa & Usuários
+
+| Item | Classificação | Ação | Migration | Arquivos | Status |
+|---|---|---|---|---|---|
+| Empresas (razão social, CNPJ, endereço, logo, docs) | REAPROVEITAR (ver C6) | — | — | `company-profile-complete-v0812.js` | IMPLEMENTADO (consolidação pendente) |
+| Unidades/lojas + ativar/desativar | REAPROVEITAR | — | `20260907020000_admin_upsert_store.sql` | `service-stores-admin-v0907.js` | IMPLEMENTADO |
+| Parâmetros próprios por unidade | CRIAR | — | — | — | PENDENTE |
+| Usuários (cadastro/gerenciamento) | REAPROVEITAR (ver C5) | — | — | 3 telas concorrentes | IMPLEMENTADO (consolidação pendente) |
+| Perfis (Gestor/Atendente/Técnico/Administrativo/Personalizado) | REVISAR | `role` é CHECK rígido (5 valores); "Administrativo"/"Personalizado" não existem no banco | — | `profiles_role_check` | EM DIAGNÓSTICO |
+| Permissões por módulo/ação | REVISAR (ver C3) | — | — | — | PENDENTE |
+| Técnicos: interno/externo, agenda | REAPROVEITAR | — | — | `profiles.external_schedule_enabled` | IMPLEMENTADO |
+| Técnicos: região, especialidade, disponibilidade | CRIAR | — | — | — | PENDENTE |
+| Segurança: redefinir senha (gestor→usuário) | CRIAR | — | — | — | PENDENTE |
+| Segurança: encerrar sessão remota | CRIAR | — | — | — | PENDENTE |
+| Segurança: bloqueio/desbloqueio de conta | CRIAR | — | — | — | PENDENTE |
+| Histórico básico de acesso (login/logout) | CRIAR | `audit_log` cobre alteração de cadastro, não login | — | — | PENDENTE |
+
+## Área 02 — Ordens de Serviço
+
+| Item | Classificação | Ação | Status |
+|---|---|---|---|
+| Numeração | REAPROVEITAR | Só expor leitura em Configurações | PENDENTE (exposição) |
+| Motor de fluxo/status automático | REAPROVEITAR — **nunca recriar** | `advance_service_order_status` é fonte única | IMPLEMENTADO (é o motor existente) |
+| Rótulos de status duplicados (`manual-status-v0812.js` FLOW × `vxOsStatusLabel`) | CONSOLIDAR | Unificar fonte do rótulo | PENDENTE |
+| Tipos de OS (ativar/desativar sem apagar histórico) | CRIAR | — | PENDENTE |
+| Tipo de atendimento (Interno/Externo) | REVISAR | CHECK rígido no banco, 3º valor exige migration | EM DIAGNÓSTICO |
+| Campos obrigatórios por etapa | CRIAR | Regra já existe no motor SQL, falta só exibir | PENDENTE |
+| Termos e condições (por tipo de documento, versionado) | CRIAR | Confirmado: nunca implementado, nenhum artefato no repo | PENDENTE |
+| Impressão e documentos (seleção/parametrização de modelos) | CONSOLIDAR + CRIAR | Duplicação real de HTML entre impressão e WhatsApp | PENDENTE |
+
+## Área 03 — Cadastros & Catálogos
+
+| Item | Classificação | Status |
+|---|---|---|
+| Grupos e tipos de produto (TV/Geladeira/Freezer/...) | **REAPROVEITAR o schema, CRIAR a UI e a integração** -- achado 2026-09-08: `product_groups`+`product_types` **já existem no banco, já populados** com exatamente as 5 categorias que `inferGroup()` (os-detail-v0812.js) hoje recalcula na mão via string-matching, nunca lendo a tabela real. Tabelas são GLOBAIS (sem company_id) -- decisão de arquitetura a confirmar (ver abaixo). | **EM DIAGNÓSTICO -- aguardando confirmação sobre escopo global×por empresa** |
+| Defeitos | CRIAR | PENDENTE |
+| Estado do produto | CRIAR | PENDENTE |
+| Acessórios | CRIAR | PENDENTE |
+| Serviços com valor padrão | CRIAR | PENDENTE |
+
+⚠️ "Grupos de Atendimento" (já existe) é conceito diferente (roteamento interno), não confundir com catálogo de produto.
+
+## Área 04 — Agenda & Atendimento
+
+| Item | Classificação | Status |
+|---|---|---|
+| Horários (dias/período/capacidade da empresa) | REAPROVEITAR | IMPLEMENTADO |
+| Técnicos disponíveis na agenda | CONSOLIDAR | PENDENTE (só expor) |
+| Capacidade por técnico/região | CRIAR | PENDENTE (futuro, não urgente) |
+| Regiões de atendimento | CRIAR | PENDENTE |
+| Conflito/transferência/sem técnico definido | REAPROVEITAR | IMPLEMENTADO |
+| Períodos disponíveis (enum) | REVISAR | 2 valores mortos no CHECK (`HORARIO_COMERCIAL`/`HORARIO_ESPECIFICO`) |
+| Alertas (parâmetros da regra) | CRIAR | PENDENTE |
+
+## Área 05 — Estoque & Peças
+
+| Item | Classificação | Status |
+|---|---|---|
+| Locais de estoque (múltiplos depósitos) | CRIAR | PENDENTE |
+| Categorias de peças | CRIAR | PENDENTE |
+| Unidades (UN/KIT/PAR/METRO) | CRIAR | PENDENTE |
+| Movimentações | CONSOLIDAR (schema existe, zero gravação) | PENDENTE |
+| Estoque técnico | REAPROVEITAR schema / CRIAR gravação | PENDENTE |
+| Fabricantes (garantia/reembolso) | CRIAR | PENDENTE |
+| Alertas | CRIAR | PENDENTE |
+
+## Área 06 — Financeiro
+
+| Item | Classificação | Status |
+|---|---|---|
+| Formas de pagamento (ativar/ordem/parcelamento) | CRIAR | PENDENTE |
+| Contas e caixas | CRIAR | PENDENTE |
+| Categorias financeiras | CRIAR | PENDENTE |
+| Regras de recebimento | CRIAR | PENDENTE |
+| Descontos (limite/autorização por perfil) | CRIAR | PENDENTE |
+| Parâmetros (juros/taxas/arredondamento) | CRIAR | PENDENTE |
+
+## Área 07 — Comunicação & Automação
+
+| Item | Classificação | Status |
+|---|---|---|
+| Canais (WhatsApp/Chat) | REAPROVEITAR — **não tocar na base** | IMPLEMENTADO (referência apenas) |
+| Horário de atendimento | CONSOLIDAR com tabelas de Agenda | PENDENTE |
+| Mensagens padrão / variáveis | CRIAR (coluna morta encontrada, não reaproveitar) | PENDENTE |
+| Notificações automáticas pro cliente | CRIAR | PENDENTE |
+| NPS | confirmado específico Electrolux → fica na Área 08 | N/A |
+| Automação (regra geral) | CRIAR (arquitetura só, sem pressa) | PENDENTE |
+
+## Área 08 — Integrações
+
+| Item | Classificação | Status |
+|---|---|---|
+| Card de status (WhatsApp/Electrolux) | REAPROVEITAR | IMPLEMENTADO |
+| Última sincronização / logs / config detalhada | CRIAR | PENDENTE |
+| Pulse IA (`integrated_apps`+`app_launch_audit`) | REAPROVEITAR — modelo arquitetural pras outras | IMPLEMENTADO |
+| GestãoClick / Digisac | CRIAR | PENDENTE |
+| Whirlpool | REVISAR — pertence à Área 02 (documento), não é integração de API | EM DIAGNÓSTICO |
+
+## Área 09 — Sistema & Segurança
+
+| Item | Classificação | Status |
+|---|---|---|
+| Tempo de inatividade / encerramento automático | CRIAR | PENDENTE |
+| Auditoria | CONSOLIDAR — `audit_log` existe, zero escritores | PENDENTE |
+| Logs técnicos | CRIAR | PENDENTE |
+| Importação/exportação genérica | REVISAR — atual é específico de OS, pertence à Área 02 | EM DIAGNÓSTICO |
+| Reset Master | REAPROVEITAR | IMPLEMENTADO |
+
+---
+
+## Log de execução
+
+- **2026-09-08**: Matriz criada a partir do diagnóstico de 5 agentes.
+  - C1 (aviso falso "Não existe Loja") -- **corrigido**.
+  - C2 (2 RPCs sem migration versionada) -- extraídas e documentadas retroativamente.
+  - C3 (catálogo de permissão divergente) -- levantamento em produção mostrou zero dado real usando as chaves conflitantes; `user-access-management-v0813.js` corrigido pra usar o catálogo canônico. Falta só endurecer a RPC contra chave arbitrária.
+  - Ao iniciar construção do catálogo de produtos (Área 03), migration própria abortou com erro real (`product_types` já existe) -- achado maior: `product_groups`+`product_types` já existem no banco, populados, globais (sem company_id), nunca ligados a nenhuma tela. Rollback automático, nada ficou pela metade. Decisão de escopo (global × por empresa) posta ao usuário antes de construir a UI de gestão.
