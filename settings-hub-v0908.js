@@ -29,7 +29,7 @@
 
   const CARDS=[
     ['♟','EMPRESA & USUÁRIOS','Empresas, unidades/lojas, usuários, equipes, técnicos, perfis, permissões e vínculo usuário × loja.','blue','admin'],
-    ['▥','ORDENS DE SERVIÇO','Fluxos, situações, tipos de atendimento, numeração, campos obrigatórios, termos e regras.','purple','placeholder:os'],
+    ['▥','ORDENS DE SERVIÇO','Fluxos, situações, tipos de atendimento, numeração, campos obrigatórios, termos e regras.','purple','ostipos'],
     ['▤','CADASTROS & CATÁLOGOS','Marcas, produtos, grupos, defeitos, acessórios, serviços e listas auxiliares.','teal','catalogos'],
     ['◷','AGENDA & ATENDIMENTO','Técnicos externos, períodos, regiões, capacidade, regras e alertas de agendamento.','orange','admin'],
     ['▦','ESTOQUE & PEÇAS','Depósitos, movimentações, estoque técnico, devoluções e parâmetros de peças.','cyan','placeholder:estoque'],
@@ -40,7 +40,6 @@
   ];
 
   const PLACEHOLDER_TEXT={
-    os:['Ordens de Serviço','Fluxos, situações, tipos de atendimento, numeração, campos obrigatórios, termos e regras da OS ainda não têm tela própria de configuração -- hoje são fixos no código. Grupo criado, conteúdo em definição.'],
     estoque:['Estoque & Peças','Depósitos, movimentações, estoque técnico, devoluções e parâmetros de peças ainda não têm tela própria de configuração. Grupo criado, conteúdo em definição.'],
   };
 

@@ -73,9 +73,18 @@
       await baseNew.apply(this,arguments);
       const service=document.querySelector('#serviceType')?.closest('.vx-newos-field');
       if(!service || document.querySelector('#orderType')) return;
+      // Achado do usuário em 2026-09-08 (Matriz Mestra, Área 02): tipo
+      // de OS agora vem de um catálogo por empresa (order_types,
+      // migration 20260908050000, tela em settings-order-types-
+      // v0908.js) -- TYPES fica só como fallback se a empresa não
+      // tiver nenhum tipo cadastrado (nunca deveria acontecer, toda
+      // empresa é semeada por trigger, mas evita tela quebrada).
+      const cidForTypes=state?.profile?.active_company_id;
+      const companyTypes=cidForTypes?await api(`order_types?company_id=eq.${cidForTypes}&active=eq.true&select=name&order=sort_order`).catch(()=>[]):[];
+      const typeOptions=(companyTypes.length?companyTypes.map(t=>t.name):TYPES);
       const wrap=document.createElement('div');
       wrap.className='vx-newos-field';
-      wrap.innerHTML='<label>TIPO DE ORDEM DE SERVIÇO *</label><select id="orderType" required>'+TYPES.map(x=>`<option value="${x}">${x}</option>`).join('')+`</select><div id="reentryBox" style="display:none;margin-top:8px"><label>O.S. ANTERIOR / REINGRESSO</label><select id="previousServiceOrderId"><option value="">SELECIONE A O.S. ANTERIOR...</option>${(state.orders||[]).map(o=>`<option value="${o.id}">${esc(o.os_number)} • ${esc(o.clients?.name||'')}</option>`).join('')}</select></div><div id="warrantyBox" class="vx-warranty-box" style="display:none"><div class="vx-newos-field-grid two"><div class="vx-newos-field"><label>Nº DA NOTA FISCAL *</label><input id="warrantyInvoice"></div><div class="vx-newos-field"><label>DATA DA COMPRA *</label><input id="warrantyPurchaseDate" type="date"></div><div class="vx-newos-field"><label>REVENDEDOR *</label><input id="warrantyReseller"></div><div class="vx-newos-field"><label>PRAZO DE GARANTIA (MESES) *</label><input id="warrantyMonths" type="number" min="1"></div></div><div id="warrantyResult" class="vx-warranty-result"></div></div>`;
+      wrap.innerHTML='<label>TIPO DE ORDEM DE SERVIÇO *</label><select id="orderType" required>'+typeOptions.map(x=>`<option value="${x}">${x}</option>`).join('')+`</select><div id="reentryBox" style="display:none;margin-top:8px"><label>O.S. ANTERIOR / REINGRESSO</label><select id="previousServiceOrderId"><option value="">SELECIONE A O.S. ANTERIOR...</option>${(state.orders||[]).map(o=>`<option value="${o.id}">${esc(o.os_number)} • ${esc(o.clients?.name||'')}</option>`).join('')}</select></div><div id="warrantyBox" class="vx-warranty-box" style="display:none"><div class="vx-newos-field-grid two"><div class="vx-newos-field"><label>Nº DA NOTA FISCAL *</label><input id="warrantyInvoice"></div><div class="vx-newos-field"><label>DATA DA COMPRA *</label><input id="warrantyPurchaseDate" type="date"></div><div class="vx-newos-field"><label>REVENDEDOR *</label><input id="warrantyReseller"></div><div class="vx-newos-field"><label>PRAZO DE GARANTIA (MESES) *</label><input id="warrantyMonths" type="number" min="1"></div></div><div id="warrantyResult" class="vx-warranty-result"></div></div>`;
       service.parentElement.insertBefore(wrap,service);
       const sel=wrap.querySelector('#orderType'),box=wrap.querySelector('#reentryBox'),wbox=wrap.querySelector('#warrantyBox'),result=wrap.querySelector('#warrantyResult');
       const pd=wrap.querySelector('#warrantyPurchaseDate'),wm=wrap.querySelector('#warrantyMonths');

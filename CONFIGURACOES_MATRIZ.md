@@ -45,7 +45,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 | Numeração | REAPROVEITAR | Só expor leitura em Configurações | PENDENTE (exposição) |
 | Motor de fluxo/status automático | REAPROVEITAR — **nunca recriar** | `advance_service_order_status` é fonte única | IMPLEMENTADO (é o motor existente) |
 | Rótulos de status duplicados (`manual-status-v0812.js` FLOW × `vxOsStatusLabel`) | CONSOLIDAR | Unificar fonte do rótulo | PENDENTE |
-| Tipos de OS (ativar/desativar sem apagar histórico) | CRIAR | — | PENDENTE |
+| Tipos de OS (ativar/desativar sem apagar histórico) | CRIAR | `order_types` por empresa (migration `20260908050000`) + RPC `admin_upsert_order_type`, gestor-only. Empresas existentes semeadas com os 5 tipos já em uso; empresa nova semeada por trigger. Tela própria `settings-order-types-v0908.js`. `order-type-v0812.js` (Nova OS) já lê desta tabela, fallback pra lista fixa se vazia. GARANTIA/REINGRESSO mantidos com os mesmos nomes (comportamento especial por string exata, aviso na tela). | **IMPLEMENTADO** (2026-09-08) |
 | Tipo de atendimento (Interno/Externo) | REVISAR | CHECK rígido no banco, 3º valor exige migration | EM DIAGNÓSTICO |
 | Campos obrigatórios por etapa | CRIAR | Regra já existe no motor SQL, falta só exibir | PENDENTE |
 | Termos e condições (por tipo de documento, versionado) | CRIAR | Confirmado: nunca implementado, nenhum artefato no repo | PENDENTE |
