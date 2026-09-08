@@ -84,7 +84,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 | Unidades (UN/KIT/PAR/METRO) | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `stock_units`, mesma tela de Estoque. |
 | Movimentações | CONSOLIDAR (schema existe, zero gravação) | PENDENTE |
 | Estoque técnico | REAPROVEITAR schema / CRIAR gravação | PENDENTE |
-| Fabricantes (garantia/reembolso) | CRIAR | PENDENTE |
+| Fabricantes (garantia/reembolso) | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `manufacturers` por empresa (migration `20260908110000`, nome + garantia padrão em dias + observação de reembolso), card em `settings-stock-v0908.js` (mesma tela de Estoque). Sem seed. Ligação com o campo MARCA da Nova OS ou com o cálculo de garantia por OS fica pra depois. |
 | Alertas | CRIAR | PENDENTE |
 
 ## Área 06 — Financeiro
@@ -140,3 +140,4 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
   - C3 (catálogo de permissão divergente) -- levantamento em produção mostrou zero dado real usando as chaves conflitantes; `user-access-management-v0813.js` corrigido pra usar o catálogo canônico. Falta só endurecer a RPC contra chave arbitrária.
   - Ao iniciar construção do catálogo de produtos (Área 03), migration própria abortou com erro real (`product_types` já existe) -- achado maior: `product_groups`+`product_types` já existem no banco, populados, globais (sem company_id), nunca ligados a nenhuma tela. Rollback automático, nada ficou pela metade. Decisão de escopo (global × por empresa) posta ao usuário antes de construir a UI de gestão.
   - Leva seguinte: Numeração + Campos obrigatórios por etapa (Área 02, exposição só-leitura, sem lógica nova) e Mensagens padrão (Área 07, migration `20260908100000`, primeira tela real da Comunicação -- hub saiu de placeholder/'admin' pra 'comunicacao'). **Total: 20 itens implementados de 45.**
+  - Leva seguinte: Fabricantes/garantia-reembolso (Área 05, migration `20260908110000`, card em `settings-stock-v0908.js`). **Total: 21 itens implementados de 45.**
