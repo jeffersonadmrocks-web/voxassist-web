@@ -499,7 +499,15 @@
   // ENTREGA/SAÍDA+financeiro e chama o motor único de status), nunca
   // duplica a lógica de avanço/gate de pagamento completo aqui.
   window.vxFinalizeOs=async()=>{if(blockedFinalized())return;await window.vxSaveAllOs?.()};
-  window.vxRegisterPayment=async()=>{if(blockedFinalized())return;const amount=num(document.querySelector('#vxPayAmount')?.value),method=document.querySelector('#vxPayMethod')?.value,due_date=document.querySelector('#vxPayDate')?.value,installments=Math.max(1,parseInt(document.querySelector('#vxPayInstallments')?.value||'1')),notes=up(document.querySelector('#vxPayNotes')?.value||'');if(!amount||!method)return toast('Informe valor e forma de pagamento.','err');try{await api('payments',{method:'POST',body:JSON.stringify({service_order_id:ctx.o.id,amount,method,status:'RECEBIDO',due_date,paid_at:new Date().toISOString(),installments,notes,created_by:state.session.user.id})});toast('Pagamento registrado.');reload()}catch(e){toast(e.message,'err')}};
+  // Achado do usuário em 2026-09-07: #vxPayAmount casa com o regex de
+  // "amount" de currency-format-v0812.js (formatação BRL automática
+  // em QUALQUER input cujo id/name contenha "amount", entre outros) --
+  // o campo vira texto "R$ 200,00" (não mais um número puro), então
+  // num() (Number(v||0)) sempre dava NaN e o registro de pagamento
+  // falhava com "Informe valor e forma de pagamento" mesmo com os dois
+  // campos preenchidos. Usa o parser BRL já exposto globalmente
+  // (window.vxParseCurrency) em vez de num() aqui.
+  window.vxRegisterPayment=async()=>{if(blockedFinalized())return;const amount=(window.vxParseCurrency||num)(document.querySelector('#vxPayAmount')?.value),method=document.querySelector('#vxPayMethod')?.value,due_date=document.querySelector('#vxPayDate')?.value,installments=Math.max(1,parseInt(document.querySelector('#vxPayInstallments')?.value||'1')),notes=up(document.querySelector('#vxPayNotes')?.value||'');if(!amount||!method)return toast('Informe valor e forma de pagamento.','err');try{await api('payments',{method:'POST',body:JSON.stringify({service_order_id:ctx.o.id,amount,method,status:'RECEBIDO',due_date,paid_at:new Date().toISOString(),installments,notes,created_by:state.session.user.id})});toast('Pagamento registrado.');reload()}catch(e){toast(e.message,'err')}};
   window.vxEditPendingPayment=async()=>{if(blockedFinalized())return;const p=ctx.payments.find(x=>x.id===ctx.selectedPayment);if(!p)return toast('Selecione um pagamento.','err');if(String(p.status).toUpperCase()!=='PENDENTE')return toast('Somente pagamentos pendentes podem ser editados.','err');const amount=num(String(prompt('Valor:',p.amount)||p.amount).replace(',','.'));try{await api(`payments?id=eq.${p.id}`,{method:'PATCH',body:JSON.stringify({amount})});toast('Pendente atualizado.');reload()}catch(e){toast(e.message,'err')}};
   window.vxDeletePendingPayment=async()=>{if(blockedFinalized())return;const p=ctx.payments.find(x=>x.id===ctx.selectedPayment);if(!p)return toast('Selecione um pagamento.','err');if(String(p.status).toUpperCase()!=='PENDENTE')return toast('Somente pagamentos pendentes podem ser excluídos.','err');if(!confirm('Excluir pagamento pendente?'))return;try{await api(`payments?id=eq.${p.id}`,{method:'DELETE'});toast('Pendente excluído.');reload()}catch(e){toast(e.message,'err')}};
 })();
