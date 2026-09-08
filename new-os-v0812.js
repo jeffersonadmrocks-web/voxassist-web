@@ -90,7 +90,17 @@
     // não é mais uma escolha manual obrigatória aqui.
     (async()=>{
       const cid=state.profile?.active_company_id;
-      const groups=cid?await api(`service_groups?company_id=eq.${cid}&active=eq.true&select=id,name&order=name`).catch(()=>[]):[];
+      const [groups,conditions]=await Promise.all([
+        cid?api(`service_groups?company_id=eq.${cid}&active=eq.true&select=id,name&order=name`).catch(()=>[]):[],
+        cid?api(`product_conditions?company_id=eq.${cid}&active=eq.true&select=name&order=sort_order`).catch(()=>[]):[],
+      ]);
+      // Achado do usuário em 2026-09-08 (Matriz Mestra, Área 03): estado
+      // do produto agora vem de um catálogo por empresa (product_conditions,
+      // migration 20260908060000, tela em settings-product-catalog-v0908.js)
+      // -- mantém a lista fixa como fallback se a empresa não tiver
+      // nenhum estado cadastrado.
+      const condSel=document.querySelector('#condition');
+      if(condSel&&conditions.length)condSel.innerHTML='<option></option>'+conditions.map(c=>`<option>${V(c.name)}</option>`).join('');
       // Achado do usuário em 2026-09-04: "Grupo de Atendimento" (área de
       // responsabilidade que o gestor cadastra em Configurações),
       // escolha manual, opcional. Achado do usuário em 2026-09-07: o

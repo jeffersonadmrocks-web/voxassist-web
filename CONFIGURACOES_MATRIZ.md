@@ -57,7 +57,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 |---|---|---|
 | Grupos e tipos de produto (TV/Geladeira/Freezer/...) | **REAPROVEITAR catálogo mestre (intocado) + CRIAR camada de associação por empresa** | **IMPLEMENTADO** (2026-09-08). Catálogo mestre `product_groups`/`product_types` confirmado global, seeded, sem FK externa, sem trigger/função, sem policy de escrita -- decisão do usuário: nunca duplicar por empresa, nunca dar escrita direta nele. Criada `company_product_types` (migration `20260908030000`) + RPC `admin_set_company_product_type` (gestor-only; ausência de linha = ativo por padrão, empresa herda o catálogo inteiro sem reconfigurar nada). Tela própria `settings-product-catalog-v0908.js` -- primeira área a sair da página única e virar destino próprio no hub. `inferGroup()` (os-detail-v0812.js) mantido como está (2 usos, só exibição, nunca persistido) -- consolidação com o catálogo real fica pra depois de mapear todos os consumidores, sem apagar o fallback ainda. |
 | Defeitos | CRIAR | PENDENTE |
-| Estado do produto | CRIAR | PENDENTE |
+| Estado do produto | CRIAR | **IMPLEMENTADO** (2026-09-08) -- `product_conditions` por empresa (migration `20260908060000`), RPC `admin_upsert_product_condition`, card na mesma tela de Produtos (`settings-product-catalog-v0908.js`). Empresas existentes semeadas com NOVO/USADO/ARRANHADO/AVARIADO (nada perdido); gestor livre pra renomear/adicionar. Ligado ao campo ESTADO DO APARELHO na Nova OS e na aba Equipamento da OS aberta, com fallback pra lista fixa. |
 | Acessórios | CRIAR | PENDENTE |
 | Serviços com valor padrão | CRIAR | PENDENTE |
 
