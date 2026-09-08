@@ -124,11 +124,11 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 
 | Item | Classificação | Status |
 |---|---|---|
-| Tempo de inatividade / encerramento automático | CRIAR | PENDENTE |
+| Tempo de inatividade / encerramento automático | CRIAR | **IMPLEMENTADO cadastro** (2026-09-08) -- `companies.session_idle_timeout_minutes` (migration `20260908150000`), editado por PATCH direto (mesmo padrão de `finance_*`, protegido por `companies_update_gestor`). Tela própria nova `settings-security-v0908.js`, primeira tela real da Área 09 -- hub saiu de 'admin' pra 'seguranca'. Nenhum monitor de inatividade implementado ainda -- só cadastro do parâmetro, comportamento de sessão atual intacto. Nota de navegação: RESET MASTER continua montado em `.vx-admin-actions` (tela 'admin', REAPROVEITAR) -- agora acessado pelo card "EMPRESA & USUÁRIOS", não mais por "SISTEMA & SEGURANÇA"; função em si intocada. |
 | Auditoria | CONSOLIDAR — `audit_log` existe, zero escritores | PENDENTE |
 | Logs técnicos | CRIAR | PENDENTE |
 | Importação/exportação genérica | REVISAR — atual é específico de OS, pertence à Área 02 | EM DIAGNÓSTICO |
-| Reset Master | REAPROVEITAR | IMPLEMENTADO |
+| Reset Master | REAPROVEITAR | IMPLEMENTADO -- continua na tela 'admin' (`.vx-admin-actions`), agora acessado pelo card "EMPRESA & USUÁRIOS" no hub (o card "SISTEMA & SEGURANÇA" passou a apontar pra `settings-security-v0908.js`) |
 
 ---
 
@@ -144,3 +144,4 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
   - Leva seguinte: Parâmetros financeiros -- juros/multa/arredondamento (Área 06, migration `20260908120000`, colunas em `companies`, card em `settings-payment-methods-v0908.js`). **Total: 22 itens implementados de 45.**
   - Leva seguinte: Parcelamento configurável -- limite de parcelas por forma de pagamento (Área 06, migration `20260908130000`, RPC estendida retrocompatível). **Total: 23 itens implementados de 45.**
   - Leva seguinte: Descontos -- limite por perfil GESTOR/ATENDENTE/TECNICO (Área 06, migration `20260908140000`). **Total: 24 itens implementados de 45.**
+  - Leva seguinte: Tempo de inatividade (Área 09, migration `20260908150000`, primeira tela real de Sistema & Segurança -- hub saiu de 'admin' pra 'seguranca'; RESET MASTER permanece intocado na tela 'admin', agora só acessado por outro card do hub). **Total: 25 itens implementados de 45.**

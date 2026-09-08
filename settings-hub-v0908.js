@@ -36,7 +36,7 @@
     ['$','FINANCEIRO','Formas de pagamento, categorias, caixas, recebimentos e parâmetros financeiros.','green','financeiro'],
     ['✉','COMUNICAÇÃO & AUTOMAÇÃO','WhatsApp, Chat, mensagens, notificações, horários, NPS e automações.','brown','comunicacao'],
     ['⌁','INTEGRAÇÕES','Electrolux, Whirlpool, GestãoClick, Digisac, Pulse IA, APIs e webhooks.','red','admin'],
-    ['⚙','SISTEMA & SEGURANÇA','Auditoria, logs, sessões, segurança, importação/exportação e parâmetros gerais.','gray','admin'],
+    ['⚙','SISTEMA & SEGURANÇA','Auditoria, logs, sessões, segurança, importação/exportação e parâmetros gerais.','gray','seguranca'],
   ];
 
   const PLACEHOLDER_TEXT={};

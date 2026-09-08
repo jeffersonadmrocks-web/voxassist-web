@@ -134,6 +134,7 @@
       else if(section==='ostipos'){if(typeof window.renderOsTypesSettings==='function'){await window.renderOsTypesSettings();return;}}
       else if(section==='estoque'){if(typeof window.renderStockSettings==='function'){await window.renderStockSettings();return;}}
       else if(section==='comunicacao'){if(typeof window.renderCommunicationSettings==='function'){await window.renderCommunicationSettings();return;}}
+      else if(section==='seguranca'){if(typeof window.renderSecuritySettings==='function'){await window.renderSecuritySettings();return;}}
       await renderAdmin();await refreshCompanySelector();cleanupLegacyStore();return;
     }
     const r=await prior(view);window.scrollTo(0,0);setTimeout(()=>{cleanupLegacyStore();refreshCompanySelector()},120);return r;
