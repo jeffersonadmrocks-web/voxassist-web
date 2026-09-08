@@ -183,6 +183,12 @@
 .vx-grid-table tbody tr:last-child td{border-bottom:0}
 .vx-grid-table tbody tr:hover{background:#f2f7fc}
 .vx-payment-table tr.selected{background:#e3f0fd}
+.vx-payment-table tbody tr{cursor:pointer}
+.vx-pay-method{display:inline-block;background:#eef3f8;color:var(--os-ink,#12324e);border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:700;letter-spacing:.02em}
+.vx-pay-status{display:inline-block;border-radius:999px;padding:3px 10px;font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
+.vx-pay-status.ok{background:#e6f4ea;color:#0b6b34}
+.vx-pay-status.pending{background:#fff3e0;color:#a35b00}
+.vx-pay-status.off{background:#f1f3f5;color:#6b7785}
 
 .vx-mini-list{border:1px solid var(--os-line);border-radius:var(--os-radius-sm);background:#f8fafc}
 .vx-inner-tabs button{border:1px solid var(--os-line);border-right:0;background:#f4f7fa;color:var(--os-ink-soft);font-weight:700}

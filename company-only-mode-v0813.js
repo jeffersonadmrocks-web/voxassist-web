@@ -102,9 +102,20 @@
       document.querySelector('#title')&&(document.querySelector('#title').textContent='Configurações');
       document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view==='usuarios'));
       if(typeof window.renderTabs==='function')window.renderTabs('Configurações');
+      // Achado do usuário em 2026-09-07/08 (investigação longa, confirmada
+      // via DevTools -- o elemento .vx-admin-hero SEMPRE existiu no DOM,
+      // visível, com altura normal): a rolagem da tela anterior não
+      // resetava ao entrar em Configurações. Cabeçalho e guias do app são
+      // sticky (topo/88px) -- com a página ainda rolada de uma tela
+      // anterior mais longa, esse cabeçalho fixo cobria exatamente a
+      // faixa de cima (título "Empresas e Usuários" + botão ← Voltar),
+      // enquanto o resto da página (abaixo da rolagem) aparecia normal.
+      // Parecia conteúdo sumido -- era só cobrado pelo próprio cabeçalho
+      // fixo por causa da posição de rolagem herdada.
+      window.scrollTo(0,0);
       await renderAdmin();await refreshCompanySelector();cleanupLegacyStore();return;
     }
-    const r=await prior(view);setTimeout(()=>{cleanupLegacyStore();refreshCompanySelector()},120);return r;
+    const r=await prior(view);window.scrollTo(0,0);setTimeout(()=>{cleanupLegacyStore();refreshCompanySelector()},120);return r;
   };
 
   const st=document.createElement('style');st.textContent=`.vx-admin-back{margin-bottom:8px;font-size:11px;padding:6px 12px}.company-only .vx-admin-grid{display:block}.co-actions{display:flex;align-items:center;gap:8px}.co-company-checks,.co-perms{display:grid;gap:6px;border:1px solid #dbe5ee;border-radius:7px;padding:9px;background:#f8fafc;max-height:210px;overflow:auto}.co-company-checks label,.co-perms label{display:flex;align-items:center;gap:7px;font-size:10px}.co-company-checks small{margin-left:5px;color:#718397}.danger{color:#9f1d1d!important;border-color:#e9baba!important}.vx-company-switch{display:flex;flex-direction:column;gap:2px;min-width:190px;margin-right:8px}.vx-company-switch small{font-size:8px;color:#6b7d90;font-weight:800}.vx-company-switch select{height:34px;border:1px solid #cfd9e3;border-radius:7px;background:#fff;padding:0 8px;font-size:10px;font-weight:700;color:#18344f}`;document.head.appendChild(st);
