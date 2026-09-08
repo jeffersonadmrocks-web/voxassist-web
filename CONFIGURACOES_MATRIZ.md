@@ -68,7 +68,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 | Item | Classificação | Status |
 |---|---|---|
 | Horários (dias/período/capacidade da empresa) | REAPROVEITAR | IMPLEMENTADO |
-| Técnicos disponíveis na agenda | CONSOLIDAR | PENDENTE (só expor) |
+| Técnicos disponíveis na agenda | CONSOLIDAR | **IMPLEMENTADO** (2026-09-08) -- achado: `profiles.external_schedule_enabled` já era lido em vários lugares (field-agenda-complete-v0813.js, dashboard, electrolux-agenda-bridge) mas nunca tinha nenhum jeito de ESCREVER pelo app (zero writers confirmado). RPC nova `admin_set_technician_external_schedule` (gestor-only, migration `20260908080000`) + card novo em `settings-schedule-v0907.js` (mesma tela de Horários), lista técnicos com checkbox. Não duplica cadastro de técnico. |
 | Capacidade por técnico/região | CRIAR | PENDENTE (futuro, não urgente) |
 | Regiões de atendimento | CRIAR | PENDENTE |
 | Conflito/transferência/sem técnico definido | REAPROVEITAR | IMPLEMENTADO |

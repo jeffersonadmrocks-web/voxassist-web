@@ -39,7 +39,37 @@
     card.id='vxScheduleCard';
     extrasGrid(page).appendChild(card);
     await renderCard(card,cid);
+    const techCard=document.createElement('section');
+    techCard.className='vx-admin-card';
+    techCard.id='vxAgendaTechCard';
+    extrasGrid(page).appendChild(techCard);
+    await renderTechCard(techCard,cid);
    }catch(err){console.error('[schedule] falha ao injetar card:',err);}
+  }
+
+  // Achado do usuário em 2026-09-08 (Matriz Mestra, Área 04):
+  // profiles.external_schedule_enabled já era lido em vários lugares
+  // (field-agenda-complete-v0813.js e outros) pra decidir quem
+  // participa da agenda externa, mas nunca tinha nenhum jeito de
+  // ESCREVER esse campo pelo app -- só direto no banco. RPC nova
+  // (admin_set_technician_external_schedule, migration
+  // 20260908080000), gestor-only.
+  async function renderTechCard(card,cid){
+    // admin_company_users não devolve external_schedule_enabled --
+    // RLS de profiles (profiles_select_company) já escopa por empresa
+    // ativa sozinha, sem precisar de RPC pra essa leitura.
+    const techs=await api('profiles?role=eq.TECNICO&active=eq.true&select=id,full_name,external_schedule_enabled&order=full_name').catch(()=>[]);
+    card.innerHTML=`<div class="vx-admin-title"><h3>TÉCNICOS — AGENDA EXTERNA</h3><span>${techs.length}</span></div>
+      <p class="vx-sg-help">Quem participa da agenda de atendimento externo (visitas ao cliente). Não duplica o cadastro do técnico -- só liga/desliga essa característica.</p>
+      <div class="vx-sg-list">${techs.length?techs.map(t=>`<label class="vx-sg-row" style="cursor:pointer"><b style="flex:1">${E(t.full_name)}</b><input type="checkbox" data-tech="${E(t.id)}" ${t.external_schedule_enabled?'checked':''}></label>`).join(''):'<p class="vx-sg-empty">Nenhum técnico cadastrado nesta empresa ainda.</p>'}</div>`;
+    card.querySelectorAll('[data-tech]').forEach(cb=>cb.onchange=async()=>{
+      cb.disabled=true;
+      try{
+        await api('rpc/admin_set_technician_external_schedule',{method:'POST',body:JSON.stringify({p_user_id:cb.dataset.tech,p_company_id:cid,p_enabled:cb.checked})});
+        toast?.(cb.checked?'Técnico adicionado à agenda externa.':'Técnico removido da agenda externa.');
+      }catch(err){toast?.('Não foi possível alterar: '+err.message,'err');cb.checked=!cb.checked;}
+      finally{cb.disabled=false;}
+    });
   }
 
   async function renderCard(card,cid){
