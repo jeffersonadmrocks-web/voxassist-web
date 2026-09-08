@@ -97,7 +97,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 | Categorias financeiras | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `financial_categories`, mesma tela de Financeiro. |
 | Regras de recebimento | CRIAR | PENDENTE |
 | Descontos (limite/autorização por perfil) | CRIAR | PENDENTE |
-| Parâmetros (juros/taxas/arredondamento) | CRIAR | PENDENTE |
+| Parâmetros (juros/taxas/arredondamento) | CRIAR | **IMPLEMENTADO cadastro** (2026-09-08) -- 3 colunas novas em `companies` (migration `20260908120000`: juros ao mês %, multa %, modo de arredondamento), editadas por PATCH direto (mesmo padrão de `document_footer`/`business_hours`, protegido pela policy `companies_update_gestor` já existente, sem RPC nova). Card "PARÂMETROS FINANCEIROS" em `settings-payment-methods-v0908.js`. Ainda não aplicado em nenhum cálculo da guia Finalizar OS -- só cadastro. |
 
 ## Área 07 — Comunicação & Automação
 
@@ -141,3 +141,4 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
   - Ao iniciar construção do catálogo de produtos (Área 03), migration própria abortou com erro real (`product_types` já existe) -- achado maior: `product_groups`+`product_types` já existem no banco, populados, globais (sem company_id), nunca ligados a nenhuma tela. Rollback automático, nada ficou pela metade. Decisão de escopo (global × por empresa) posta ao usuário antes de construir a UI de gestão.
   - Leva seguinte: Numeração + Campos obrigatórios por etapa (Área 02, exposição só-leitura, sem lógica nova) e Mensagens padrão (Área 07, migration `20260908100000`, primeira tela real da Comunicação -- hub saiu de placeholder/'admin' pra 'comunicacao'). **Total: 20 itens implementados de 45.**
   - Leva seguinte: Fabricantes/garantia-reembolso (Área 05, migration `20260908110000`, card em `settings-stock-v0908.js`). **Total: 21 itens implementados de 45.**
+  - Leva seguinte: Parâmetros financeiros -- juros/multa/arredondamento (Área 06, migration `20260908120000`, colunas em `companies`, card em `settings-payment-methods-v0908.js`). **Total: 22 itens implementados de 45.**

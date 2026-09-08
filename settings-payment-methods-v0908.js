@@ -32,12 +32,44 @@
       <section class="vx-admin-card" id="vxPayMethodsCard"></section>
       <section class="vx-admin-card" id="vxCashAccountsCard" style="margin-top:12px"></section>
       <section class="vx-admin-card" id="vxFinCategoriesCard" style="margin-top:12px"></section>
+      <section class="vx-admin-card" id="vxFinParamsCard" style="margin-top:12px"></section>
     </div>`;
     document.getElementById('vxFinBack').onclick=()=>{window.__vxConfigSection=null;window.render('usuarios');};
     renderPayMethods(cid);
     CASH_ACCOUNTS.render(cid);
     FIN_CATEGORIES.render(cid);
+    renderFinParams(cid);
   };
+
+  const ROUNDING_LABELS={NENHUM:'NENHUM',PARA_CIMA:'PARA CIMA',PARA_BAIXO:'PARA BAIXO',MAIS_PROXIMO:'MAIS PRÓXIMO'};
+
+  async function renderFinParams(cid){
+    const card=document.getElementById('vxFinParamsCard');if(!card)return;
+    const rows=cid?await api(`companies?id=eq.${cid}&select=finance_interest_rate_monthly,finance_fine_rate,finance_rounding_mode`).catch(()=>[]):[];
+    const c=rows?.[0]||{};
+    card.innerHTML=`<div class="vx-admin-title"><h3>PARÂMETROS FINANCEIROS</h3></div>
+      <p class="vx-sg-help">Juros, multa e arredondamento. Cadastro apenas -- ainda não aplicados em nenhum cálculo da guia Finalizar OS.</p>
+      <form id="vxFinParamsForm" class="vx-admin-form">
+        <label>JUROS AO MÊS (%)</label><input name="interest" type="number" step="0.01" min="0" value="${c.finance_interest_rate_monthly??''}" placeholder="EX.: 2.5">
+        <label>MULTA POR ATRASO (%)</label><input name="fine" type="number" step="0.01" min="0" value="${c.finance_fine_rate??''}" placeholder="EX.: 2">
+        <label>ARREDONDAMENTO</label><select name="rounding">${Object.entries(ROUNDING_LABELS).map(([v,l])=>`<option value="${v}"${c.finance_rounding_mode===v?' selected':''}>${l}</option>`).join('')}</select>
+        <div class="vx-admin-form-actions"><button class="primary">SALVAR</button></div>
+      </form>`;
+    card.querySelector('#vxFinParamsForm').onsubmit=async e=>{
+      e.preventDefault();
+      const f=new FormData(e.target),btn=e.submitter;btn.disabled=true;
+      try{
+        const interest=f.get('interest'),fine=f.get('fine');
+        await api(`companies?id=eq.${cid}`,{method:'PATCH',body:JSON.stringify({
+          finance_interest_rate_monthly:interest?Number(interest):null,
+          finance_fine_rate:fine?Number(fine):null,
+          finance_rounding_mode:f.get('rounding')||'NENHUM'
+        })});
+        toast?.('Parâmetros financeiros salvos.');
+      }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');}
+      btn.disabled=false;
+    };
+  }
 
   async function renderPayMethods(cid){
     const card=document.getElementById('vxPayMethodsCard');if(!card)return;
