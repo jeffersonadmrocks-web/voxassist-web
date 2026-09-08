@@ -61,6 +61,7 @@ Consolidação de requisitos recuperados das conversas de computador e celular. 
 - Fiscal somente nas etapas finais: reavaliar GestãoClick, Focus NFe, Nuvem Fiscal ou outro provedor antes de fechar arquitetura.
 
 ## Dashboard
+- [PENDENTE 2026-09-08] Card "PRONTOS PARA ENTREGA" deve mostrar aparelhos prontos dos últimos 60 dias (não todos, sem limite de tempo) e o valor total (R$) desses aparelhos, quando houver. Ajustar depois de concluída a reforma de Configurações (9 áreas).
 - Situação/grupo/técnico/atendente/loja/período.
 - Cards clicáveis por status.
 - Oportunidades do dia, feed em tempo real e casos de atenção.
