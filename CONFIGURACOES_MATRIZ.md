@@ -85,7 +85,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 | Movimentações | CONSOLIDAR (schema existe, zero gravação) | PENDENTE |
 | Estoque técnico | REAPROVEITAR schema / CRIAR gravação | PENDENTE |
 | Fabricantes (garantia/reembolso) | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `manufacturers` por empresa (migration `20260908110000`, nome + garantia padrão em dias + observação de reembolso), card em `settings-stock-v0908.js` (mesma tela de Estoque). Sem seed. Ligação com o campo MARCA da Nova OS ou com o cálculo de garantia por OS fica pra depois. |
-| Alertas | CRIAR | PENDENTE |
+| Alertas | CRIAR | **IMPLEMENTADO cadastro** (2026-09-08) -- `stock_items.min_quantity` (limite por peça, opcional) + `companies.stock_alert_default_min_quantity` (padrão da empresa), migration `20260908180000`. Card "ALERTA DE ESTOQUE BAIXO" em `settings-stock-v0908.js`: parâmetro padrão + contagem real de peças abaixo do limite hoje (leitura). Editar o limite de uma peça específica continua na tela de Estoque operacional (não tocada); nenhuma notificação é disparada ainda -- só cadastro + contagem. |
 
 ## Área 06 — Financeiro
 
@@ -147,3 +147,4 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
   - Leva seguinte: Tempo de inatividade (Área 09, migration `20260908150000`, primeira tela real de Sistema & Segurança -- hub saiu de 'admin' pra 'seguranca'; RESET MASTER permanece intocado na tela 'admin', agora só acessado por outro card do hub). **Total: 25 itens implementados de 45.**
   - Leva seguinte: Auditoria -- trigger de banco pra qualquer UPDATE em `companies` (Área 09, migration `20260908160000`), card de leitura em `settings-security-v0908.js`. **Total: 26 itens implementados de 45.**
   - Leva seguinte: Logs técnicos -- captura de erro JS não tratado (Área 09, migration `20260908170000`, `client-error-log-v0908.js`). **Total: 27 itens implementados de 45.**
+  - Leva seguinte: Alertas de estoque baixo -- limite por peça + padrão da empresa + contagem real (Área 05, migration `20260908180000`, card em `settings-stock-v0908.js`). **Total: 28 itens implementados de 45.**

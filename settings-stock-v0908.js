@@ -22,13 +22,46 @@
       <section class="vx-admin-card" id="vxPartCategoriesCard" style="margin-top:12px"></section>
       <section class="vx-admin-card" id="vxStockUnitsCard" style="margin-top:12px"></section>
       <section class="vx-admin-card" id="vxManufacturersCard" style="margin-top:12px"></section>
+      <section class="vx-admin-card" id="vxStockAlertCard" style="margin-top:12px"></section>
     </div>`;
     document.getElementById('vxStockBack').onclick=()=>{window.__vxConfigSection=null;window.render('usuarios');};
     LOCATIONS.render(cid);
     CATEGORIES.render(cid);
     UNITS.render(cid);
     renderManufacturers(cid);
+    renderStockAlert(cid);
   };
+
+  async function renderStockAlert(cid){
+    const card=document.getElementById('vxStockAlertCard');if(!card)return;
+    const [companyRows,items]=await Promise.all([
+      cid?api(`companies?id=eq.${cid}&select=stock_alert_default_min_quantity`).catch(()=>[]):[],
+      cid?api(`stock_items?company_id=eq.${cid}&select=available_quantity,min_quantity`).catch(()=>[]):[]
+    ]);
+    const defaultMin=companyRows?.[0]?.stock_alert_default_min_quantity;
+    const belowCount=items.filter(it=>{
+      const limit=it.min_quantity??defaultMin;
+      return limit!=null && Number(it.available_quantity)<Number(limit);
+    }).length;
+    card.innerHTML=`<div class="vx-admin-title"><h3>ALERTA DE ESTOQUE BAIXO</h3></div>
+      <p class="vx-sg-help">Quantidade mínima padrão (usada quando a peça não tem um limite próprio). Cadastro apenas -- ainda não dispara notificação, só mostra a contagem abaixo.</p>
+      <form id="vxStockAlertForm" class="vx-admin-form">
+        <label>QUANTIDADE MÍNIMA PADRÃO</label><input name="min" type="number" min="0" step="0.01" value="${defaultMin??''}" placeholder="EX.: 2">
+        <div class="vx-admin-form-actions"><button class="primary">SALVAR</button></div>
+      </form>
+      <p class="vx-sg-help" style="margin-top:10px"><b>${belowCount}</b> peça(s) hoje abaixo do limite configurado.</p>`;
+    card.querySelector('#vxStockAlertForm').onsubmit=async e=>{
+      e.preventDefault();
+      const f=new FormData(e.target),btn=e.submitter;btn.disabled=true;
+      try{
+        const v=f.get('min');
+        await api(`companies?id=eq.${cid}`,{method:'PATCH',body:JSON.stringify({stock_alert_default_min_quantity:v?Number(v):null})});
+        toast?.('Parâmetro salvo.');
+        await renderStockAlert(cid);
+      }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');}
+      btn.disabled=false;
+    };
+  }
 
   async function renderManufacturers(cid){
     const card=document.getElementById('vxManufacturersCard');if(!card)return;
