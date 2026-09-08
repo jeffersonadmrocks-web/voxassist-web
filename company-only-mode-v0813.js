@@ -65,7 +65,11 @@
       <section class="vx-admin-card"><div class="vx-admin-title"><h3>USUÁRIOS DA EMPRESA ATIVA</h3><span>${users.length}</span></div><div class="table-wrap"><table><thead><tr><th>Usuário</th><th>E-mail</th><th>Perfil</th><th>Empresas Liberadas</th><th>Acesso</th><th>Situação</th><th>Ações</th></tr></thead><tbody>${users.map(u=>`<tr><td><b>${E(u.full_name)}</b></td><td>${E(u.email||'—')}</td><td>${E(u.role)}</td><td>${E((u.company_names||[]).join(', ')||'—')}</td><td>${E(u.access_type||'PERSONALIZADO')}</td><td>${u.active?'<span class="vx-ok">ATIVO</span>':'<span class="vx-off">INATIVO</span>'}</td><td><button class="secondary" data-user-manage="${E(u.user_id)}">ALTERAR</button></td></tr>`).join('')||'<tr><td colspan="7">Nenhum usuário vinculado à empresa ativa.</td></tr>'}</tbody></table></div></section>
       <div class="vx-security-note"><b>ISOLAMENTO POR EMPRESA</b><span>OS, clientes, equipamentos, agenda, estoque, financeiro e demais dados usam company_id e RLS. Trocar Empresa ativa altera o contexto operacional; não existe mais contexto de Loja.</span></div>
     </div>`;
-    document.querySelector('#vxAdminBack').onclick=()=>window.render('dashboard');
+    // Achado do usuário em 2026-09-08: com o hub de 9 grupos
+    // (settings-hub-v0908.js), Voltar aqui volta pro hub de
+    // Configurações (de onde esta tela única é aberta), não pro
+    // dashboard geral do app.
+    document.querySelector('#vxAdminBack').onclick=()=>{window.__vxConfigSection=null;window.render('usuarios');};
     document.querySelector('#vxCOnewCompany').onclick=()=>newCompany();
     document.querySelector('#vxCOnewUser')?.addEventListener('click',()=>newUser());
     app.querySelectorAll('[data-company-use]').forEach(b=>b.onclick=async()=>{try{await api('rpc/switch_company',{method:'POST',body:JSON.stringify({target_company:b.dataset.companyUse})});await loadProfile();await loadCore();await renderAdmin();await refreshCompanySelector()}catch(e){toast(e.message,'err')}});
@@ -113,6 +117,14 @@
       // Parecia conteúdo sumido -- era só cobrado pelo próprio cabeçalho
       // fixo por causa da posição de rolagem herdada.
       window.scrollTo(0,0);
+      // Achado do usuário em 2026-09-08: Configurações vira um hub de 9
+      // grupos (settings-hub-v0908.js) -- sem seção escolhida ainda,
+      // mostra o hub; escolhendo um grupo real, mostra esta mesma tela
+      // única de sempre (Empresas/Usuários + os 4 cards extras); grupo
+      // ainda sem conteúdo construído mostra um painel honesto.
+      const section=window.__vxConfigSection;
+      if(!section){if(typeof window.renderConfigHub==='function'){window.renderConfigHub();return;}}
+      else if(String(section).startsWith('placeholder:')){if(typeof window.renderConfigPlaceholder==='function'){window.renderConfigPlaceholder(section.slice('placeholder:'.length));return;}}
       await renderAdmin();await refreshCompanySelector();cleanupLegacyStore();return;
     }
     const r=await prior(view);window.scrollTo(0,0);setTimeout(()=>{cleanupLegacyStore();refreshCompanySelector()},120);return r;
