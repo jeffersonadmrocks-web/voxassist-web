@@ -30,6 +30,22 @@
         <div class="vx-sg-list" id="vxOsTypesList"></div>
         <button type="button" class="secondary" id="vxOsTypeNew">+ Novo tipo de OS</button>
       </section>
+      <section class="vx-admin-card" style="margin-top:12px">
+        <div class="vx-admin-title"><h3>NUMERAÇÃO</h3></div>
+        <p class="vx-sg-help">Regra fixa do sistema (não configurável por empresa): <code>DD + letra do mês + AA + letra da hora + MM</code>. Mês A=Jan...L=Dez. Hora A=08h...N=21h (fora desse intervalo, "Z"). Exemplo: 02/09/2026 14:35 → <b>02I26G35</b>.</p>
+      </section>
+      <section class="vx-admin-card" style="margin-top:12px">
+        <div class="vx-admin-title"><h3>CAMPOS OBRIGATÓRIOS POR ETAPA</h3></div>
+        <p class="vx-sg-help">Regra fixa do motor de status (não configurável por empresa) -- o que falta preencher pra cada etapa avançar sozinha pra próxima:</p>
+        <div class="vx-sg-list">
+          <div class="vx-sg-row"><b>Aguardando Análise</b><span>Técnico, defeito constatado, serviço, valor do orçamento/peças</span></div>
+          <div class="vx-sg-row"><b>Aguardando Aprovação</b><span>Decisão (Aprovado/Recusado), data da aprovação ou motivo da recusa</span></div>
+          <div class="vx-sg-row"><b>Aguardando Conserto</b><span>Data/hora de início do conserto</span></div>
+          <div class="vx-sg-row"><b>Em Conserto</b><span>Data/hora de pronto</span></div>
+          <div class="vx-sg-row"><b>Pronto para Entrega</b><span>Data/hora de entrega/saída</span></div>
+          <div class="vx-sg-row"><b>Orçamento Recusado</b><span>Equipamento preparado/remontado (pronto para retirada)</span></div>
+        </div>
+      </section>
     </div>`;
     document.getElementById('vxOsTypesBack').onclick=()=>{window.__vxConfigSection=null;window.render('usuarios');};
     renderList(types);

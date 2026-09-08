@@ -42,12 +42,12 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 
 | Item | Classificação | Ação | Status |
 |---|---|---|---|
-| Numeração | REAPROVEITAR | Só expor leitura em Configurações | PENDENTE (exposição) |
+| Numeração | REAPROVEITAR | Só expor leitura em Configurações. Card informativo "NUMERAÇÃO" em `settings-order-types-v0908.js`, regra fixa de `os-number-format-v0812.js` (nenhuma lógica nova). | **IMPLEMENTADO** (2026-09-08) |
 | Motor de fluxo/status automático | REAPROVEITAR — **nunca recriar** | `advance_service_order_status` é fonte única | IMPLEMENTADO (é o motor existente) |
 | Rótulos de status duplicados (`manual-status-v0812.js` FLOW × `vxOsStatusLabel`) | CONSOLIDAR | Revisado 2026-09-08: `labelOf()` de manual-status-v0812.js já PREFERE `window.vxOsStatusLabel` sempre que disponível (`os-status-engine-v0903.js` carrega antes) -- na prática `FLOW` só serve de fallback morto pro rótulo. Risco baixo (rótulo já é o certo hoje). `FLOW` continua com um uso real, diferente: é a lista ORDENADA de status oferecida no seletor manual de situação -- essa parte não é redundante, fica pra depois com menor prioridade. | BAIXA PRIORIDADE (não é bug funcional) |
 | Tipos de OS (ativar/desativar sem apagar histórico) | CRIAR | `order_types` por empresa (migration `20260908050000`) + RPC `admin_upsert_order_type`, gestor-only. Empresas existentes semeadas com os 5 tipos já em uso; empresa nova semeada por trigger. Tela própria `settings-order-types-v0908.js`. `order-type-v0812.js` (Nova OS) já lê desta tabela, fallback pra lista fixa se vazia. GARANTIA/REINGRESSO mantidos com os mesmos nomes (comportamento especial por string exata, aviso na tela). | **IMPLEMENTADO** (2026-09-08) |
 | Tipo de atendimento (Interno/Externo) | REVISAR | CHECK rígido no banco, 3º valor exige migration | EM DIAGNÓSTICO |
-| Campos obrigatórios por etapa | CRIAR | Regra já existe no motor SQL, falta só exibir | PENDENTE |
+| Campos obrigatórios por etapa | CRIAR (exposição) | Regra já existe no motor SQL (`compute_missing_for_status`, migration `20260903050000`), falta só exibir -- card informativo "CAMPOS OBRIGATÓRIOS POR ETAPA" em `settings-order-types-v0908.js`, texto espelha 1:1 as condições da função SQL, sem duplicar lógica nova. | **IMPLEMENTADO** (2026-09-08) |
 | Termos e condições (por tipo de documento, versionado) | CRIAR | Confirmado: nunca implementado, nenhum artefato no repo | PENDENTE |
 | Impressão e documentos (seleção/parametrização de modelos) | CONSOLIDAR + CRIAR | Duplicação real de HTML entre impressão e WhatsApp | PENDENTE |
 
@@ -105,7 +105,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 |---|---|---|
 | Canais (WhatsApp/Chat) | REAPROVEITAR — **não tocar na base** | IMPLEMENTADO (referência apenas) |
 | Horário de atendimento | CONSOLIDAR com tabelas de Agenda | PENDENTE |
-| Mensagens padrão / variáveis | CRIAR (coluna morta encontrada, não reaproveitar) | PENDENTE |
+| Mensagens padrão / variáveis | CRIAR (coluna morta encontrada, não reaproveitar) | **IMPLEMENTADO** -- cadastro de nome+texto por empresa (migration `20260908100000`, RPC `admin_upsert_message_template`), tela própria `settings-communication-v0908.js`, primeiro conteúdo real da Área 07 (hub saiu de 'admin' pra 'comunicacao'). Escopo só cadastro: não dispara nada, não toca em nenhuma rota de envio/WhatsApp existente; ligar como atalho dentro do chat fica pra etapa futura. Variáveis livres (`{cliente}` etc.), sem parser (2026-09-08) |
 | Notificações automáticas pro cliente | CRIAR | PENDENTE |
 | NPS | confirmado específico Electrolux → fica na Área 08 | N/A |
 | Automação (regra geral) | CRIAR (arquitetura só, sem pressa) | PENDENTE |
@@ -139,3 +139,4 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
   - C2 (2 RPCs sem migration versionada) -- extraídas e documentadas retroativamente.
   - C3 (catálogo de permissão divergente) -- levantamento em produção mostrou zero dado real usando as chaves conflitantes; `user-access-management-v0813.js` corrigido pra usar o catálogo canônico. Falta só endurecer a RPC contra chave arbitrária.
   - Ao iniciar construção do catálogo de produtos (Área 03), migration própria abortou com erro real (`product_types` já existe) -- achado maior: `product_groups`+`product_types` já existem no banco, populados, globais (sem company_id), nunca ligados a nenhuma tela. Rollback automático, nada ficou pela metade. Decisão de escopo (global × por empresa) posta ao usuário antes de construir a UI de gestão.
+  - Leva seguinte: Numeração + Campos obrigatórios por etapa (Área 02, exposição só-leitura, sem lógica nova) e Mensagens padrão (Área 07, migration `20260908100000`, primeira tela real da Comunicação -- hub saiu de placeholder/'admin' pra 'comunicacao'). **Total: 20 itens implementados de 45.**
