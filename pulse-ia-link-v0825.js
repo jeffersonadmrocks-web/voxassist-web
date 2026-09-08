@@ -58,11 +58,27 @@
       <span class="pulse-ia-copy"><strong>PULSE IA</strong><small>Redes sociais com apoio de IA</small></span>`;
     btn.onclick = async () => {
       if (btn.disabled) return;
+
+      // A nova aba precisa nascer diretamente do gesto do usuário. Se esperarmos
+      // a chamada assíncrona ao App Gateway terminar para executar window.open(),
+      // navegadores podem classificá-la como popup e bloqueá-la.
+      const popup = window.open('about:blank', '_blank');
+      if (!popup) {
+        toast?.('O navegador bloqueou a nova aba do Pulse IA. Libere pop-ups para o VoxAssist.', 'err');
+        return;
+      }
+
+      try {
+        // Impede que a aplicação externa mantenha referência ao VoxAssist.
+        popup.opener = null;
+      } catch (_) {}
+
       btn.disabled = true;
       try {
         const data = await launchApp('pulse-ia');
-        window.open(data.url, '_blank', 'noopener');
+        popup.location.replace(data.url);
       } catch (e) {
+        try { popup.close(); } catch (_) {}
         toast?.('Não foi possível abrir o Pulse IA no momento.', 'err');
       } finally {
         btn.disabled = false;
