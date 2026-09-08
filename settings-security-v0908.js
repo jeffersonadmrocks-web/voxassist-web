@@ -21,10 +21,23 @@
     const cid=companyId();
     app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>Sistema & Segurança</h2><p>Sessão desta empresa</p></div><div class="module-head-actions"><button class="secondary" id="vxSecBack">← Voltar</button></div></div>
       <section class="vx-admin-card" id="vxSecSessionCard"></section>
+      <section class="vx-admin-card" id="vxSecAuditCard" style="margin-top:12px"></section>
     </div>`;
     document.getElementById('vxSecBack').onclick=()=>{window.__vxConfigSection=null;window.render('usuarios');};
     renderSession(cid);
+    renderAudit(cid);
   };
+
+  const E=window.esc||((v='')=>String(v??''));
+  const AUDIT_AREA_LABELS={EMPRESA:'Dados da empresa',USUARIO:'Usuário',SISTEMA:'Sistema'};
+
+  async function renderAudit(cid){
+    const card=document.getElementById('vxSecAuditCard');if(!card)return;
+    const rows=cid?await api(`audit_log?company_id=eq.${cid}&select=area,action,entity_type,created_at&order=created_at.desc&limit=20`).catch(()=>[]):[];
+    card.innerHTML=`<div class="vx-admin-title"><h3>AUDITORIA -- ÚLTIMOS 20 REGISTROS</h3></div>
+      <p class="vx-sg-help">Registro automático de alterações sensíveis (dados da empresa, acesso de usuários). Cobertura parcial -- expandir pra mais ações fica pra uma etapa futura.</p>
+      <div class="vx-sg-list">${rows.length?rows.map(r=>`<div class="vx-sg-row"><b>${AUDIT_AREA_LABELS[r.area]||E(r.area)} -- ${E(r.action)}</b><span>${new Date(r.created_at).toLocaleString('pt-BR')}</span></div>`).join(''):'<p class="vx-sg-empty">Nenhum registro ainda.</p>'}</div>`;
+  }
 
   async function renderSession(cid){
     const card=document.getElementById('vxSecSessionCard');if(!card)return;
