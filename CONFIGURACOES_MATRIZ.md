@@ -92,7 +92,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 | Item | Classificação | Status |
 |---|---|---|
 | Formas de pagamento (ativar/ordem) | CRIAR | **IMPLEMENTADO** (2026-09-08) -- tabela `payment_methods` por empresa (migration `20260908040000`), RPC `admin_upsert_payment_method`, tela própria `settings-payment-methods-v0908.js`. Empresas existentes semeadas com as 7 formas já em uso (nada perdido); empresa nova semeada por trigger. Guia Finalizar OS (`os-detail-v0812.js`) já lê desta tabela, com fallback pra lista fixa se a empresa não tiver nenhuma. "DESCONTO" continua com o mesmo nome (comparação por string no frontend depende disso). |
-| Parcelamento configurável | CRIAR | PENDENTE |
+| Parcelamento configurável | CRIAR | **IMPLEMENTADO cadastro** (2026-09-08) -- `payment_methods.max_installments` (migration `20260908130000`), RPC `admin_upsert_payment_method` estendida (parâmetro novo com default, retrocompatível) para gravar/limpar o limite. Campo no mesmo modal de "Renomear forma de pagamento". Ainda não validado no formulário de Finalizar OS -- só cadastro. |
 | Contas e caixas | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `cash_accounts` por empresa (migration `20260908090000`), card em `settings-payment-methods-v0908.js` (mesma tela de Financeiro). Vincular pagamento a uma conta específica fica pra depois. |
 | Categorias financeiras | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `financial_categories`, mesma tela de Financeiro. |
 | Regras de recebimento | CRIAR | PENDENTE |
@@ -142,3 +142,4 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
   - Leva seguinte: Numeração + Campos obrigatórios por etapa (Área 02, exposição só-leitura, sem lógica nova) e Mensagens padrão (Área 07, migration `20260908100000`, primeira tela real da Comunicação -- hub saiu de placeholder/'admin' pra 'comunicacao'). **Total: 20 itens implementados de 45.**
   - Leva seguinte: Fabricantes/garantia-reembolso (Área 05, migration `20260908110000`, card em `settings-stock-v0908.js`). **Total: 21 itens implementados de 45.**
   - Leva seguinte: Parâmetros financeiros -- juros/multa/arredondamento (Área 06, migration `20260908120000`, colunas em `companies`, card em `settings-payment-methods-v0908.js`). **Total: 22 itens implementados de 45.**
+  - Leva seguinte: Parcelamento configurável -- limite de parcelas por forma de pagamento (Área 06, migration `20260908130000`, RPC estendida retrocompatível). **Total: 23 itens implementados de 45.**

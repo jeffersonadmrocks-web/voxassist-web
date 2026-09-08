@@ -75,8 +75,8 @@
     const card=document.getElementById('vxPayMethodsCard');if(!card)return;
     const methods=cid?await api(`payment_methods?company_id=eq.${cid}&select=*&order=sort_order`).catch(()=>[]):[];
     card.innerHTML=`<div class="vx-admin-title"><h3>FORMAS DE PAGAMENTO</h3><span>${methods.length}</span></div>
-      <p class="vx-sg-help">Usadas na guia FINALIZAR OS de cada ordem de serviço. <b>DESCONTO</b> é uma forma especial -- fecha o saldo da OS sem contar como receita nos relatórios; renomear ou desativar esse item específico muda esse comportamento.</p>
-      <div class="vx-sg-list" id="vxPayMethodsList">${methods.length?methods.map(m=>`<div class="vx-sg-row${m.active?'':' inactive'}"><b>${E(m.name)}</b><span>${m.active?'ATIVA':'INATIVA'}</span><div class="vx-sg-row-actions"><button type="button" data-rename="${E(m.id)}">Renomear</button><button type="button" data-toggle="${E(m.id)}">${m.active?'Desativar':'Ativar'}</button></div></div>`).join(''):'<p class="vx-sg-empty">Nenhuma forma de pagamento cadastrada ainda.</p>'}</div>
+      <p class="vx-sg-help">Usadas na guia FINALIZAR OS de cada ordem de serviço. <b>DESCONTO</b> é uma forma especial -- fecha o saldo da OS sem contar como receita nos relatórios; renomear ou desativar esse item específico muda esse comportamento. Limite de parcelas é cadastro apenas -- ainda não validado no formulário.</p>
+      <div class="vx-sg-list" id="vxPayMethodsList">${methods.length?methods.map(m=>`<div class="vx-sg-row${m.active?'':' inactive'}"><b>${E(m.name)}</b><span>${m.max_installments?'ATÉ '+m.max_installments+'X · ':''}${m.active?'ATIVA':'INATIVA'}</span><div class="vx-sg-row-actions"><button type="button" data-rename="${E(m.id)}">Renomear</button><button type="button" data-toggle="${E(m.id)}">${m.active?'Desativar':'Ativar'}</button></div></div>`).join(''):'<p class="vx-sg-empty">Nenhuma forma de pagamento cadastrada ainda.</p>'}</div>
       <button type="button" class="secondary" id="vxPayMethodNew">+ Nova forma de pagamento</button>`;
     card.querySelectorAll('[data-rename]').forEach(b=>b.onclick=()=>{
       const m=methods.find(x=>String(x.id)===b.dataset.rename);
@@ -86,7 +86,7 @@
       const m=methods.find(x=>String(x.id)===b.dataset.toggle);if(!m)return;
       b.disabled=true;
       try{
-        await api('rpc/admin_upsert_payment_method',{method:'POST',body:JSON.stringify({p_company_id:cid,p_id:m.id,p_name:m.name,p_active:!m.active})});
+        await api('rpc/admin_upsert_payment_method',{method:'POST',body:JSON.stringify({p_company_id:cid,p_id:m.id,p_name:m.name,p_active:!m.active,p_max_installments:m.max_installments})});
         toast?.(m.active?'Forma de pagamento desativada.':'Forma de pagamento ativada.');
         await renderPayMethods(cid);
       }catch(err){toast?.('Não foi possível alterar: '+err.message,'err');b.disabled=false;}
@@ -96,14 +96,15 @@
   function openPayMethodModal(cid,method){
     document.querySelector('#vxPayMethodModal')?.remove();
     const ov=document.createElement('div');ov.id='vxPayMethodModal';ov.className='vx-admin-overlay';
-    ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>${method?'Renomear forma de pagamento':'Nova forma de pagamento'}</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body"><form id="vxPayMethodForm" class="vx-admin-form"><label>NOME *</label><input name="name" required maxlength="40" value="${method?E(method.name):''}" placeholder="EX.: BOLETO, VALE, CASHBACK"><div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button class="primary">SALVAR</button></div></form></div></div>`;
+    ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>${method?'Renomear forma de pagamento':'Nova forma de pagamento'}</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body"><form id="vxPayMethodForm" class="vx-admin-form"><label>NOME *</label><input name="name" required maxlength="40" value="${method?E(method.name):''}" placeholder="EX.: BOLETO, VALE, CASHBACK"><label>LIMITE DE PARCELAS (opcional)</label><input name="max_installments" type="number" min="1" value="${method?.max_installments??''}" placeholder="EX.: 12"><div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button class="primary">SALVAR</button></div></form></div></div>`;
     document.body.appendChild(ov);
     ov.querySelectorAll('[data-close],[data-cancel]').forEach(b=>b.onclick=()=>ov.remove());
     ov.querySelector('form').onsubmit=async e=>{
       e.preventDefault();
       const f=new FormData(e.target),btn=e.submitter;btn.disabled=true;
       try{
-        await api('rpc/admin_upsert_payment_method',{method:'POST',body:JSON.stringify({p_company_id:cid,p_id:method?.id||null,p_name:String(f.get('name')).trim(),p_active:method?method.active:true})});
+        const mi=f.get('max_installments');
+        await api('rpc/admin_upsert_payment_method',{method:'POST',body:JSON.stringify({p_company_id:cid,p_id:method?.id||null,p_name:String(f.get('name')).trim(),p_active:method?method.active:true,p_max_installments:mi?Number(mi):null,p_clear_max_installments:!mi})});
         ov.remove();
         toast?.(method?'Forma de pagamento atualizada.':'Forma de pagamento criada.');
         await renderPayMethods(cid);
