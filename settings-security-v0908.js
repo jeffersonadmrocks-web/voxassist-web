@@ -22,11 +22,21 @@
     app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>Sistema & Segurança</h2><p>Sessão desta empresa</p></div><div class="module-head-actions"><button class="secondary" id="vxSecBack">← Voltar</button></div></div>
       <section class="vx-admin-card" id="vxSecSessionCard"></section>
       <section class="vx-admin-card" id="vxSecAuditCard" style="margin-top:12px"></section>
+      <section class="vx-admin-card" id="vxSecLogsCard" style="margin-top:12px"></section>
     </div>`;
     document.getElementById('vxSecBack').onclick=()=>{window.__vxConfigSection=null;window.render('usuarios');};
     renderSession(cid);
     renderAudit(cid);
+    renderTechLogs(cid);
   };
+
+  async function renderTechLogs(cid){
+    const card=document.getElementById('vxSecLogsCard');if(!card)return;
+    const rows=cid?await api(`technical_logs?company_id=eq.${cid}&select=message,source_url,created_at&order=created_at.desc&limit=20`).catch(()=>[]):[];
+    card.innerHTML=`<div class="vx-admin-title"><h3>LOGS TÉCNICOS -- ÚLTIMOS 20</h3></div>
+      <p class="vx-sg-help">Erros de JavaScript não tratados capturados automaticamente no navegador de cada usuário (só front-end -- erro de servidor não aparece aqui).</p>
+      <div class="vx-sg-list">${rows.length?rows.map(r=>`<div class="vx-sg-row"><b>${E(r.message||'(sem mensagem)')}</b><span>${new Date(r.created_at).toLocaleString('pt-BR')}</span></div>`).join(''):'<p class="vx-sg-empty">Nenhum erro registrado ainda.</p>'}</div>`;
+  }
 
   const E=window.esc||((v='')=>String(v??''));
   const AUDIT_AREA_LABELS={EMPRESA:'Dados da empresa',USUARIO:'Usuário',SISTEMA:'Sistema'};
