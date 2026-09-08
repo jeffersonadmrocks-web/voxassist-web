@@ -125,6 +125,11 @@
       const section=window.__vxConfigSection;
       if(!section){if(typeof window.renderConfigHub==='function'){window.renderConfigHub();return;}}
       else if(String(section).startsWith('placeholder:')){if(typeof window.renderConfigPlaceholder==='function'){window.renderConfigPlaceholder(section.slice('placeholder:'.length));return;}}
+      // Achado do usuário em 2026-09-08: Cadastros & Catálogos ganhou
+      // conteúdo real (settings-product-catalog-v0908.js) -- primeira
+      // área a sair da tela única de Empresa & Usuários e virar página
+      // própria, começando a separação de verdade das 9 áreas.
+      else if(section==='catalogos'){if(typeof window.renderProductCatalog==='function'){await window.renderProductCatalog();return;}}
       await renderAdmin();await refreshCompanySelector();cleanupLegacyStore();return;
     }
     const r=await prior(view);window.scrollTo(0,0);setTimeout(()=>{cleanupLegacyStore();refreshCompanySelector()},120);return r;

@@ -30,7 +30,7 @@
   const CARDS=[
     ['♟','EMPRESA & USUÁRIOS','Empresas, unidades/lojas, usuários, equipes, técnicos, perfis, permissões e vínculo usuário × loja.','blue','admin'],
     ['▥','ORDENS DE SERVIÇO','Fluxos, situações, tipos de atendimento, numeração, campos obrigatórios, termos e regras.','purple','placeholder:os'],
-    ['▤','CADASTROS & CATÁLOGOS','Marcas, produtos, grupos, defeitos, acessórios, serviços e listas auxiliares.','teal','admin'],
+    ['▤','CADASTROS & CATÁLOGOS','Marcas, produtos, grupos, defeitos, acessórios, serviços e listas auxiliares.','teal','catalogos'],
     ['◷','AGENDA & ATENDIMENTO','Técnicos externos, períodos, regiões, capacidade, regras e alertas de agendamento.','orange','admin'],
     ['▦','ESTOQUE & PEÇAS','Depósitos, movimentações, estoque técnico, devoluções e parâmetros de peças.','cyan','placeholder:estoque'],
     ['$','FINANCEIRO','Formas de pagamento, categorias, caixas, recebimentos e parâmetros financeiros.','green','placeholder:financeiro'],

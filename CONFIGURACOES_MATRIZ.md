@@ -55,7 +55,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 
 | Item | Classificação | Status |
 |---|---|---|
-| Grupos e tipos de produto (TV/Geladeira/Freezer/...) | **REAPROVEITAR o schema, CRIAR a UI e a integração** -- achado 2026-09-08: `product_groups`+`product_types` **já existem no banco, já populados** com exatamente as 5 categorias que `inferGroup()` (os-detail-v0812.js) hoje recalcula na mão via string-matching, nunca lendo a tabela real. Tabelas são GLOBAIS (sem company_id) -- decisão de arquitetura a confirmar (ver abaixo). | **EM DIAGNÓSTICO -- aguardando confirmação sobre escopo global×por empresa** |
+| Grupos e tipos de produto (TV/Geladeira/Freezer/...) | **REAPROVEITAR catálogo mestre (intocado) + CRIAR camada de associação por empresa** | **IMPLEMENTADO** (2026-09-08). Catálogo mestre `product_groups`/`product_types` confirmado global, seeded, sem FK externa, sem trigger/função, sem policy de escrita -- decisão do usuário: nunca duplicar por empresa, nunca dar escrita direta nele. Criada `company_product_types` (migration `20260908030000`) + RPC `admin_set_company_product_type` (gestor-only; ausência de linha = ativo por padrão, empresa herda o catálogo inteiro sem reconfigurar nada). Tela própria `settings-product-catalog-v0908.js` -- primeira área a sair da página única e virar destino próprio no hub. `inferGroup()` (os-detail-v0812.js) mantido como está (2 usos, só exibição, nunca persistido) -- consolidação com o catálogo real fica pra depois de mapear todos os consumidores, sem apagar o fallback ainda. |
 | Defeitos | CRIAR | PENDENTE |
 | Estado do produto | CRIAR | PENDENTE |
 | Acessórios | CRIAR | PENDENTE |
