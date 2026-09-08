@@ -91,7 +91,8 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 
 | Item | Classificação | Status |
 |---|---|---|
-| Formas de pagamento (ativar/ordem/parcelamento) | CRIAR | PENDENTE |
+| Formas de pagamento (ativar/ordem) | CRIAR | **IMPLEMENTADO** (2026-09-08) -- tabela `payment_methods` por empresa (migration `20260908040000`), RPC `admin_upsert_payment_method`, tela própria `settings-payment-methods-v0908.js`. Empresas existentes semeadas com as 7 formas já em uso (nada perdido); empresa nova semeada por trigger. Guia Finalizar OS (`os-detail-v0812.js`) já lê desta tabela, com fallback pra lista fixa se a empresa não tiver nenhuma. "DESCONTO" continua com o mesmo nome (comparação por string no frontend depende disso). |
+| Parcelamento configurável | CRIAR | PENDENTE |
 | Contas e caixas | CRIAR | PENDENTE |
 | Categorias financeiras | CRIAR | PENDENTE |
 | Regras de recebimento | CRIAR | PENDENTE |

@@ -130,6 +130,7 @@
       // área a sair da tela única de Empresa & Usuários e virar página
       // própria, começando a separação de verdade das 9 áreas.
       else if(section==='catalogos'){if(typeof window.renderProductCatalog==='function'){await window.renderProductCatalog();return;}}
+      else if(section==='financeiro'){if(typeof window.renderFinanceiroSettings==='function'){await window.renderFinanceiroSettings();return;}}
       await renderAdmin();await refreshCompanySelector();cleanupLegacyStore();return;
     }
     const r=await prior(view);window.scrollTo(0,0);setTimeout(()=>{cleanupLegacyStore();refreshCompanySelector()},120);return r;

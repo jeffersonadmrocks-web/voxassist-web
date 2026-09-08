@@ -33,7 +33,7 @@
     ['▤','CADASTROS & CATÁLOGOS','Marcas, produtos, grupos, defeitos, acessórios, serviços e listas auxiliares.','teal','catalogos'],
     ['◷','AGENDA & ATENDIMENTO','Técnicos externos, períodos, regiões, capacidade, regras e alertas de agendamento.','orange','admin'],
     ['▦','ESTOQUE & PEÇAS','Depósitos, movimentações, estoque técnico, devoluções e parâmetros de peças.','cyan','placeholder:estoque'],
-    ['$','FINANCEIRO','Formas de pagamento, categorias, caixas, recebimentos e parâmetros financeiros.','green','placeholder:financeiro'],
+    ['$','FINANCEIRO','Formas de pagamento, categorias, caixas, recebimentos e parâmetros financeiros.','green','financeiro'],
     ['✉','COMUNICAÇÃO & AUTOMAÇÃO','WhatsApp, Chat, mensagens, notificações, horários, NPS e automações.','brown','admin'],
     ['⌁','INTEGRAÇÕES','Electrolux, Whirlpool, GestãoClick, Digisac, Pulse IA, APIs e webhooks.','red','admin'],
     ['⚙','SISTEMA & SEGURANÇA','Auditoria, logs, sessões, segurança, importação/exportação e parâmetros gerais.','gray','admin'],
@@ -42,7 +42,6 @@
   const PLACEHOLDER_TEXT={
     os:['Ordens de Serviço','Fluxos, situações, tipos de atendimento, numeração, campos obrigatórios, termos e regras da OS ainda não têm tela própria de configuração -- hoje são fixos no código. Grupo criado, conteúdo em definição.'],
     estoque:['Estoque & Peças','Depósitos, movimentações, estoque técnico, devoluções e parâmetros de peças ainda não têm tela própria de configuração. Grupo criado, conteúdo em definição.'],
-    financeiro:['Financeiro','Formas de pagamento, categorias, caixas, recebimentos e parâmetros financeiros ainda não têm tela própria de configuração -- hoje as formas de pagamento são fixas no código (guia Finalizar OS, dentro da OS). Grupo criado, conteúdo em definição.'],
   };
 
   const card=([icon,title,desc,color,target])=>`<button type="button" class="module-action-card ${color}" data-config-target="${target}"><span class="icon">${icon}</span><span><strong>${title}</strong><small>${desc}</small></span></button>`;
