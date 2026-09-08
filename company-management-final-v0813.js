@@ -51,6 +51,18 @@
   async function applyGlobalGestorView(){
     if(state?.view!=='usuarios'||!isGestor())return;
     const page=document.querySelector('.vx-admin-page');if(!page)return;
+    // Achado do usuário em 2026-09-07 (investigação de retrocesso em
+    // Configurações): esta função é hoje inalcançável de verdade (o
+    // render-wrap chain onde ela mora é sempre curto-circuitado por
+    // company-only-mode-v0813.js antes de chegar aqui), mas faltava o
+    // MESMO guard `.vx-admin-grid` que os 3 arquivos irmãos já têm
+    // (company-hierarchy-v0813.js/company-store-model-v0813.js/
+    // company-multilist-fix-v0813.js) -- sem ele, se essa função algum
+    // dia voltar a ser alcançada, sobrescreveria o parágrafo do
+    // cabeçalho (.vx-admin-hero p, que hoje inclui o botão ← Voltar)
+    // mesmo sem a classe antiga (.vx-admin-grid) existir mais no DOM.
+    // Endurecimento defensivo, não corrige nenhum bug ativo.
+    if(!page.querySelector('.vx-admin-grid'))return;
     const hero=page.querySelector('.vx-admin-hero p');if(hero)hero.textContent='Configuração global do Gestor: todas as empresas, lojas/unidades, usuários e permissões. A Loja Ativa controla somente a operação diária.';
     const companyCard=page.querySelector('.vx-admin-grid .vx-admin-card:first-child');
     if(companyCard){
