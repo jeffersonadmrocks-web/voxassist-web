@@ -1,15 +1,20 @@
-/* VoxAssist Web V0.9.08 — Configurações > Financeiro > Formas de pagamento.
-   Matriz Mestra, Área 06 -- CRIAR confirmado: "forma de pagamento" era
-   uma lista fixa dentro de os-detail-v0812.js (financePanel(), guia
-   Finalizar OS), sem tabela nem tela de gestão. Diferente do catálogo
-   de produtos (global, compartilhado): forma de pagamento é POR
-   EMPRESA de verdade -- tabela nova (payment_methods, migration
-   20260908040000), mesmo padrão de service_groups/stores.
+/* VoxAssist Web V0.9.08 — Configurações > Financeiro.
+   Matriz Mestra, Área 06.
+   FORMAS DE PAGAMENTO -- CRIAR confirmado: era uma lista fixa dentro de
+   os-detail-v0812.js (financePanel(), guia Finalizar OS), sem tabela
+   nem tela de gestão. Diferente do catálogo de produtos (global,
+   compartilhado): forma de pagamento é POR EMPRESA de verdade --
+   tabela payment_methods (migration 20260908040000), mesmo padrão de
+   service_groups/stores.
    "DESCONTO" é tratado como caso especial no frontend (fecha o saldo
    da OS sem contar como receita, ver financePanel()/dashboard-
    canonical-v1.js) -- comparação é pelo NOME em maiúsculas, não uma
    flag na tabela; renomear/excluir esse registro quebra esse
    comportamento (aviso deixado na tela).
+   CONTAS E CAIXAS / CATEGORIAS FINANCEIRAS -- CRIAR confirmado: nenhum
+   dos dois existia (nem tabela nem tela), sem semeadura necessária
+   (migration 20260908090000). Escopo desta etapa é só o CADASTRO --
+   ligar pagamento a uma conta/categoria específica fica pra depois.
    Página própria (não empilhada na tela de Empresa & Usuários) --
    acessada pelo hub de Configurações (settings-hub-v0908.js), card
    "FINANCEIRO". */
@@ -22,40 +27,41 @@
     const app=document.querySelector('#app');if(!app)return;
     if(!isGestor()){app.innerHTML='<div class="card error-card"><h3>Acesso restrito</h3><p>Configurações disponíveis somente para gestores.</p></div>';return;}
     const cid=companyId();
-    app.innerHTML='<div class="card">Carregando formas de pagamento...</div>';
-    const methods=cid?await api(`payment_methods?company_id=eq.${cid}&select=*&order=sort_order`).catch(()=>[]):[];
-    app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>Financeiro</h2><p>Formas de pagamento desta empresa</p></div><div class="module-head-actions"><button class="secondary" id="vxFinBack">← Voltar</button></div></div>
-      <section class="vx-admin-card">
-        <div class="vx-admin-title"><h3>FORMAS DE PAGAMENTO</h3><span>${methods.length}</span></div>
-        <p class="vx-sg-help">Usadas na guia FINALIZAR OS de cada ordem de serviço. <b>DESCONTO</b> é uma forma especial -- fecha o saldo da OS sem contar como receita nos relatórios; renomear ou desativar esse item específico muda esse comportamento.</p>
-        <div class="vx-sg-list" id="vxPayMethodsList"></div>
-        <button type="button" class="secondary" id="vxPayMethodNew">+ Nova forma de pagamento</button>
-      </section>
+    app.innerHTML='<div class="card">Carregando Financeiro...</div>';
+    app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>Financeiro</h2><p>Formas de pagamento, contas e categorias desta empresa</p></div><div class="module-head-actions"><button class="secondary" id="vxFinBack">← Voltar</button></div></div>
+      <section class="vx-admin-card" id="vxPayMethodsCard"></section>
+      <section class="vx-admin-card" id="vxCashAccountsCard" style="margin-top:12px"></section>
+      <section class="vx-admin-card" id="vxFinCategoriesCard" style="margin-top:12px"></section>
     </div>`;
     document.getElementById('vxFinBack').onclick=()=>{window.__vxConfigSection=null;window.render('usuarios');};
-    renderList(methods);
-    document.getElementById('vxPayMethodNew').onclick=()=>openModal(null);
+    renderPayMethods(cid);
+    CASH_ACCOUNTS.render(cid);
+    FIN_CATEGORIES.render(cid);
   };
 
-  function renderList(methods){
-    const host=document.getElementById('vxPayMethodsList');if(!host)return;
-    host.innerHTML=methods.length?methods.map(m=>`<div class="vx-sg-row${m.active?'':' inactive'}"><b>${E(m.name)}</b><span>${m.active?'ATIVA':'INATIVA'}</span><div class="vx-sg-row-actions"><button type="button" data-rename="${E(m.id)}">Renomear</button><button type="button" data-toggle="${E(m.id)}" data-active="${m.active?'1':'0'}">${m.active?'Desativar':'Ativar'}</button></div></div>`).join(''):'<p class="vx-sg-empty">Nenhuma forma de pagamento cadastrada ainda.</p>';
-    host.querySelectorAll('[data-rename]').forEach(b=>b.onclick=()=>{
+  async function renderPayMethods(cid){
+    const card=document.getElementById('vxPayMethodsCard');if(!card)return;
+    const methods=cid?await api(`payment_methods?company_id=eq.${cid}&select=*&order=sort_order`).catch(()=>[]):[];
+    card.innerHTML=`<div class="vx-admin-title"><h3>FORMAS DE PAGAMENTO</h3><span>${methods.length}</span></div>
+      <p class="vx-sg-help">Usadas na guia FINALIZAR OS de cada ordem de serviço. <b>DESCONTO</b> é uma forma especial -- fecha o saldo da OS sem contar como receita nos relatórios; renomear ou desativar esse item específico muda esse comportamento.</p>
+      <div class="vx-sg-list" id="vxPayMethodsList">${methods.length?methods.map(m=>`<div class="vx-sg-row${m.active?'':' inactive'}"><b>${E(m.name)}</b><span>${m.active?'ATIVA':'INATIVA'}</span><div class="vx-sg-row-actions"><button type="button" data-rename="${E(m.id)}">Renomear</button><button type="button" data-toggle="${E(m.id)}">${m.active?'Desativar':'Ativar'}</button></div></div>`).join(''):'<p class="vx-sg-empty">Nenhuma forma de pagamento cadastrada ainda.</p>'}</div>
+      <button type="button" class="secondary" id="vxPayMethodNew">+ Nova forma de pagamento</button>`;
+    card.querySelectorAll('[data-rename]').forEach(b=>b.onclick=()=>{
       const m=methods.find(x=>String(x.id)===b.dataset.rename);
-      if(m)openModal(m);
+      if(m)openPayMethodModal(cid,m);
     });
-    host.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{
+    card.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{
       const m=methods.find(x=>String(x.id)===b.dataset.toggle);if(!m)return;
       b.disabled=true;
       try{
-        await api('rpc/admin_upsert_payment_method',{method:'POST',body:JSON.stringify({p_company_id:companyId(),p_id:m.id,p_name:m.name,p_active:!m.active})});
+        await api('rpc/admin_upsert_payment_method',{method:'POST',body:JSON.stringify({p_company_id:cid,p_id:m.id,p_name:m.name,p_active:!m.active})});
         toast?.(m.active?'Forma de pagamento desativada.':'Forma de pagamento ativada.');
-        await window.renderFinanceiroSettings();
+        await renderPayMethods(cid);
       }catch(err){toast?.('Não foi possível alterar: '+err.message,'err');b.disabled=false;}
     });
+    document.getElementById('vxPayMethodNew').onclick=()=>openPayMethodModal(cid,null);
   }
-
-  function openModal(method){
+  function openPayMethodModal(cid,method){
     document.querySelector('#vxPayMethodModal')?.remove();
     const ov=document.createElement('div');ov.id='vxPayMethodModal';ov.className='vx-admin-overlay';
     ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>${method?'Renomear forma de pagamento':'Nova forma de pagamento'}</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body"><form id="vxPayMethodForm" class="vx-admin-form"><label>NOME *</label><input name="name" required maxlength="40" value="${method?E(method.name):''}" placeholder="EX.: BOLETO, VALE, CASHBACK"><div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button class="primary">SALVAR</button></div></form></div></div>`;
@@ -65,11 +71,61 @@
       e.preventDefault();
       const f=new FormData(e.target),btn=e.submitter;btn.disabled=true;
       try{
-        await api('rpc/admin_upsert_payment_method',{method:'POST',body:JSON.stringify({p_company_id:companyId(),p_id:method?.id||null,p_name:String(f.get('name')).trim(),p_active:method?method.active:true})});
+        await api('rpc/admin_upsert_payment_method',{method:'POST',body:JSON.stringify({p_company_id:cid,p_id:method?.id||null,p_name:String(f.get('name')).trim(),p_active:method?method.active:true})});
         ov.remove();
         toast?.(method?'Forma de pagamento atualizada.':'Forma de pagamento criada.');
-        await window.renderFinanceiroSettings();
+        await renderPayMethods(cid);
       }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');btn.disabled=false;}
     };
   }
+
+  // Fábrica genérica pros catálogos simples (nome+ativo) -- Contas e
+  // Caixas / Categorias Financeiras, mesma estrutura já usada em
+  // settings-product-catalog-v0908.js.
+  function simpleCatalogCard({cardId,table,rpc,title,help,placeholder,newLabel}){
+    async function render(cid){
+      const card=document.getElementById(cardId);if(!card)return;
+      const rows=cid?await api(`${table}?company_id=eq.${cid}&select=*&order=sort_order`).catch(()=>[]):[];
+      card.innerHTML=`<div class="vx-admin-title"><h3>${title}</h3><span>${rows.length}</span></div>
+        <p class="vx-sg-help">${help}</p>
+        <div class="vx-sg-list">${rows.length?rows.map(r=>`<div class="vx-sg-row${r.active?'':' inactive'}"><b>${E(r.name)}</b><span>${r.active?'ATIVO':'INATIVO'}</span><div class="vx-sg-row-actions"><button type="button" data-rename="${E(r.id)}">Renomear</button><button type="button" data-toggle="${E(r.id)}">${r.active?'Desativar':'Ativar'}</button></div></div>`).join(''):'<p class="vx-sg-empty">Nada cadastrado ainda.</p>'}</div>
+        <button type="button" class="secondary" data-new>${newLabel}</button>`;
+      card.querySelectorAll('[data-rename]').forEach(b=>b.onclick=()=>{
+        const r=rows.find(x=>String(x.id)===b.dataset.rename);
+        if(r)openModal(cid,r);
+      });
+      card.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{
+        const r=rows.find(x=>String(x.id)===b.dataset.toggle);if(!r)return;
+        b.disabled=true;
+        try{
+          await api(`rpc/${rpc}`,{method:'POST',body:JSON.stringify({p_company_id:cid,p_id:r.id,p_name:r.name,p_active:!r.active})});
+          toast?.(r.active?'Desativado.':'Ativado.');
+          await render(cid);
+        }catch(err){toast?.('Não foi possível alterar: '+err.message,'err');b.disabled=false;}
+      });
+      card.querySelector('[data-new]').onclick=()=>openModal(cid,null);
+    }
+    function openModal(cid,item){
+      const modalId=cardId+'Modal';
+      document.querySelector('#'+modalId)?.remove();
+      const ov=document.createElement('div');ov.id=modalId;ov.className='vx-admin-overlay';
+      ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>${item?'Renomear':'Novo item'}</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body"><form class="vx-admin-form"><label>NOME *</label><input name="name" required maxlength="60" value="${item?E(item.name):''}" placeholder="${placeholder}"><div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button class="primary">SALVAR</button></div></form></div></div>`;
+      document.body.appendChild(ov);
+      ov.querySelectorAll('[data-close],[data-cancel]').forEach(b=>b.onclick=()=>ov.remove());
+      ov.querySelector('form').onsubmit=async e=>{
+        e.preventDefault();
+        const f=new FormData(e.target),btn=e.submitter;btn.disabled=true;
+        try{
+          await api(`rpc/${rpc}`,{method:'POST',body:JSON.stringify({p_company_id:cid,p_id:item?.id||null,p_name:String(f.get('name')).trim(),p_active:item?item.active:true})});
+          ov.remove();
+          toast?.(item?'Atualizado.':'Criado.');
+          await render(cid);
+        }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');btn.disabled=false;}
+      };
+    }
+    return {render};
+  }
+
+  const CASH_ACCOUNTS=simpleCatalogCard({cardId:'vxCashAccountsCard',table:'cash_accounts',rpc:'admin_upsert_cash_account',title:'CONTAS E CAIXAS',help:'Destinos financeiros usados pela empresa. Vincular um pagamento a uma conta específica fica pra uma etapa futura.',placeholder:'EX.: CAIXA SERRA, BANCO, PIX',newLabel:'+ Nova conta/caixa'});
+  const FIN_CATEGORIES=simpleCatalogCard({cardId:'vxFinCategoriesCard',table:'financial_categories',rpc:'admin_upsert_financial_category',title:'CATEGORIAS FINANCEIRAS',help:'Categorias pra organizar lançamentos financeiros. Vincular um lançamento a uma categoria específica fica pra uma etapa futura.',placeholder:'EX.: SERVIÇO, PEÇA, VISITA, SINAL',newLabel:'+ Nova categoria'});
 })();

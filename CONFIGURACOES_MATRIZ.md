@@ -44,7 +44,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 |---|---|---|---|
 | Numeração | REAPROVEITAR | Só expor leitura em Configurações | PENDENTE (exposição) |
 | Motor de fluxo/status automático | REAPROVEITAR — **nunca recriar** | `advance_service_order_status` é fonte única | IMPLEMENTADO (é o motor existente) |
-| Rótulos de status duplicados (`manual-status-v0812.js` FLOW × `vxOsStatusLabel`) | CONSOLIDAR | Unificar fonte do rótulo | PENDENTE |
+| Rótulos de status duplicados (`manual-status-v0812.js` FLOW × `vxOsStatusLabel`) | CONSOLIDAR | Revisado 2026-09-08: `labelOf()` de manual-status-v0812.js já PREFERE `window.vxOsStatusLabel` sempre que disponível (`os-status-engine-v0903.js` carrega antes) -- na prática `FLOW` só serve de fallback morto pro rótulo. Risco baixo (rótulo já é o certo hoje). `FLOW` continua com um uso real, diferente: é a lista ORDENADA de status oferecida no seletor manual de situação -- essa parte não é redundante, fica pra depois com menor prioridade. | BAIXA PRIORIDADE (não é bug funcional) |
 | Tipos de OS (ativar/desativar sem apagar histórico) | CRIAR | `order_types` por empresa (migration `20260908050000`) + RPC `admin_upsert_order_type`, gestor-only. Empresas existentes semeadas com os 5 tipos já em uso; empresa nova semeada por trigger. Tela própria `settings-order-types-v0908.js`. `order-type-v0812.js` (Nova OS) já lê desta tabela, fallback pra lista fixa se vazia. GARANTIA/REINGRESSO mantidos com os mesmos nomes (comportamento especial por string exata, aviso na tela). | **IMPLEMENTADO** (2026-09-08) |
 | Tipo de atendimento (Interno/Externo) | REVISAR | CHECK rígido no banco, 3º valor exige migration | EM DIAGNÓSTICO |
 | Campos obrigatórios por etapa | CRIAR | Regra já existe no motor SQL, falta só exibir | PENDENTE |
@@ -70,7 +70,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 | Horários (dias/período/capacidade da empresa) | REAPROVEITAR | IMPLEMENTADO |
 | Técnicos disponíveis na agenda | CONSOLIDAR | **IMPLEMENTADO** (2026-09-08) -- achado: `profiles.external_schedule_enabled` já era lido em vários lugares (field-agenda-complete-v0813.js, dashboard, electrolux-agenda-bridge) mas nunca tinha nenhum jeito de ESCREVER pelo app (zero writers confirmado). RPC nova `admin_set_technician_external_schedule` (gestor-only, migration `20260908080000`) + card novo em `settings-schedule-v0907.js` (mesma tela de Horários), lista técnicos com checkbox. Não duplica cadastro de técnico. |
 | Capacidade por técnico/região | CRIAR | PENDENTE (futuro, não urgente) |
-| Regiões de atendimento | CRIAR | PENDENTE |
+| Regiões de atendimento | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `service_regions` por empresa (migration `20260908090000`), card em `settings-schedule-v0907.js` (mesma tela de Agenda). Associar região a técnico fica pra depois. |
 | Conflito/transferência/sem técnico definido | REAPROVEITAR | IMPLEMENTADO |
 | Períodos disponíveis (enum) | REVISAR | 2 valores mortos no CHECK (`HORARIO_COMERCIAL`/`HORARIO_ESPECIFICO`) |
 | Alertas (parâmetros da regra) | CRIAR | PENDENTE |
@@ -79,9 +79,9 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 
 | Item | Classificação | Status |
 |---|---|---|
-| Locais de estoque (múltiplos depósitos) | CRIAR | PENDENTE |
-| Categorias de peças | CRIAR | PENDENTE |
-| Unidades (UN/KIT/PAR/METRO) | CRIAR | PENDENTE |
+| Locais de estoque (múltiplos depósitos) | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `stock_locations` por empresa (migration `20260908090000`), tela própria nova `settings-stock-v0908.js` (primeiro conteúdo real da Área 05, saiu de placeholder). Separar saldo de `stock_items` por local fica pra depois. |
+| Categorias de peças | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `part_categories`, mesma tela de Estoque. |
+| Unidades (UN/KIT/PAR/METRO) | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `stock_units`, mesma tela de Estoque. |
 | Movimentações | CONSOLIDAR (schema existe, zero gravação) | PENDENTE |
 | Estoque técnico | REAPROVEITAR schema / CRIAR gravação | PENDENTE |
 | Fabricantes (garantia/reembolso) | CRIAR | PENDENTE |
@@ -93,8 +93,8 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 |---|---|---|
 | Formas de pagamento (ativar/ordem) | CRIAR | **IMPLEMENTADO** (2026-09-08) -- tabela `payment_methods` por empresa (migration `20260908040000`), RPC `admin_upsert_payment_method`, tela própria `settings-payment-methods-v0908.js`. Empresas existentes semeadas com as 7 formas já em uso (nada perdido); empresa nova semeada por trigger. Guia Finalizar OS (`os-detail-v0812.js`) já lê desta tabela, com fallback pra lista fixa se a empresa não tiver nenhuma. "DESCONTO" continua com o mesmo nome (comparação por string no frontend depende disso). |
 | Parcelamento configurável | CRIAR | PENDENTE |
-| Contas e caixas | CRIAR | PENDENTE |
-| Categorias financeiras | CRIAR | PENDENTE |
+| Contas e caixas | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `cash_accounts` por empresa (migration `20260908090000`), card em `settings-payment-methods-v0908.js` (mesma tela de Financeiro). Vincular pagamento a uma conta específica fica pra depois. |
+| Categorias financeiras | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `financial_categories`, mesma tela de Financeiro. |
 | Regras de recebimento | CRIAR | PENDENTE |
 | Descontos (limite/autorização por perfil) | CRIAR | PENDENTE |
 | Parâmetros (juros/taxas/arredondamento) | CRIAR | PENDENTE |

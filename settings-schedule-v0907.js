@@ -44,7 +44,56 @@
     techCard.id='vxAgendaTechCard';
     extrasGrid(page).appendChild(techCard);
     await renderTechCard(techCard,cid);
+    const regionsCard=document.createElement('section');
+    regionsCard.className='vx-admin-card';
+    regionsCard.id='vxServiceRegionsCard';
+    extrasGrid(page).appendChild(regionsCard);
+    await renderRegionsCard(cid);
    }catch(err){console.error('[schedule] falha ao injetar card:',err);}
+  }
+
+  // Achado do usuário em 2026-09-08 (Matriz Mestra, Área 04): "regiões
+  // de atendimento" não existia (nem tabela, nem tela) -- catálogo
+  // novo (service_regions, migration 20260908090000), sem semeadura.
+  // Associar região a um técnico específico fica pra uma etapa futura.
+  async function renderRegionsCard(cid){
+    const card=document.getElementById('vxServiceRegionsCard');if(!card)return;
+    const regions=cid?await api(`service_regions?company_id=eq.${cid}&select=*&order=sort_order`).catch(()=>[]):[];
+    card.innerHTML=`<div class="vx-admin-title"><h3>REGIÕES DE ATENDIMENTO</h3><span>${regions.length}</span></div>
+      <p class="vx-sg-help">Cidades/bairros/zonas atendidas pelo atendimento externo. Associar uma região a um técnico específico fica pra uma etapa futura.</p>
+      <div class="vx-sg-list">${regions.length?regions.map(r=>`<div class="vx-sg-row${r.active?'':' inactive'}"><b>${E(r.name)}</b><span>${r.active?'ATIVA':'INATIVA'}</span><div class="vx-sg-row-actions"><button type="button" data-rename="${E(r.id)}">Renomear</button><button type="button" data-toggle="${E(r.id)}">${r.active?'Desativar':'Ativar'}</button></div></div>`).join(''):'<p class="vx-sg-empty">Nenhuma região cadastrada ainda.</p>'}</div>
+      <button type="button" class="secondary" id="vxRegionNew">+ Nova região</button>`;
+    card.querySelectorAll('[data-rename]').forEach(b=>b.onclick=()=>{
+      const r=regions.find(x=>String(x.id)===b.dataset.rename);
+      if(r)openRegionModal(cid,r);
+    });
+    card.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{
+      const r=regions.find(x=>String(x.id)===b.dataset.toggle);if(!r)return;
+      b.disabled=true;
+      try{
+        await api('rpc/admin_upsert_service_region',{method:'POST',body:JSON.stringify({p_company_id:cid,p_id:r.id,p_name:r.name,p_active:!r.active})});
+        toast?.(r.active?'Região desativada.':'Região ativada.');
+        await renderRegionsCard(cid);
+      }catch(err){toast?.('Não foi possível alterar: '+err.message,'err');b.disabled=false;}
+    });
+    document.getElementById('vxRegionNew').onclick=()=>openRegionModal(cid,null);
+  }
+  function openRegionModal(cid,region){
+    document.querySelector('#vxRegionModal')?.remove();
+    const ov=document.createElement('div');ov.id='vxRegionModal';ov.className='vx-admin-overlay';
+    ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>${region?'Renomear região':'Nova região'}</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body"><form id="vxRegionForm" class="vx-admin-form"><label>NOME *</label><input name="name" required maxlength="60" value="${region?E(region.name):''}" placeholder="EX.: CENTRO, JARDIM CAMBURI"><div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button class="primary">SALVAR</button></div></form></div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelectorAll('[data-close],[data-cancel]').forEach(b=>b.onclick=()=>ov.remove());
+    ov.querySelector('form').onsubmit=async e=>{
+      e.preventDefault();
+      const f=new FormData(e.target),btn=e.submitter;btn.disabled=true;
+      try{
+        await api('rpc/admin_upsert_service_region',{method:'POST',body:JSON.stringify({p_company_id:cid,p_id:region?.id||null,p_name:String(f.get('name')).trim(),p_active:region?region.active:true})});
+        ov.remove();
+        toast?.(region?'Região atualizada.':'Região criada.');
+        await renderRegionsCard(cid);
+      }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');btn.disabled=false;}
+    };
   }
 
   // Achado do usuário em 2026-09-08 (Matriz Mestra, Área 04):

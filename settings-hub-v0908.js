@@ -32,16 +32,14 @@
     ['▥','ORDENS DE SERVIÇO','Fluxos, situações, tipos de atendimento, numeração, campos obrigatórios, termos e regras.','purple','ostipos'],
     ['▤','CADASTROS & CATÁLOGOS','Marcas, produtos, grupos, defeitos, acessórios, serviços e listas auxiliares.','teal','catalogos'],
     ['◷','AGENDA & ATENDIMENTO','Técnicos externos, períodos, regiões, capacidade, regras e alertas de agendamento.','orange','admin'],
-    ['▦','ESTOQUE & PEÇAS','Depósitos, movimentações, estoque técnico, devoluções e parâmetros de peças.','cyan','placeholder:estoque'],
+    ['▦','ESTOQUE & PEÇAS','Depósitos, movimentações, estoque técnico, devoluções e parâmetros de peças.','cyan','estoque'],
     ['$','FINANCEIRO','Formas de pagamento, categorias, caixas, recebimentos e parâmetros financeiros.','green','financeiro'],
     ['✉','COMUNICAÇÃO & AUTOMAÇÃO','WhatsApp, Chat, mensagens, notificações, horários, NPS e automações.','brown','admin'],
     ['⌁','INTEGRAÇÕES','Electrolux, Whirlpool, GestãoClick, Digisac, Pulse IA, APIs e webhooks.','red','admin'],
     ['⚙','SISTEMA & SEGURANÇA','Auditoria, logs, sessões, segurança, importação/exportação e parâmetros gerais.','gray','admin'],
   ];
 
-  const PLACEHOLDER_TEXT={
-    estoque:['Estoque & Peças','Depósitos, movimentações, estoque técnico, devoluções e parâmetros de peças ainda não têm tela própria de configuração. Grupo criado, conteúdo em definição.'],
-  };
+  const PLACEHOLDER_TEXT={};
 
   const card=([icon,title,desc,color,target])=>`<button type="button" class="module-action-card ${color}" data-config-target="${target}"><span class="icon">${icon}</span><span><strong>${title}</strong><small>${desc}</small></span></button>`;
 
