@@ -33,13 +33,39 @@
       <section class="vx-admin-card" id="vxCashAccountsCard" style="margin-top:12px"></section>
       <section class="vx-admin-card" id="vxFinCategoriesCard" style="margin-top:12px"></section>
       <section class="vx-admin-card" id="vxFinParamsCard" style="margin-top:12px"></section>
+      <section class="vx-admin-card" id="vxDiscountLimitsCard" style="margin-top:12px"></section>
     </div>`;
     document.getElementById('vxFinBack').onclick=()=>{window.__vxConfigSection=null;window.render('usuarios');};
     renderPayMethods(cid);
     CASH_ACCOUNTS.render(cid);
     FIN_CATEGORIES.render(cid);
     renderFinParams(cid);
+    renderDiscountLimits(cid);
   };
+
+  const DISCOUNT_ROLES=[['GESTOR','Gestor'],['ATENDENTE','Atendente'],['TECNICO','Técnico']];
+
+  async function renderDiscountLimits(cid){
+    const card=document.getElementById('vxDiscountLimitsCard');if(!card)return;
+    const rows=cid?await api(`discount_limits?company_id=eq.${cid}&select=role,max_percent`).catch(()=>[]):[];
+    const byRole=Object.fromEntries(rows.map(r=>[r.role,r.max_percent]));
+    card.innerHTML=`<div class="vx-admin-title"><h3>LIMITE DE DESCONTO POR PERFIL</h3></div>
+      <p class="vx-sg-help">Limite percentual de desconto por perfil. Cadastro apenas -- ainda não validado quando a forma DESCONTO é lançada na guia Finalizar OS.</p>
+      <div class="vx-sg-list">${DISCOUNT_ROLES.map(([role,label])=>`<div class="vx-sg-row"><b>${label}</b><span><input data-role="${role}" type="number" min="0" max="100" step="0.1" style="width:70px;height:28px;border:1px solid #cfd9e3;border-radius:6px;padding:0 6px" value="${byRole[role]??''}" placeholder="SEM LIMITE"> %</span></div>`).join('')}</div>
+      <button type="button" class="secondary" data-save>SALVAR LIMITES</button>`;
+    card.querySelector('[data-save]').onclick=async()=>{
+      const btn=card.querySelector('[data-save]');btn.disabled=true;
+      try{
+        for(const [role] of DISCOUNT_ROLES){
+          const input=card.querySelector(`[data-role="${role}"]`);
+          const v=input.value;
+          await api('rpc/admin_set_discount_limit',{method:'POST',body:JSON.stringify({p_company_id:cid,p_role:role,p_max_percent:v?Number(v):null})});
+        }
+        toast?.('Limites de desconto salvos.');
+      }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');}
+      btn.disabled=false;
+    };
+  }
 
   const ROUNDING_LABELS={NENHUM:'NENHUM',PARA_CIMA:'PARA CIMA',PARA_BAIXO:'PARA BAIXO',MAIS_PROXIMO:'MAIS PRÓXIMO'};
 

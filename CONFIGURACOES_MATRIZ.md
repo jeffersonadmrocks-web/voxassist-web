@@ -96,7 +96,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 | Contas e caixas | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `cash_accounts` por empresa (migration `20260908090000`), card em `settings-payment-methods-v0908.js` (mesma tela de Financeiro). Vincular pagamento a uma conta específica fica pra depois. |
 | Categorias financeiras | CRIAR | **IMPLEMENTADO catálogo** (2026-09-08) -- `financial_categories`, mesma tela de Financeiro. |
 | Regras de recebimento | CRIAR | PENDENTE |
-| Descontos (limite/autorização por perfil) | CRIAR | PENDENTE |
+| Descontos (limite/autorização por perfil) | CRIAR | **IMPLEMENTADO cadastro** (2026-09-08) -- `discount_limits` (migration `20260908140000`, 1 linha por (empresa, perfil fixo GESTOR/ATENDENTE/TECNICO), RPC `admin_set_discount_limit` gestor-only). Card "LIMITE DE DESCONTO POR PERFIL" em `settings-payment-methods-v0908.js`. Ainda não validado quando a forma DESCONTO é lançada na guia Finalizar OS -- só cadastro. |
 | Parâmetros (juros/taxas/arredondamento) | CRIAR | **IMPLEMENTADO cadastro** (2026-09-08) -- 3 colunas novas em `companies` (migration `20260908120000`: juros ao mês %, multa %, modo de arredondamento), editadas por PATCH direto (mesmo padrão de `document_footer`/`business_hours`, protegido pela policy `companies_update_gestor` já existente, sem RPC nova). Card "PARÂMETROS FINANCEIROS" em `settings-payment-methods-v0908.js`. Ainda não aplicado em nenhum cálculo da guia Finalizar OS -- só cadastro. |
 
 ## Área 07 — Comunicação & Automação
@@ -143,3 +143,4 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
   - Leva seguinte: Fabricantes/garantia-reembolso (Área 05, migration `20260908110000`, card em `settings-stock-v0908.js`). **Total: 21 itens implementados de 45.**
   - Leva seguinte: Parâmetros financeiros -- juros/multa/arredondamento (Área 06, migration `20260908120000`, colunas em `companies`, card em `settings-payment-methods-v0908.js`). **Total: 22 itens implementados de 45.**
   - Leva seguinte: Parcelamento configurável -- limite de parcelas por forma de pagamento (Área 06, migration `20260908130000`, RPC estendida retrocompatível). **Total: 23 itens implementados de 45.**
+  - Leva seguinte: Descontos -- limite por perfil GESTOR/ATENDENTE/TECNICO (Área 06, migration `20260908140000`). **Total: 24 itens implementados de 45.**
