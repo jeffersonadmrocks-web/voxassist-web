@@ -19,11 +19,21 @@
     if(!isGestor()){app.innerHTML='<div class="card error-card"><h3>Acesso restrito</h3><p>Configurações disponíveis somente para gestores.</p></div>';return;}
     const cid=companyId();
     app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>Comunicação & Automação</h2><p>Mensagens padrão desta empresa</p></div><div class="module-head-actions"><button class="secondary" id="vxCommBack">← Voltar</button></div></div>
-      <section class="vx-admin-card" id="vxMsgTemplatesCard"></section>
+      <section class="vx-admin-card" id="vxCommHoursCard"></section>
+      <section class="vx-admin-card" id="vxMsgTemplatesCard" style="margin-top:12px"></section>
     </div>`;
     document.getElementById('vxCommBack').onclick=()=>{window.__vxConfigSection=null;window.render('usuarios');};
+    renderHoursNote();
     renderTemplates(cid);
   };
+
+  function renderHoursNote(){
+    const card=document.getElementById('vxCommHoursCard');if(!card)return;
+    card.innerHTML=`<div class="vx-admin-title"><h3>HORÁRIO DE ATENDIMENTO</h3></div>
+      <p class="vx-sg-help">Não existe um horário separado pra Comunicação -- é o mesmo horário de funcionamento da empresa (Agenda & Atendimento). Configurar/editar continua lá, sem duplicar aqui.</p>
+      <button type="button" class="secondary" data-goto-agenda>Abrir Agenda & Atendimento</button>`;
+    card.querySelector('[data-goto-agenda]').onclick=()=>{window.__vxConfigSection='admin';window.render('usuarios');};
+  }
 
   async function renderTemplates(cid){
     const card=document.getElementById('vxMsgTemplatesCard');if(!card)return;

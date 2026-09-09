@@ -104,7 +104,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 | Item | Classificação | Status |
 |---|---|---|
 | Canais (WhatsApp/Chat) | REAPROVEITAR — **não tocar na base** | IMPLEMENTADO (referência apenas) |
-| Horário de atendimento | CONSOLIDAR com tabelas de Agenda | PENDENTE |
+| Horário de atendimento | CONSOLIDAR com tabelas de Agenda | **IMPLEMENTADO (consolidação por referência)** (2026-09-08) -- achado: não existe (e não precisa existir) um horário separado pra Comunicação -- é o mesmo `companies.business_hours` já usado pela Área 04. Em vez de duplicar tela/tabela, card "HORÁRIO DE ATENDIMENTO" em `settings-communication-v0908.js` explica isso e linka pra Agenda & Atendimento (mesma tela real, sem nova). |
 | Mensagens padrão / variáveis | CRIAR (coluna morta encontrada, não reaproveitar) | **IMPLEMENTADO** -- cadastro de nome+texto por empresa (migration `20260908100000`, RPC `admin_upsert_message_template`), tela própria `settings-communication-v0908.js`, primeiro conteúdo real da Área 07 (hub saiu de 'admin' pra 'comunicacao'). Escopo só cadastro: não dispara nada, não toca em nenhuma rota de envio/WhatsApp existente; ligar como atalho dentro do chat fica pra etapa futura. Variáveis livres (`{cliente}` etc.), sem parser (2026-09-08) |
 | Notificações automáticas pro cliente | CRIAR | PENDENTE |
 | NPS | confirmado específico Electrolux → fica na Área 08 | N/A |
@@ -149,3 +149,4 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
   - Leva seguinte: Logs técnicos -- captura de erro JS não tratado (Área 09, migration `20260908170000`, `client-error-log-v0908.js`). **Total: 27 itens implementados de 45.**
   - Leva seguinte: Alertas de estoque baixo -- limite por peça + padrão da empresa + contagem real (Área 05, migration `20260908180000`, card em `settings-stock-v0908.js`). **Total: 28 itens implementados de 45.**
   - Leva seguinte: Última sincronização Electrolux (Área 08, migration `20260908190000`) -- achado de segurança no caminho: `electrolux_connections` guarda credencial e tem RLS sem policy nenhuma (endurecimento proposital); resolvido com RPC que devolve só os campos seguros, não com policy de tabela. **Total: 29 itens implementados de 45.**
+  - Leva seguinte: Horário de atendimento (Área 07) -- consolidação por referência, sem duplicar `business_hours`/Área 04. **Total: 30 itens implementados de 45.**
