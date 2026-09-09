@@ -95,6 +95,8 @@
       <label>E-MAIL</label><input value="${E(u.email||'')}" disabled>
       <div class="vx-form-2"><div><label>PERFIL FUNCIONAL *</label><select name="role">${roles.map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select></div><div><label>TIPO DE ACESSO *</label><select name="access">${types.map(t=>`<option ${t===u.access_type?'selected':''}>${t}</option>`).join('')}</select></div></div>
       <label class="vx-toggle"><input type="checkbox" name="active" id="vxActiveToggle" ${u.active?'checked':''}> <span id="vxActiveToggleText">${u.active?'ACESSO ATIVO -- desmarque para desativar o acesso':'ACESSO DESATIVADO -- marque para reativar o acesso'}</span></label>
+      <div class="vx-access-head"><div><b>SEGURANÇA</b><small>Redefinição de senha e encerramento de sessão -- o gestor nunca vê nem define a senha do usuário.</small></div></div>
+      <div class="vx-security-actions"><button type="button" class="secondary" id="vxResetPassword">REDEFINIR SENHA</button><button type="button" class="secondary" id="vxTerminateSessions">ENCERRAR SESSÕES REMOTAS</button></div>
       ${managed.length>1?`<label>EMPRESAS LIBERADAS *</label><div class="vx-store-checks">${managed.map(c=>`<label><input type="checkbox" data-company value="${E(c.id)}" ${currentCompanies.has(String(c.id))||String(c.id)===String(companyId())?'checked':''}> <b>${E(c.trade_name||c.legal_name)}</b></label>`).join('')}</div>`:''}
       <label>LOJAS LIBERADAS *</label><div class="vx-store-checks">${stores.map(s=>`<label><input type="checkbox" data-store value="${E(s.id)}" ${current.has(String(s.id))?'checked':''}> <b>${E(s.code||s.name)}</b><span>${E(s.name)}</span></label>`).join('')}</div>
       <div id="vxUserGroupsBlock" style="display:${u.role==='TECNICO'?'':'none'}"><label>GRUPOS DE ATENDIMENTO</label><div class="vx-store-checks">${groups.length?groups.map(g=>`<label><input type="checkbox" data-group value="${E(g.id)}" ${currentGroups.has(String(g.id))?'checked':''}> <b>${E(g.name)}</b></label>`).join(''):'<span class="vx-sg-empty">Nenhum grupo cadastrado -- crie em "Grupos de Atendimento" nesta mesma tela.</span>'}</div></div>
@@ -106,6 +108,23 @@
     f.role.addEventListener('change',()=>{const gb=f.querySelector('#vxUserGroupsBlock');if(gb)gb.style.display=f.role.value==='TECNICO'?'':'none';});
     f.active.addEventListener('change',()=>{f.querySelector('#vxActiveToggleText').textContent=f.active.checked?'ACESSO ATIVO -- desmarque para desativar o acesso':'ACESSO DESATIVADO -- marque para reativar o acesso';});
     m.querySelector('#vxApplyPreset').onclick=()=>setPerms(f,f.access.value);
+    m.querySelector('#vxResetPassword').onclick=async()=>{
+      if(!u.email)return toast('Usuário sem e-mail cadastrado.','err');
+      if(!confirm(`Enviar e-mail de redefinição de senha para ${u.email}?`))return;
+      const btn=m.querySelector('#vxResetPassword');btn.disabled=true;
+      try{await window.vxRequestPasswordReset(u.email);toast('E-mail de redefinição enviado para '+u.email+'.');}
+      catch(err){toast('Não foi possível enviar: '+err.message,'err');}
+      btn.disabled=false;
+    };
+    m.querySelector('#vxTerminateSessions').onclick=async()=>{
+      if(!confirm('Encerrar todas as sessões ativas deste usuário em outros dispositivos/navegadores?'))return;
+      const btn=m.querySelector('#vxTerminateSessions');btn.disabled=true;
+      try{
+        const n=await api('rpc/admin_terminate_user_sessions',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:companyId()})});
+        toast(n?`${n} sessão(ões) encerrada(s).`:'Nenhuma sessão ativa encontrada.');
+      }catch(err){toast('Não foi possível encerrar sessões: '+err.message,'err');}
+      btn.disabled=false;
+    };
     m.querySelector('#vxDeleteUser').onclick=async()=>{
       if(!confirm('Excluir este usuário do uso do VoxAssist? O histórico será preservado e o acesso será inativado.'))return;
       try{await api('rpc/admin_soft_delete_user',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:companyId()})});m.remove();toast('Usuário inativado/excluído do acesso. O histórico foi preservado.');await refreshUsers()}catch(e){toast('Falha ao excluir usuário: '+e.message,'err')}
@@ -156,6 +175,6 @@
   const prior=window.render;window.render=async function(view){const r=await prior(view);if(view==='usuarios')setTimeout(refreshUsers,350);return r};
   // Trocar Loja Ativa jamais muda a lista da configuração: reconstituímos pelos vínculos da EMPRESA.
   document.addEventListener('change',e=>{if(e.target?.id==='activeStore'&&state?.view==='usuarios')setTimeout(refreshUsers,700)});
-  const st=document.createElement('style');st.textContent=`.vx-user-manage-btn{border:1px solid #b8c9db;background:#fff;color:#164f83;padding:6px 10px;font-size:9px;cursor:pointer}.vx-user-manage-modal{width:min(820px,96vw)}.vx-toggle{display:flex!important;align-items:center;gap:7px}.vx-store-checks label span{margin-left:auto;color:#718397;font-size:9px}.vx-access-head{display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px}.vx-access-head small{display:block;color:#718397;margin-top:2px}.vx-permissions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 16px;border:1px solid #dbe5ee;border-radius:8px;padding:10px;background:#f8fafc}.vx-permissions label{display:flex;align-items:center;gap:7px;font-size:10px}.vx-perm-group{grid-column:1/-1;font-size:9px;font-weight:800;color:#164f83;border-bottom:1px solid #dce6ef;padding:7px 0 3px}.vx-admin-form-actions .grow{flex:1}.vx-admin-form-actions .danger{border:1px solid #d33;background:#fff;color:#b32121;padding:9px 12px}.vx-new-access-block{display:grid;gap:7px}@media(max-width:760px){.vx-permissions{grid-template-columns:1fr}}`;document.head.appendChild(st);
+  const st=document.createElement('style');st.textContent=`.vx-user-manage-btn{border:1px solid #b8c9db;background:#fff;color:#164f83;padding:6px 10px;font-size:9px;cursor:pointer}.vx-user-manage-modal{width:min(820px,96vw)}.vx-toggle{display:flex!important;align-items:center;gap:7px}.vx-store-checks label span{margin-left:auto;color:#718397;font-size:9px}.vx-access-head{display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px}.vx-access-head small{display:block;color:#718397;margin-top:2px}.vx-permissions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 16px;border:1px solid #dbe5ee;border-radius:8px;padding:10px;background:#f8fafc}.vx-permissions label{display:flex;align-items:center;gap:7px;font-size:10px}.vx-perm-group{grid-column:1/-1;font-size:9px;font-weight:800;color:#164f83;border-bottom:1px solid #dce6ef;padding:7px 0 3px}.vx-admin-form-actions .grow{flex:1}.vx-admin-form-actions .danger{border:1px solid #d33;background:#fff;color:#b32121;padding:9px 12px}.vx-new-access-block{display:grid;gap:7px}.vx-security-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}@media(max-width:760px){.vx-permissions{grid-template-columns:1fr}}`;document.head.appendChild(st);
   setTimeout(refreshUsers,700);
 })();
