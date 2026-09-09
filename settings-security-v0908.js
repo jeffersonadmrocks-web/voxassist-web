@@ -23,12 +23,22 @@
       <section class="vx-admin-card" id="vxSecSessionCard"></section>
       <section class="vx-admin-card" id="vxSecAuditCard" style="margin-top:12px"></section>
       <section class="vx-admin-card" id="vxSecLogsCard" style="margin-top:12px"></section>
+      <section class="vx-admin-card" id="vxSecAccessCard" style="margin-top:12px"></section>
     </div>`;
     document.getElementById('vxSecBack').onclick=()=>{window.__vxConfigSection=null;window.render('usuarios');};
     renderSession(cid);
     renderAudit(cid);
     renderTechLogs(cid);
+    renderAccessHistory(cid);
   };
+
+  async function renderAccessHistory(cid){
+    const card=document.getElementById('vxSecAccessCard');if(!card)return;
+    const rows=cid?await api(`access_history?company_id=eq.${cid}&select=event,occurred_at,user_id,profiles(full_name)&order=occurred_at.desc&limit=20`).catch(()=>[]):[];
+    card.innerHTML=`<div class="vx-admin-title"><h3>HISTÓRICO DE ACESSO -- ÚLTIMOS 20</h3></div>
+      <p class="vx-sg-help">Login/logout desta empresa. Registro simples (usuário, evento, data/hora) -- não substitui log de segurança forense.</p>
+      <div class="vx-sg-list">${rows.length?rows.map(r=>`<div class="vx-sg-row"><b>${E(r.profiles?.full_name||'USUÁRIO')} -- ${r.event==='LOGIN'?'ENTROU':'SAIU'}</b><span>${new Date(r.occurred_at).toLocaleString('pt-BR')}</span></div>`).join(''):'<p class="vx-sg-empty">Nenhum registro ainda.</p>'}</div>`;
+  }
 
   async function renderTechLogs(cid){
     const card=document.getElementById('vxSecLogsCard');if(!card)return;
