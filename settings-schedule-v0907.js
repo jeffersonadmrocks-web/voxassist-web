@@ -54,6 +54,11 @@
     techDetailsCard.id='vxTechDetailsCard';
     extrasGrid(page).appendChild(techDetailsCard);
     await renderTechDetailsCard(cid);
+    const storeOverridesCard=document.createElement('section');
+    storeOverridesCard.className='vx-admin-card';
+    storeOverridesCard.id='vxStoreOverridesCard';
+    extrasGrid(page).appendChild(storeOverridesCard);
+    await renderStoreOverridesCard(cid);
    }catch(err){console.error('[schedule] falha ao injetar card:',err);}
   }
 
@@ -198,6 +203,77 @@
         ov.remove();
       }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');btn.disabled=false;}
     };
+  }
+
+  // Achado do usuário em 2026-09-09 (Matriz Mestra, Área 01 --
+  // "Parâmetros próprios por unidade"): companies.business_hours é
+  // decorativo, nunca lido em lógica real -- quem de fato importa é
+  // company_schedule_settings (work_days/capacidade), hoje só por
+  // empresa. Sobrescrita por loja em store_schedule_overrides
+  // (migration 20260909040000, mirror exato das colunas -- sem
+  // chave/valor genérica), ausência de linha = usa o padrão da
+  // empresa. Escopo desta etapa é só o CADASTRO da sobrescrita --
+  // ligar no motor real de capacidade da Agenda
+  // (field-agenda-complete-v0813.js, hoje 100% por empresa) fica pra
+  // uma etapa futura própria.
+  async function renderStoreOverridesCard(cid){
+    const card=document.getElementById('vxStoreOverridesCard');if(!card)return;
+    const [stores,overrides]=await Promise.all([
+      api(`stores?company_id=eq.${cid}&active=eq.true&select=id,name,code&order=name`).catch(()=>[]),
+      api(`store_schedule_overrides?company_id=eq.${cid}&select=store_id`).catch(()=>[]),
+    ]);
+    const overrideSet=new Set(overrides.map(o=>String(o.store_id)));
+    card.innerHTML=`<div class="vx-admin-title"><h3>PARÂMETROS POR UNIDADE</h3><span>${stores.length}</span></div>
+      <p class="vx-sg-help">Dias de funcionamento e capacidade específicos de uma loja, quando diferente do padrão da empresa (acima). Sem sobrescrita, a loja usa o padrão da empresa.</p>
+      <div class="vx-sg-list">${stores.length?stores.map(s=>`<div class="vx-sg-row"><b>${E(s.code||s.name)}</b><span>${overrideSet.has(String(s.id))?'PRÓPRIO':'PADRÃO DA EMPRESA'}</span><div class="vx-sg-row-actions"><button type="button" data-config-store="${E(s.id)}">Configurar</button></div></div>`).join(''):'<p class="vx-sg-empty">Nenhuma loja cadastrada ainda.</p>'}</div>`;
+    card.querySelectorAll('[data-config-store]').forEach(b=>b.onclick=()=>{
+      const s=stores.find(x=>String(x.id)===b.dataset.configStore);
+      if(s)openStoreOverrideModal(cid,s);
+    });
+  }
+
+  async function openStoreOverrideModal(cid,store){
+    const [companyRows,storeRows]=await Promise.all([
+      api(`company_schedule_settings?company_id=eq.${cid}&select=*&limit=1`).catch(()=>[]),
+      api(`store_schedule_overrides?store_id=eq.${store.id}&select=*`).catch(()=>[]),
+    ]);
+    const def=companyRows?.[0]||{work_days:[1,2,3,4,5],default_duration_minutes:50,morning_capacity_minutes:240,afternoon_capacity_minutes:240,morning_enabled:true,afternoon_enabled:true};
+    const own=storeRows?.[0]||null;
+    const s=own||def;
+    const workDays=new Set(s.work_days||def.work_days||[1,2,3,4,5]);
+    document.querySelector('#vxStoreOverrideModal')?.remove();
+    const ov=document.createElement('div');ov.id='vxStoreOverrideModal';ov.className='vx-admin-overlay';
+    ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>Parâmetros -- ${E(store.code||store.name)}</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body">
+      ${own?'<p class="vx-sg-help">Esta loja tem parâmetros PRÓPRIOS (diferentes do padrão da empresa).</p>':'<p class="vx-sg-help">Esta loja usa o padrão da empresa. Salvar abaixo cria uma sobrescrita própria.</p>'}
+      <div class="vx-sched-days">${DAYS.map(([v,l])=>`<label><input type="checkbox" data-day="${v}" ${workDays.has(Number(v))?'checked':''}> ${l}</label>`).join('')}</div>
+      <div class="vx-sched-grid">
+        <label>DURAÇÃO PADRÃO (MIN)<input id="vxStoOvDur" type="number" min="5" value="${Number(s.default_duration_minutes??def.default_duration_minutes??50)}"></label>
+        <label>CAPACIDADE MANHÃ (MIN)<input id="vxStoOvManha" type="number" min="0" value="${Number(s.morning_capacity_minutes??def.morning_capacity_minutes??240)}"></label>
+        <label>CAPACIDADE TARDE (MIN)<input id="vxStoOvTarde" type="number" min="0" value="${Number(s.afternoon_capacity_minutes??def.afternoon_capacity_minutes??240)}"></label>
+      </div>
+      <div class="vx-admin-form-actions">${own?'<button type="button" class="secondary danger" id="vxStoOvClear">USAR PADRÃO DA EMPRESA</button>':''}<span class="grow"></span><button type="button" class="secondary" data-cancel>CANCELAR</button><button type="button" class="primary" id="vxStoOvSave">SALVAR PRÓPRIO DESTA LOJA</button></div>
+    </div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelectorAll('[data-close],[data-cancel]').forEach(b=>b.onclick=()=>ov.remove());
+    ov.querySelector('#vxStoOvSave').onclick=async()=>{
+      const btn=ov.querySelector('#vxStoOvSave');btn.disabled=true;
+      const work_days=[...ov.querySelectorAll('[data-day]:checked')].map(x=>Number(x.dataset.day));
+      try{
+        await api('rpc/admin_set_store_schedule_override',{method:'POST',body:JSON.stringify({p_company_id:cid,p_store_id:store.id,p_work_days:work_days,p_morning_enabled:true,p_afternoon_enabled:true,p_default_duration_minutes:Number(ov.querySelector('#vxStoOvDur').value)||50,p_morning_capacity_minutes:Number(ov.querySelector('#vxStoOvManha').value)||240,p_afternoon_capacity_minutes:Number(ov.querySelector('#vxStoOvTarde').value)||240})});
+        toast?.('Parâmetros próprios da loja salvos.');
+        ov.remove();
+        await renderStoreOverridesCard(cid);
+      }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');btn.disabled=false;}
+    };
+    ov.querySelector('#vxStoOvClear')?.addEventListener('click',async()=>{
+      if(!confirm('Remover os parâmetros próprios desta loja? Ela volta a usar o padrão da empresa.'))return;
+      try{
+        await api('rpc/admin_clear_store_schedule_override',{method:'POST',body:JSON.stringify({p_company_id:cid,p_store_id:store.id})});
+        toast?.('Loja voltou a usar o padrão da empresa.');
+        ov.remove();
+        await renderStoreOverridesCard(cid);
+      }catch(err){toast?.('Não foi possível remover: '+err.message,'err');}
+    });
   }
 
   async function renderCard(card,cid){
