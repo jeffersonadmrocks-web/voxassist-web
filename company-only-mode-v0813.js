@@ -2,7 +2,6 @@
 (function(){
   const E=window.esc||((v='')=>String(v??''));
   const roles=['GESTOR','ATENDENTE','TECNICO','ESTOQUE','FINANCEIRO'];
-  const perms=['os.view','os.create','os.edit','os.cancel','os.status','whirlpool.view','whirlpool.edit','agenda.view_all','agenda.edit','agenda.block','financeiro.view','financeiro.edit','estoque.view','estoque.edit','relatorios.view','config.view','config.users'];
   const uid=()=>state?.session?.user?.id||null;
   const isGestor=()=>String(state?.profile?.role||'').toUpperCase()==='GESTOR';
 
@@ -65,7 +64,13 @@
     document.querySelector('#vxCOnewCompany').onclick=()=>newCompany();
     document.querySelector('#vxCOnewUser')?.addEventListener('click',()=>newUser());
     app.querySelectorAll('[data-company-use]').forEach(b=>b.onclick=async()=>{try{await api('rpc/switch_company',{method:'POST',body:JSON.stringify({target_company:b.dataset.companyUse})});await loadProfile();await loadCore();await renderAdmin();await refreshCompanySelector()}catch(e){toast(e.message,'err')}});
-    app.querySelectorAll('[data-user-manage]').forEach(b=>b.onclick=()=>manageUser(users.find(u=>String(u.user_id)===String(b.dataset.userManage))));
+    // C5 (Matriz Mestra de Configurações, resolvido 2026-09-09): a
+    // tabela/modal "ALTERAR" próprios deste arquivo foram removidos --
+    // user-access-management-v0813.js é a tela canônica agora (LOJAS+
+    // GRUPOS+permissões granulares+Empresas Liberadas, ver achado do
+    // C5). Pede a atualização real de forma determinística, síncrona,
+    // em vez de depender de timing/MutationObserver como antes.
+    if(typeof window.vxRefreshUsersTable==='function')await window.vxRefreshUsersTable();
   }
 
   function newCompany(){
@@ -82,13 +87,12 @@
     m.querySelector('#coUserForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),ids=[...m.querySelectorAll('[name=company_ids]:checked')].map(x=>x.value),btn=e.submitter;if(!ids.length)return toast('Selecione ao menos uma empresa.','err');btn.disabled=true;try{const r=await fetch(CFG.url+'/functions/v1/voxassist-manage-user',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify({action:'create',full_name:f.get('name'),email:f.get('email'),password:f.get('password'),role:f.get('role'),company_ids:ids})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Falha ao criar usuário');m.remove();await renderAdmin();toast('Usuário criado e vinculado às empresas selecionadas.');}catch(err){toast(err.message,'err');btn.disabled=false;}};
   }
 
-  async function manageUser(u){
-    if(!u)return;const companies=await managedCompanies();const selected=new Set((u.company_ids||[]).map(String));const p=u.permissions||{};
-    const m=modal('Alterar Usuário',`<form id="coManageForm" class="vx-admin-form"><label>NOME</label><input name="name" value="${E(u.full_name)}"><div class="vx-form-2"><div><label>PERFIL</label><select name="role">${roles.map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select></div><div><label>TIPO DE ACESSO</label><select name="access"><option>PERSONALIZADO</option><option>GESTOR COMPLETO</option><option>ATENDENTE PADRÃO</option><option>TÉCNICO EXTERNO</option><option>TÉCNICO OFICINA</option><option>FINANCEIRO</option><option>ESTOQUE</option></select></div></div><label>EMPRESAS LIBERADAS</label><div class="co-company-checks">${companies.map(c=>`<label><input type="checkbox" name="company_ids" value="${E(c.id)}" ${selected.has(String(c.id))?'checked':''}> ${E(c.trade_name||c.legal_name)}</label>`).join('')}</div><label><input type="checkbox" name="active" ${u.active?'checked':''}> ATIVO NESTA EMPRESA</label><label>PERMISSÕES DESTA EMPRESA</label><div class="co-perms">${perms.map(k=>`<label><input type="checkbox" name="perm" value="${k}" ${p[k]?'checked':''}> ${k}</label>`).join('')}</div><div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button type="button" class="secondary danger" data-inactivate>INATIVAR / EXCLUIR ACESSO</button><button class="primary">SALVAR ALTERAÇÕES</button></div></form>`);
-    m.querySelector('select[name=access]').value=u.access_type||'PERSONALIZADO';m.querySelector('[data-cancel]').onclick=()=>m.remove();
-    m.querySelector('[data-inactivate]').onclick=async()=>{if(!confirm('Inativar o acesso deste usuário à empresa ativa? O histórico será preservado.'))return;try{await api('rpc/admin_soft_delete_user',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:state.profile.active_company_id})});m.remove();await renderAdmin();toast('Acesso inativado. Histórico preservado.');}catch(e){toast(e.message,'err')}};
-    m.querySelector('#coManageForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),ids=[...m.querySelectorAll('[name=company_ids]:checked')].map(x=>x.value),permissions={};m.querySelectorAll('[name=perm]').forEach(x=>permissions[x.value]=x.checked);if(!ids.length)return toast('Selecione ao menos uma empresa.','err');const btn=e.submitter;btn.disabled=true;try{let r=await fetch(CFG.url+'/functions/v1/voxassist-manage-user',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify({action:'set_companies',user_id:u.user_id,company_ids:ids,role:f.get('role')})});let d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Falha ao alterar empresas');if(ids.includes(String(state.profile.active_company_id))){await api('rpc/admin_update_user_access_company_only',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:state.profile.active_company_id,p_full_name:f.get('name'),p_role:f.get('role'),p_active:!!f.get('active'),p_access_type:f.get('access'),p_permissions:permissions})});}m.remove();await renderAdmin();toast('Usuário atualizado.');}catch(err){toast(err.message,'err');btn.disabled=false;}};
-  }
+  // C5 (Matriz Mestra de Configurações, resolvido 2026-09-09): a
+  // função manageUser() (modal "Alterar Usuário" próprio deste
+  // arquivo) foi removida -- user-access-management-v0813.js é a
+  // tela canônica agora (ver window.vxRefreshUsersTable acima), com
+  // a capacidade "Empresas Liberadas" desta função já portada pra
+  // lá, reaproveitando a mesma Edge Function voxassist-manage-user.
 
   const prior=window.render;
   window.render=async function(view){

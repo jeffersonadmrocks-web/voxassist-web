@@ -1,20 +1,6 @@
 /* VoxAssist V0.8.13 — Permissões por empresa + cabeçalho estável */
 (function(){
   const E=window.esc||((v='')=>String(v??''));
-  const roleOptions=['GESTOR','ATENDENTE','TECNICO','ESTOQUE','FINANCEIRO'];
-  const accessOptions=['PERSONALIZADO','GESTOR COMPLETO','ATENDENTE PADRÃO','TÉCNICO EXTERNO','TÉCNICO OFICINA','FINANCEIRO','ESTOQUE'];
-  const permissionGroups=[
-    {title:'Ordens de Serviço',items:[['os.view','Visualizar O.S.'],['os.create','Criar O.S.'],['os.edit','Editar O.S.'],['os.cancel','Cancelar O.S.'],['os.status','Alterar situação da O.S.']]},
-    {title:'Whirlpool',items:[['whirlpool.view','Visualizar modo Whirlpool'],['whirlpool.edit','Preencher / editar atendimento Whirlpool']]},
-    {title:'Agenda',items:[['agenda.view_all','Visualizar todas as agendas'],['agenda.edit','Agendar / reagendar atendimentos'],['agenda.block','Bloquear períodos de agenda']]},
-    {title:'Financeiro',critical:true,items:[['financeiro.view','Visualizar financeiro'],['financeiro.edit','Incluir / alterar lançamentos financeiros']]},
-    {title:'Estoque',items:[['estoque.view','Visualizar estoque'],['estoque.edit','Movimentar / alterar estoque']]},
-    {title:'Relatórios',items:[['relatorios.view','Visualizar e gerar relatórios']]},
-    {title:'Configurações e Segurança',critical:true,items:[['config.view','Acessar Configurações'],['config.users','Gerenciar usuários e permissões']]}
-  ];
-
-  const uid=()=>state?.session?.user?.id||null;
-  const activeCompany=()=>state?.profile?.active_company_id||null;
 
   function doLogout(){
     Promise.resolve().then(async()=>{try{await auth('logout',{})}catch{};try{clearSession()}catch{};try{localStorage.removeItem('vox_session')}catch{};try{loginScreen()}catch{location.reload()}});
@@ -38,64 +24,15 @@
     if(!logout){logout=document.createElement('button');logout.id='vxTopLogout';logout.type='button';logout.className='secondary';logout.textContent='Sair';logout.title='Encerrar sessão';logout.onclick=doLogout;actions.appendChild(logout)}
   }
 
-  async function fetchManagedCompanies(){
-    if(!uid())return [];
-    try{const rows=await api(`user_companies?user_id=eq.${uid()}&role=eq.GESTOR&active=eq.true&select=company_id,companies(id,legal_name,trade_name,document)&order=is_default.desc`);return rows.map(r=>r.companies).filter(Boolean)}catch{return []}
-  }
-
-  async function fetchUser(userId){
-    const cid=activeCompany(); if(!cid)return null;
-    const rows=await api('rpc/admin_company_users',{method:'POST',body:JSON.stringify({p_company_id:cid})});
-    return (rows||[]).find(u=>String(u.user_id)===String(userId))||null;
-  }
-
-  function permissionCard(group,p){
-    return `<section class="vx-perm-card ${group.critical?'critical':''}"><header><h3>${E(group.title)}</h3>${group.critical?'<span>PERMISSÕES CRÍTICAS</span>':''}</header><div class="vx-perm-list">${group.items.map(([key,label])=>`<label><span>${E(label)}</span><input type="checkbox" name="vxperm" value="${E(key)}" ${p?.[key]?'checked':''}></label>`).join('')}</div></section>`;
-  }
-
-  async function openPermissions(userId){
-    const u=await fetchUser(userId); if(!u)return toast('Não foi possível carregar o usuário.','err');
-    const companies=await fetchManagedCompanies();
-    const selected=new Set((u.company_ids||[]).map(String));
-    const p=u.permissions||{};
-    document.querySelector('#vxPermPage')?.remove();
-    const page=document.createElement('div');page.id='vxPermPage';page.className='vx-perm-page';
-    page.innerHTML=`
-      <div class="vx-perm-top"><div><button type="button" class="secondary" data-close>← Voltar</button><h2>Permissões de usuário <small>${E(u.full_name||'')}</small></h2></div><div class="vx-perm-top-actions"><button class="secondary" data-block>Bloquear todas</button><button class="secondary" data-default>Restaurar padrão</button><button class="primary" data-all>Liberar todas</button></div></div>
-      <div class="vx-user-summary">
-        <label>Nome<input name="vxname" value="${E(u.full_name||'')}"></label>
-        <label>Perfil<select name="vxrole">${roleOptions.map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select></label>
-        <label>Tipo de acesso<select name="vxaccess">${accessOptions.map(a=>`<option ${a===(u.access_type||'PERSONALIZADO')?'selected':''}>${a}</option>`).join('')}</select></label>
-        <label class="vx-active-toggle"><input type="checkbox" name="vxactive" ${u.active?'checked':''}> Usuário ativo nesta empresa</label>
-      </div>
-      <section class="vx-company-access"><div><h3>Empresas liberadas</h3><p>O usuário verá no cabeçalho somente as empresas selecionadas aqui.</p></div><div class="vx-company-pills">${companies.map(c=>`<label><input type="checkbox" name="vxcompany" value="${E(c.id)}" ${selected.has(String(c.id))?'checked':''}><span>${E(c.trade_name||c.legal_name)}</span></label>`).join('')}</div></section>
-      <div class="vx-perm-company-context"><b>Permissões desta empresa:</b><span>${E((companies.find(c=>String(c.id)===String(activeCompany()))||{}).trade_name||'EMPRESA ATIVA')}</span></div>
-      <div class="vx-perm-grid">${permissionGroups.map(g=>permissionCard(g,p)).join('')}</div>
-      <div class="vx-perm-footer"><button class="secondary danger" data-inactivate>INATIVAR / EXCLUIR ACESSO</button><div><button class="secondary" data-close>CANCELAR</button><button class="primary" data-save>SALVAR ALTERAÇÕES</button></div></div>`;
-    document.body.appendChild(page);
-
-    page.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>page.remove());
-    page.querySelector('[data-all]').onclick=()=>page.querySelectorAll('[name=vxperm]').forEach(x=>x.checked=true);
-    page.querySelector('[data-block]').onclick=()=>page.querySelectorAll('[name=vxperm]').forEach(x=>x.checked=false);
-    page.querySelector('[data-default]').onclick=()=>{const role=page.querySelector('[name=vxrole]').value;const defaults={GESTOR:permissionGroups.flatMap(g=>g.items.map(x=>x[0])),ATENDENTE:['os.view','os.create','os.edit','os.status','whirlpool.view','agenda.view_all','agenda.edit','estoque.view','relatorios.view'],TECNICO:['os.view','os.edit','whirlpool.view','whirlpool.edit','agenda.edit','estoque.view'],ESTOQUE:['estoque.view','estoque.edit','os.view'],FINANCEIRO:['financeiro.view','financeiro.edit','relatorios.view','os.view']}[role]||[];page.querySelectorAll('[name=vxperm]').forEach(x=>x.checked=defaults.includes(x.value));};
-
-    page.querySelector('[data-inactivate]').onclick=async()=>{if(!confirm('Inativar o acesso deste usuário à empresa ativa? O histórico será preservado.'))return;try{await api('rpc/admin_soft_delete_user',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:activeCompany()})});page.remove();toast('Acesso inativado. Histórico preservado.');window.render?.('usuarios')}catch(err){toast(err.message,'err')}};
-
-    page.querySelector('[data-save]').onclick=async()=>{
-      const companyIds=[...page.querySelectorAll('[name=vxcompany]:checked')].map(x=>x.value);if(!companyIds.length)return toast('Selecione ao menos uma empresa.','err');
-      const permissions={};page.querySelectorAll('[name=vxperm]').forEach(x=>permissions[x.value]=x.checked);
-      const btn=page.querySelector('[data-save]');btn.disabled=true;btn.textContent='SALVANDO...';
-      try{
-        let r=await fetch(CFG.url+'/functions/v1/voxassist-manage-user',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify({action:'set_companies',user_id:u.user_id,company_ids:companyIds,role:page.querySelector('[name=vxrole]').value})});
-        let d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Falha ao alterar empresas');
-        if(companyIds.includes(String(activeCompany()))){await api('rpc/admin_update_user_access_company_only',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:activeCompany(),p_full_name:page.querySelector('[name=vxname]').value,p_role:page.querySelector('[name=vxrole]').value,p_active:page.querySelector('[name=vxactive]').checked,p_access_type:page.querySelector('[name=vxaccess]').value,p_permissions:permissions})})}
-        page.remove();toast('Usuário e permissões atualizados.');await window.render?.('usuarios');
-      }catch(err){toast('Falha ao salvar permissões: '+err.message,'err');btn.disabled=false;btn.textContent='SALVAR ALTERAÇÕES'}
-    };
-  }
-
-  // Intercepta o botão ALTERAR existente e abre a nova tela completa.
-  document.addEventListener('click',e=>{const b=e.target.closest?.('[data-user-manage]');if(!b)return;e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();openPermissions(b.dataset.userManage)},true);
+  // C5 (Matriz Mestra de Configurações, resolvido 2026-09-09):
+  // fetchManagedCompanies/fetchUser/permissionCard/openPermissions e o
+  // interceptador de clique em [data-user-manage] foram removidos --
+  // essa era, na prática, a tela que "vencia" a concorrência de 3
+  // implementações de "Alterar Usuário" (capturava o clique antes de
+  // qualquer outro handler). A capacidade real que só existia aqui
+  // ("Empresas liberadas") foi portada pra user-access-management-
+  // v0813.js (tela canônica agora), reaproveitando a mesma Edge
+  // Function voxassist-manage-user -- nenhuma função perdida.
 
   const style=document.createElement('style');style.textContent=`
     .vx-header-actions{margin-left:auto;display:flex;align-items:center;gap:10px;padding-right:10px}.vx-header-company{display:flex;flex-direction:column;gap:2px;min-width:210px}.vx-header-company small{font-size:8px;color:#60758c;font-weight:800}.vx-header-company select{height:34px;border:1px solid #cbd7e2;border-radius:7px;background:#fff;padding:0 10px;font-size:11px;font-weight:700;color:#17324e}#vxTopLogout{height:36px;padding:0 16px;white-space:nowrap}
@@ -104,5 +41,4 @@
 
   const observer=new MutationObserver(()=>{clearTimeout(window.__vxHeaderTimer);window.__vxHeaderTimer=setTimeout(ensureHeader,80)});observer.observe(document.documentElement,{childList:true,subtree:true});
   document.addEventListener('DOMContentLoaded',()=>setTimeout(ensureHeader,100));setTimeout(ensureHeader,300);
-  window.vxOpenUserPermissions=openPermissions;
 })();

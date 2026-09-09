@@ -56,6 +56,20 @@
   // (grupo só faz sentido pra quem executa o atendimento).
   async function groupsForCompany(){const cid=companyId();if(!cid)return[];return await api(`service_groups?company_id=eq.${cid}&active=eq.true&select=id,name&order=name`).catch(()=>[])}
   async function usersForCompany(){const cid=companyId();if(!cid)return[];return await api('rpc/admin_company_users',{method:'POST',body:JSON.stringify({p_company_id:cid})}).catch(e=>{console.error(e);return[]})}
+  // C5 (Matriz Mestra de Configurações, resolvido 2026-09-09): as
+  // outras 2 telas concorrentes de "Alterar Usuário"
+  // (company-only-mode-v0813.js/user-permissions-ui-v0813.js) tinham
+  // uma capacidade real que faltava aqui -- "Empresas Liberadas"
+  // (a quais empresas o usuário tem acesso), via a Edge Function já
+  // existente `voxassist-manage-user` (action:'set_companies').
+  // Portado aqui ANTES de remover as outras 2, pra não perder função
+  // nenhuma -- reaproveita a MESMA Edge Function, mesmo contrato,
+  // nenhum backend novo.
+  const uid=()=>state?.session?.user?.id||state?.profile?.id||null;
+  async function managedCompanies(){
+    if(!uid())return [];
+    try{const rows=await api(`user_companies?user_id=eq.${uid()}&role=eq.GESTOR&active=eq.true&select=company_id,companies(id,legal_name,trade_name)&order=is_default.desc`);return rows.map(r=>r.companies).filter(Boolean)}catch{return []}
+  }
 
   async function refreshUsers(){
     if(state?.view!=='usuarios'||!gestor()||!companyId())return;
@@ -72,14 +86,16 @@
 
   async function openUser(id,cache){
     const u=cache.find(x=>String(x.user_id)===String(id));if(!u)return;
-    const [stores,groups]=await Promise.all([storesForCompany(),groupsForCompany()]);
+    const [stores,groups,managed]=await Promise.all([storesForCompany(),groupsForCompany(),managedCompanies()]);
     const current=new Set((u.store_ids||[]).map(String));
     const currentGroups=new Set((u.service_group_ids||[]).map(String));
+    const currentCompanies=new Set((u.company_ids||[]).map(String));
     const m=modal('Alterar usuário',`<form id="vxUserManageForm" class="vx-admin-form">
       <label>NOME COMPLETO *</label><input name="name" value="${E(u.full_name)}" required>
       <label>E-MAIL</label><input value="${E(u.email||'')}" disabled>
       <div class="vx-form-2"><div><label>PERFIL FUNCIONAL *</label><select name="role">${roles.map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select></div><div><label>TIPO DE ACESSO *</label><select name="access">${types.map(t=>`<option ${t===u.access_type?'selected':''}>${t}</option>`).join('')}</select></div></div>
       <label class="vx-toggle"><input type="checkbox" name="active" id="vxActiveToggle" ${u.active?'checked':''}> <span id="vxActiveToggleText">${u.active?'ACESSO ATIVO -- desmarque para desativar o acesso':'ACESSO DESATIVADO -- marque para reativar o acesso'}</span></label>
+      ${managed.length>1?`<label>EMPRESAS LIBERADAS *</label><div class="vx-store-checks">${managed.map(c=>`<label><input type="checkbox" data-company value="${E(c.id)}" ${currentCompanies.has(String(c.id))||String(c.id)===String(companyId())?'checked':''}> <b>${E(c.trade_name||c.legal_name)}</b></label>`).join('')}</div>`:''}
       <label>LOJAS LIBERADAS *</label><div class="vx-store-checks">${stores.map(s=>`<label><input type="checkbox" data-store value="${E(s.id)}" ${current.has(String(s.id))?'checked':''}> <b>${E(s.code||s.name)}</b><span>${E(s.name)}</span></label>`).join('')}</div>
       <div id="vxUserGroupsBlock" style="display:${u.role==='TECNICO'?'':'none'}"><label>GRUPOS DE ATENDIMENTO</label><div class="vx-store-checks">${groups.length?groups.map(g=>`<label><input type="checkbox" data-group value="${E(g.id)}" ${currentGroups.has(String(g.id))?'checked':''}> <b>${E(g.name)}</b></label>`).join(''):'<span class="vx-sg-empty">Nenhum grupo cadastrado -- crie em "Grupos de Atendimento" nesta mesma tela.</span>'}</div></div>
       <div class="vx-access-head"><div><b>CONTEÚDOS DE ACESSO</b><small>O tipo de acesso aplica um padrão; você pode personalizar abaixo.</small></div><button type="button" class="secondary" id="vxApplyPreset">APLICAR PADRÃO</button></div>
@@ -100,7 +116,21 @@
       // "não mexer", evita apagar vínculo de grupo por engano se o
       // gestor só estava trocando outra coisa num usuário não-técnico.
       const groupIds=f.role.value==='TECNICO'?[...f.querySelectorAll('[data-group]:checked')].map(x=>x.value):null;
+      const companyCheckboxes=[...f.querySelectorAll('[data-company]')];
       try{
+      // Empresas Liberadas (só existe no form quando o gestor administra
+      // mais de 1 empresa) -- mesma Edge Function/contrato já usado por
+      // company-only-mode-v0813.js/user-permissions-ui-v0813.js, sem
+      // reinventar. Se a empresa ativa foi desmarcada, o usuário perde o
+      // vínculo aqui e admin_update_user_access não roda pra ela (já não
+      // existe mais o vínculo pra atualizar).
+      if(companyCheckboxes.length){
+        const companyIds=companyCheckboxes.filter(x=>x.checked).map(x=>x.value);
+        if(!companyIds.length)return toast('Selecione ao menos uma empresa.','err');
+        const r=await fetch(CFG.url+'/functions/v1/voxassist-manage-user',{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify({action:'set_companies',user_id:u.user_id,company_ids:companyIds,role:f.role.value})});
+        const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Falha ao alterar empresas liberadas');
+        if(!companyIds.includes(String(companyId()))){m.remove();toast('Usuário atualizado. Acesso à empresa ativa removido.');await refreshUsers();return;}
+      }
       await api('rpc/admin_update_user_access',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:companyId(),p_full_name:f.name.value,p_role:f.role.value,p_active:f.active.checked,p_store_ids:ss,p_access_type:f.access.value,p_permissions:readPerms(f),p_service_group_ids:groupIds})});
       m.remove();toast('Usuário e permissões atualizados.');await refreshUsers();
     }catch(err){toast('Falha ao atualizar usuário: '+err.message,'err');btn.disabled=false;}};
@@ -116,6 +146,13 @@
   }
 
   document.addEventListener('click',e=>{if(e.target.closest('#vxNewUser'))setTimeout(enhanceNewUser,180)});
+  // C5 (resolvido 2026-09-09): exposto pra company-only-mode-v0813.js
+  // pedir a atualização da tabela real de usuários de forma
+  // determinística (síncrona, logo após renderAdmin()) -- antes disso,
+  // 3 telas competiam pra renderizar a mesma tabela e só uma "vencia"
+  // por timing de setTimeout/MutationObserver (mesma classe de problema
+  // já resolvida no C4, mesmo princípio de solução).
+  window.vxRefreshUsersTable=refreshUsers;
   const prior=window.render;window.render=async function(view){const r=await prior(view);if(view==='usuarios')setTimeout(refreshUsers,350);return r};
   // Trocar Loja Ativa jamais muda a lista da configuração: reconstituímos pelos vínculos da EMPRESA.
   document.addEventListener('change',e=>{if(e.target?.id==='activeStore'&&state?.view==='usuarios')setTimeout(refreshUsers,700)});
