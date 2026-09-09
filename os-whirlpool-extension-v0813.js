@@ -66,6 +66,11 @@
     }catch(e){toast('Falha ao salvar modo Whirlpool: '+e.message,'err')}
   }
 
+  // Exposto pra outros arquivos (ex.: aba Documentos, plano
+  // "Arquitetura de Documentos da OS") reaproveitarem o MESMO
+  // visual já aprovado (cabeçalho azul-marinho, cards arredondados)
+  // em vez de duplicar CSS de impressão em outro lugar.
+  window.vxPrintShell=(...args)=>printShell(...args);
   function printShell(title,body){
     const w=window.open('','_blank','width=1000,height=800');if(!w)return toast('O navegador bloqueou a janela de impressão.','err');
     // Achado do usuário em 2026-09-03: "todos os modelos enviados por
