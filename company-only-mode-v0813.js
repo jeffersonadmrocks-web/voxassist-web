@@ -18,24 +18,16 @@
     if(userSmall&&state?.profile)userSmall.textContent=String(state.profile.role||'SEM PERFIL')+' • ACESSO POR EMPRESA';
   }
 
-  async function memberships(){
-    if(!uid())return [];
-    return await api(`user_companies?user_id=eq.${uid()}&active=eq.true&select=company_id,role,is_default,companies(id,legal_name,trade_name,document,code)&order=is_default.desc`).catch(()=>[]);
-  }
-
+  // C4 (Matriz Mestra de Configurações, resolvido 2026-09-09): este
+  // arquivo tinha seu próprio <select> de empresa ativa
+  // (.vx-company-switch/#vxCompanySelect), concorrente com outros 3.
+  // company-selector-singleton-v0813.js é o único que de fato aparece
+  // pro usuário (os outros já eram escondidos por ele via CSS/JS) --
+  // esta função virou um pedido de atualização pra ele, chamada nos
+  // mesmos pontos de antes (depois de switch_company/criar empresa),
+  // sem duplicar fetch nem <select> nenhum.
   async function refreshCompanySelector(){
-    const user=document.querySelector('header .user');if(!user)return;
-    user.querySelector('.vx-company-switch')?.remove();
-    const rows=await memberships();
-    if(!rows.length)return;
-    const wrap=document.createElement('div');wrap.className='vx-company-switch';
-    wrap.innerHTML=`<small>EMPRESA ATIVA</small><select id="vxCompanySelect">${rows.map(r=>`<option value="${E(r.company_id)}" ${String(r.company_id)===String(state.profile?.active_company_id)?'selected':''}>${E(r.companies?.trade_name||r.companies?.legal_name||'EMPRESA')}</option>`).join('')}</select>`;
-    user.prepend(wrap);
-    wrap.querySelector('select').onchange=async e=>{
-      const id=e.target.value;e.target.disabled=true;
-      try{await api('rpc/switch_company',{method:'POST',body:JSON.stringify({target_company:id})});await loadProfile();await loadCore();shell();await window.render('dashboard');toast('Empresa ativa alterada.');}
-      catch(err){toast('Falha ao trocar de empresa: '+err.message,'err');e.target.disabled=false;}
-    };
+    if(typeof window.vxRefreshCompanySelector==='function')await window.vxRefreshCompanySelector();
   }
 
   function modal(title,body){

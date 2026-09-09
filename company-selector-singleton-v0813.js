@@ -75,6 +75,19 @@
     } finally { busy=false; }
   }
 
+  // C4 (Matriz Mestra de Configurações, resolvido 2026-09-09): este
+  // arquivo já era o único que de fato aparecia pro usuário (mount()
+  // roda por último no carregamento e o MutationObserver reaplica
+  // hideAllLegacy() a cada mutação do documento) -- os outros 3
+  // seletores concorrentes (company-only-mode-v0813.js,
+  // user-logoff-v0813.js, user-permissions-ui-v0813.js) foram
+  // esvaziados e passaram a chamar esta função quando o usuário troca
+  // de empresa por um caminho que NÃO é este <select> (ex.: botão
+  // "usar esta empresa" na lista de empresas da tela admin) -- sem
+  // isso, o rótulo aqui ficava desatualizado até o próximo mutation
+  // (bug pré-existente, não algo que este cleanup introduziu).
+  window.vxRefreshCompanySelector=function(){return mount(true)};
+
   const style=document.createElement('style');
   style.textContent=`
     #activeStore,#vxHeaderCompanyWrap,#vxSecureCompanyWrap,#vxStableCompanyWrap,.vx-company-switch,.vx-header-company,.vx-secure-company,.vx-stable-company{display:none!important}

@@ -16,15 +16,17 @@
   const uid=()=>state?.session?.user?.id||null;
   const activeCompany=()=>state?.profile?.active_company_id||null;
 
-  async function getMemberships(){
-    if(!uid())return [];
-    try{return await api(`user_companies?user_id=eq.${uid()}&active=eq.true&select=company_id,role,is_default,companies(id,legal_name,trade_name,document)&order=is_default.desc`)}catch{return []}
-  }
-
   function doLogout(){
     Promise.resolve().then(async()=>{try{await auth('logout',{})}catch{};try{clearSession()}catch{};try{localStorage.removeItem('vox_session')}catch{};try{loginScreen()}catch{location.reload()}});
   }
 
+  // C4 (Matriz Mestra de Configurações, resolvido 2026-09-09): esta
+  // função tinha seu próprio seletor de empresa ativa
+  // (#vxHeaderCompanyWrap/#vxHeaderCompany), concorrente com outros
+  // 3. company-selector-singleton-v0813.js é o único que de fato
+  // aparece pro usuário -- removido o seletor duplicado daqui,
+  // mantendo só o botão #vxTopLogout (responsabilidade própria deste
+  // arquivo, fora do escopo do C4).
   async function ensureHeader(){
     if(!state?.session)return;
     const header=document.querySelector('header'); if(!header)return;
@@ -34,14 +36,6 @@
     if(!actions){actions=document.createElement('div');actions.className='vx-header-actions';header.appendChild(actions)}
     let logout=actions.querySelector('#vxTopLogout');
     if(!logout){logout=document.createElement('button');logout.id='vxTopLogout';logout.type='button';logout.className='secondary';logout.textContent='Sair';logout.title='Encerrar sessão';logout.onclick=doLogout;actions.appendChild(logout)}
-
-    const rows=await getMemberships();
-    let sw=actions.querySelector('#vxHeaderCompanyWrap');
-    if(!rows.length){if(sw)sw.remove();return;}
-    if(!sw){sw=document.createElement('label');sw.id='vxHeaderCompanyWrap';sw.className='vx-header-company';actions.prepend(sw)}
-    sw.innerHTML=`<small>EMPRESA ATIVA</small><select id="vxHeaderCompany">${rows.map(r=>`<option value="${E(r.company_id)}" ${String(r.company_id)===String(activeCompany())?'selected':''}>${E(r.companies?.trade_name||r.companies?.legal_name||'EMPRESA')}</option>`).join('')}</select>`;
-    const sel=sw.querySelector('select');
-    sel.onchange=async()=>{const target=sel.value;sel.disabled=true;try{await api('rpc/switch_company',{method:'POST',body:JSON.stringify({target_company:target})});await loadProfile();await loadCore();shell();toast('Empresa ativa alterada.');setTimeout(()=>window.render?.('dashboard'),0)}catch(err){toast('Não foi possível trocar de empresa: '+err.message,'err');sel.disabled=false}};
   }
 
   async function fetchManagedCompanies(){
