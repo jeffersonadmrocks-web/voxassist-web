@@ -79,7 +79,7 @@
       <label>NOME COMPLETO *</label><input name="name" value="${E(u.full_name)}" required>
       <label>E-MAIL</label><input value="${E(u.email||'')}" disabled>
       <div class="vx-form-2"><div><label>PERFIL FUNCIONAL *</label><select name="role">${roles.map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select></div><div><label>TIPO DE ACESSO *</label><select name="access">${types.map(t=>`<option ${t===u.access_type?'selected':''}>${t}</option>`).join('')}</select></div></div>
-      <label class="vx-toggle"><input type="checkbox" name="active" ${u.active?'checked':''}> USUÁRIO ATIVO</label>
+      <label class="vx-toggle"><input type="checkbox" name="active" id="vxActiveToggle" ${u.active?'checked':''}> <span id="vxActiveToggleText">${u.active?'ACESSO ATIVO -- desmarque para desativar o acesso':'ACESSO DESATIVADO -- marque para reativar o acesso'}</span></label>
       <label>LOJAS LIBERADAS *</label><div class="vx-store-checks">${stores.map(s=>`<label><input type="checkbox" data-store value="${E(s.id)}" ${current.has(String(s.id))?'checked':''}> <b>${E(s.code||s.name)}</b><span>${E(s.name)}</span></label>`).join('')}</div>
       <div id="vxUserGroupsBlock" style="display:${u.role==='TECNICO'?'':'none'}"><label>GRUPOS DE ATENDIMENTO</label><div class="vx-store-checks">${groups.length?groups.map(g=>`<label><input type="checkbox" data-group value="${E(g.id)}" ${currentGroups.has(String(g.id))?'checked':''}> <b>${E(g.name)}</b></label>`).join(''):'<span class="vx-sg-empty">Nenhum grupo cadastrado -- crie em "Grupos de Atendimento" nesta mesma tela.</span>'}</div></div>
       <div class="vx-access-head"><div><b>CONTEÚDOS DE ACESSO</b><small>O tipo de acesso aplica um padrão; você pode personalizar abaixo.</small></div><button type="button" class="secondary" id="vxApplyPreset">APLICAR PADRÃO</button></div>
@@ -88,6 +88,7 @@
     </form>`);
     const f=m.querySelector('#vxUserManageForm');m.querySelector('[data-cancel]').onclick=()=>m.remove();
     f.role.addEventListener('change',()=>{const gb=f.querySelector('#vxUserGroupsBlock');if(gb)gb.style.display=f.role.value==='TECNICO'?'':'none';});
+    f.active.addEventListener('change',()=>{f.querySelector('#vxActiveToggleText').textContent=f.active.checked?'ACESSO ATIVO -- desmarque para desativar o acesso':'ACESSO DESATIVADO -- marque para reativar o acesso';});
     m.querySelector('#vxApplyPreset').onclick=()=>setPerms(f,f.access.value);
     m.querySelector('#vxDeleteUser').onclick=async()=>{
       if(!confirm('Excluir este usuário do uso do VoxAssist? O histórico será preservado e o acesso será inativado.'))return;
