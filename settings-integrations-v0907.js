@@ -41,12 +41,16 @@
   }
 
   async function renderCard(card,cid){
-    const [connections,elxRows]=await Promise.all([
+    const [connections,elxRows,syncStatusRows]=await Promise.all([
       api('chat_connections?select=id,name,status&order=created_at.desc').catch(()=>[]),
       api(`electrolux_panel_settings?company_id=eq.${cid}&select=api_url&limit=1`).catch(()=>[]),
+      api('rpc/get_electrolux_sync_status',{method:'POST',body:JSON.stringify({p_company_id:cid})}).catch(()=>[]),
     ]);
     const connected=connections.filter(c=>String(c.status||'').toUpperCase()==='CONECTADO');
     const elxConfigured=!!elxRows?.[0]?.api_url;
+    const syncStatus=syncStatusRows?.[0]||{};
+    const lastSync=syncStatus.last_sync_at;
+    const syncErrors=syncStatus.connections_with_error||0;
     card.innerHTML=`<div class="vx-admin-title"><h3>INTEGRAÇÕES</h3></div>
       <p class="vx-sg-help">Status das integrações desta empresa. A conexão em si é gerenciada dentro de cada módulo -- aqui é só um resumo com atalho.</p>
       <div class="vx-int-row">
@@ -55,8 +59,8 @@
         <button type="button" class="secondary" id="vxIntWhats">Gerenciar conexão</button>
       </div>
       <div class="vx-int-row">
-        <div class="vx-int-label"><b>Electrolux</b><small>${elxConfigured?'Endereço de API configurado':'Endereço de API não configurado'}</small></div>
-        <span class="vx-int-badge ${elxConfigured?'ok':'off'}">${elxConfigured?'CONFIGURADO':'NÃO CONFIGURADO'}</span>
+        <div class="vx-int-label"><b>Electrolux</b><small>${elxConfigured?'Endereço de API configurado':'Endereço de API não configurado'}${lastSync?' · última sincronização '+new Date(lastSync).toLocaleString('pt-BR'):''}${syncErrors?' · '+syncErrors+' conexão(ões) com erro':''}</small></div>
+        <span class="vx-int-badge ${elxConfigured?(syncErrors?'off':'ok'):'off'}">${elxConfigured?(syncErrors?'COM ERRO':'CONFIGURADO'):'NÃO CONFIGURADO'}</span>
         <button type="button" class="secondary" id="vxIntElx">Abrir Electrolux</button>
       </div>`;
     card.querySelector('#vxIntWhats').onclick=()=>window.render?.('chat');

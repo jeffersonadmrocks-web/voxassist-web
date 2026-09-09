@@ -115,7 +115,7 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
 | Item | Classificação | Status |
 |---|---|---|
 | Card de status (WhatsApp/Electrolux) | REAPROVEITAR | IMPLEMENTADO |
-| Última sincronização / logs / config detalhada | CRIAR | PENDENTE |
+| Última sincronização / logs / config detalhada | REAPROVEITAR (exposição) | **IMPLEMENTADO** (2026-09-08) -- `electrolux_connections.last_sync_at`/`last_sync_error` já existiam e já eram gravados pelo fluxo real, só faltava expor. Achado de segurança: essa tabela guarda `credential_secret_name` e tem RLS SEM NENHUMA policy de SELECT (endurecimento proposital de sessão anterior) -- por isso, em vez de criar uma policy de leitura direta (exporia a credencial), foi criada a RPC `get_electrolux_sync_status` (migration `20260908190000`, `security definer`, valida `p_company_id = current_company_id()` antes de tudo, devolve só última sincronização + erro + contagem, nunca a credencial). Card "INTEGRAÇÕES" (`settings-integrations-v0907.js`) agora mostra data da última sincronização e badge "COM ERRO" quando aplicável. |
 | Pulse IA (`integrated_apps`+`app_launch_audit`) | REAPROVEITAR — modelo arquitetural pras outras | IMPLEMENTADO |
 | GestãoClick / Digisac | CRIAR | PENDENTE |
 | Whirlpool | REVISAR — pertence à Área 02 (documento), não é integração de API | EM DIAGNÓSTICO |
@@ -148,3 +148,4 @@ Status possíveis: `PENDENTE` · `EM DIAGNÓSTICO` · `BLOQUEADO POR DEPENDÊNCI
   - Leva seguinte: Auditoria -- trigger de banco pra qualquer UPDATE em `companies` (Área 09, migration `20260908160000`), card de leitura em `settings-security-v0908.js`. **Total: 26 itens implementados de 45.**
   - Leva seguinte: Logs técnicos -- captura de erro JS não tratado (Área 09, migration `20260908170000`, `client-error-log-v0908.js`). **Total: 27 itens implementados de 45.**
   - Leva seguinte: Alertas de estoque baixo -- limite por peça + padrão da empresa + contagem real (Área 05, migration `20260908180000`, card em `settings-stock-v0908.js`). **Total: 28 itens implementados de 45.**
+  - Leva seguinte: Última sincronização Electrolux (Área 08, migration `20260908190000`) -- achado de segurança no caminho: `electrolux_connections` guarda credencial e tem RLS sem policy nenhuma (endurecimento proposital); resolvido com RPC que devolve só os campos seguros, não com policy de tabela. **Total: 29 itens implementados de 45.**
