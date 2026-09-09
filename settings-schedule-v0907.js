@@ -49,6 +49,11 @@
     regionsCard.id='vxServiceRegionsCard';
     extrasGrid(page).appendChild(regionsCard);
     await renderRegionsCard(cid);
+    const techDetailsCard=document.createElement('section');
+    techDetailsCard.className='vx-admin-card';
+    techDetailsCard.id='vxTechDetailsCard';
+    extrasGrid(page).appendChild(techDetailsCard);
+    await renderTechDetailsCard(cid);
    }catch(err){console.error('[schedule] falha ao injetar card:',err);}
   }
 
@@ -119,6 +124,80 @@
       }catch(err){toast?.('Não foi possível alterar: '+err.message,'err');cb.checked=!cb.checked;}
       finally{cb.disabled=false;}
     });
+  }
+
+  // Achado do usuário em 2026-09-09 (Matriz Mestra, Área 01 -- decisão
+  // sobre Técnicos): região = associação com service_regions
+  // (catálogo já existente). Especialidade = NÃO texto livre nem
+  // dicionário novo -- reaproveita product_types (catálogo mestre
+  // GLOBAL da Área 03, nunca duplicado por empresa) como o próprio
+  // vocabulário de especialidade. Disponibilidade = 1 linha por dia
+  // da semana por técnico (technician_availability, migration
+  // 20260909010000), mesmas chaves de dia de companies.business_hours
+  // pra manter consistência. Escopo desta etapa: cadastro + exibição
+  // -- roteamento automático por região/especialidade/disponibilidade
+  // fica pra evolução futura, nenhuma regra de atribuição de OS é
+  // alterada aqui.
+  const AVAIL_DAYS=[['seg','Seg'],['ter','Ter'],['qua','Qua'],['qui','Qui'],['sex','Sex'],['sab','Sáb'],['dom','Dom']];
+
+  async function renderTechDetailsCard(cid){
+    const card=document.getElementById('vxTechDetailsCard');if(!card)return;
+    const techs=await api('profiles?role=eq.TECNICO&active=eq.true&select=id,full_name&order=full_name').catch(()=>[]);
+    card.innerHTML=`<div class="vx-admin-title"><h3>TÉCNICOS — REGIÃO, ESPECIALIDADE E DISPONIBILIDADE</h3><span>${techs.length}</span></div>
+      <p class="vx-sg-help">Região de atendimento, tipos de produto que domina e dias/horários em que pode ser agendado. Cadastro + uso na Agenda -- roteamento automático por essas regras fica pra uma etapa futura.</p>
+      <div class="vx-sg-list">${techs.length?techs.map(t=>`<div class="vx-sg-row"><b>${E(t.full_name)}</b><div class="vx-sg-row-actions"><button type="button" data-config="${E(t.id)}">Configurar</button></div></div>`).join(''):'<p class="vx-sg-empty">Nenhum técnico cadastrado nesta empresa ainda.</p>'}</div>`;
+    card.querySelectorAll('[data-config]').forEach(b=>b.onclick=()=>{
+      const t=techs.find(x=>String(x.id)===b.dataset.config);
+      if(t)openTechDetailsModal(cid,t);
+    });
+  }
+
+  async function openTechDetailsModal(cid,tech){
+    document.querySelector('#vxTechDetailsModal')?.remove();
+    const [regions,groups,types,myRegions,mySpecialties,myAvail]=await Promise.all([
+      api(`service_regions?company_id=eq.${cid}&active=eq.true&select=id,name&order=sort_order`).catch(()=>[]),
+      api('product_groups?select=id,name&order=name').catch(()=>[]),
+      api('product_types?active=eq.true&select=id,name,group_id&order=name').catch(()=>[]),
+      api(`technician_regions?company_id=eq.${cid}&technician_id=eq.${tech.id}&select=region_id`).catch(()=>[]),
+      api(`technician_specialties?company_id=eq.${cid}&technician_id=eq.${tech.id}&select=product_type_id`).catch(()=>[]),
+      api(`technician_availability?company_id=eq.${cid}&technician_id=eq.${tech.id}&select=*`).catch(()=>[]),
+    ]);
+    const regionSet=new Set(myRegions.map(r=>String(r.region_id)));
+    const typeSet=new Set(mySpecialties.map(s=>String(s.product_type_id)));
+    const availByDay=Object.fromEntries(myAvail.map(a=>[a.weekday,a]));
+    const ov=document.createElement('div');ov.id='vxTechDetailsModal';ov.className='vx-admin-overlay';
+    ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>${E(tech.full_name)}</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body">
+      <h4 style="margin:0 0 6px;font-size:10px;text-transform:uppercase;color:#6c7e90">REGIÕES DE ATENDIMENTO</h4>
+      <div class="vx-store-checks">${regions.length?regions.map(r=>`<label><input type="checkbox" data-region value="${E(r.id)}" ${regionSet.has(String(r.id))?'checked':''}> <b>${E(r.name)}</b></label>`).join(''):'<span class="vx-sg-empty">Nenhuma região cadastrada -- crie em "Regiões de Atendimento" nesta mesma tela.</span>'}</div>
+      <h4 style="margin:14px 0 6px;font-size:10px;text-transform:uppercase;color:#6c7e90">ESPECIALIDADE (TIPOS DE PRODUTO)</h4>
+      <div class="vx-store-checks">${types.length?groups.map(g=>types.filter(t=>String(t.group_id)===String(g.id))).flat().concat(types.filter(t=>!groups.some(g=>String(g.id)===String(t.group_id)))).map(t=>`<label><input type="checkbox" data-type value="${E(t.id)}" ${typeSet.has(String(t.id))?'checked':''}> <b>${E(t.name)}</b></label>`).join(''):'<span class="vx-sg-empty">Nenhum tipo de produto no catálogo.</span>'}</div>
+      <h4 style="margin:14px 0 6px;font-size:10px;text-transform:uppercase;color:#6c7e90">DISPONIBILIDADE</h4>
+      <div class="vx-avail-grid">${AVAIL_DAYS.map(([k,l])=>{const a=availByDay[k];const av=a?a.available:true;return `<div class="vx-avail-row"><label><input type="checkbox" data-avail-day="${k}" ${av?'checked':''}> ${l}</label><input type="time" data-avail-start="${k}" value="${a?.start_time?String(a.start_time).slice(0,5):''}" ${av?'':'disabled'}><span>até</span><input type="time" data-avail-end="${k}" value="${a?.end_time?String(a.end_time).slice(0,5):''}" ${av?'':'disabled'}></div>`;}).join('')}</div>
+      <div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>FECHAR</button><button type="button" class="primary" id="vxTechDetailsSave">SALVAR</button></div>
+    </div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelectorAll('[data-close],[data-cancel]').forEach(b=>b.onclick=()=>ov.remove());
+    ov.querySelectorAll('[data-avail-day]').forEach(cb=>cb.onchange=()=>{
+      const row=cb.closest('.vx-avail-row');
+      row.querySelectorAll('input[type=time]').forEach(i=>i.disabled=!cb.checked);
+    });
+    ov.querySelector('#vxTechDetailsSave').onclick=async()=>{
+      const btn=ov.querySelector('#vxTechDetailsSave');btn.disabled=true;
+      try{
+        const regionIds=[...ov.querySelectorAll('[data-region]:checked')].map(x=>x.value);
+        const typeIds=[...ov.querySelectorAll('[data-type]:checked')].map(x=>x.value);
+        await api('rpc/admin_set_technician_regions',{method:'POST',body:JSON.stringify({p_company_id:cid,p_technician_id:tech.id,p_region_ids:regionIds})});
+        await api('rpc/admin_set_technician_specialties',{method:'POST',body:JSON.stringify({p_company_id:cid,p_technician_id:tech.id,p_product_type_ids:typeIds})});
+        for(const [k] of AVAIL_DAYS){
+          const dayCb=ov.querySelector(`[data-avail-day="${k}"]`);
+          const start=ov.querySelector(`[data-avail-start="${k}"]`).value||null;
+          const end=ov.querySelector(`[data-avail-end="${k}"]`).value||null;
+          await api('rpc/admin_set_technician_availability',{method:'POST',body:JSON.stringify({p_company_id:cid,p_technician_id:tech.id,p_weekday:k,p_available:dayCb.checked,p_start_time:dayCb.checked?start:null,p_end_time:dayCb.checked?end:null})});
+        }
+        toast?.('Dados do técnico salvos.');
+        ov.remove();
+      }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');btn.disabled=false;}
+    };
   }
 
   async function renderCard(card,cid){
@@ -193,6 +272,7 @@
   new MutationObserver(()=>{if(state?.view==='usuarios')scheduleEnhance();}).observe(appRoot,{childList:true,subtree:true});
 
   const style=document.createElement('style');
-  style.textContent=`.vx-sched-days{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}.vx-sched-days label{display:flex;align-items:center;gap:5px;font-size:10.5px;border:1px solid #dbe5ee;border-radius:6px;padding:5px 9px;cursor:pointer}.vx-sched-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}.vx-sched-grid label{display:flex;flex-direction:column;gap:4px;font-size:9.5px;color:#6c7e90;font-weight:700}.vx-sched-grid input{border:1px solid #cfd9e3;border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit}`;
+  style.textContent=`.vx-sched-days{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}.vx-sched-days label{display:flex;align-items:center;gap:5px;font-size:10.5px;border:1px solid #dbe5ee;border-radius:6px;padding:5px 9px;cursor:pointer}.vx-sched-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}.vx-sched-grid label{display:flex;flex-direction:column;gap:4px;font-size:9.5px;color:#6c7e90;font-weight:700}.vx-sched-grid input{border:1px solid #cfd9e3;border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit}
+  .vx-avail-grid{display:flex;flex-direction:column;gap:6px}.vx-avail-row{display:flex;align-items:center;gap:8px;font-size:11.5px}.vx-avail-row label{display:flex;align-items:center;gap:5px;min-width:52px;font-weight:700}.vx-avail-row input[type=time]{border:1px solid #cfd9e3;border-radius:6px;padding:4px 6px;font-size:11px;font-family:inherit}.vx-avail-row input[type=time]:disabled{opacity:.4}.vx-avail-row span{font-size:10px;color:#8a96a3}`;
   document.head.appendChild(style);
 })();
