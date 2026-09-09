@@ -69,14 +69,15 @@
     document.body.appendChild(ov);ov.querySelector('[data-close]').onclick=()=>ov.remove();ov.onclick=e=>{if(e.target===ov)ov.remove()};return ov;
   }
 
-  async function editCompany(id,done){
-    if(!isGestor())return;
-    const rows=await api(`companies?id=eq.${id}&select=*`);const c=rows?.[0];if(!c)return;
-    const m=adminModal('Alterar dados da empresa',`<form id="vxEditCompanyForm" class="vx-admin-form"><label>RAZÃO SOCIAL *</label><input name="legal" required value="${E(c.legal_name||'')}"><label>NOME FANTASIA</label><input name="trade" value="${E(c.trade_name||'')}"><div class="vx-form-2"><div><label>CNPJ / CPF</label><input name="doc" value="${E(c.document||'')}"></div><div><label>CÓDIGO</label><input name="code" value="${E(c.code||'')}"></div></div><div class="vx-form-2"><div><label>TELEFONE</label><input name="phone" value="${E(c.phone||'')}"></div><div><label>E-MAIL</label><input type="email" name="email" value="${E(c.email||'')}"></div></div><div class="vx-form-2"><div><label>CEP</label><input name="zip" value="${E(c.zip_code||'')}"></div><div><label>ENDEREÇO</label><input name="address" value="${E(c.address||'')}"></div></div><div class="vx-form-2"><div><label>NÚMERO</label><input name="number" value="${E(c.address_number||'')}"></div><div><label>BAIRRO</label><input name="neighborhood" value="${E(c.neighborhood||'')}"></div></div><div class="vx-form-2"><div><label>CIDADE</label><input name="city" value="${E(c.city||'')}"></div><div><label>UF</label><input maxlength="2" name="uf" value="${E(c.state||'')}"></div></div><div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button class="primary">SALVAR ALTERAÇÕES</button></div></form>`);
-    m.querySelector('[data-cancel]').onclick=()=>m.remove();
-    m.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const btn=e.submitter;btn.disabled=true;try{await api(`companies?id=eq.${id}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({legal_name:String(f.get('legal')).toUpperCase(),trade_name:String(f.get('trade')||'').toUpperCase()||null,document:f.get('doc')||null,code:String(f.get('code')||'').toUpperCase()||null,phone:f.get('phone')||null,email:f.get('email')||null,zip_code:f.get('zip')||null,address:String(f.get('address')||'').toUpperCase()||null,address_number:f.get('number')||null,neighborhood:String(f.get('neighborhood')||'').toUpperCase()||null,city:String(f.get('city')||'').toUpperCase()||null,state:String(f.get('uf')||'').toUpperCase()||null})});m.remove();toast('Dados da empresa atualizados.');done&&await done();}catch(err){toast('Falha ao alterar empresa: '+err.message,'err');btn.disabled=false;}};
-  }
-
+  // C6 (Matriz Mestra de Configurações, resolvido 2026-09-09): a
+  // função editCompany() daqui (formulário simples) foi removida --
+  // era código morto na prática (company-profile-complete-v0812.js
+  // sempre interceptava o clique primeiro, ver achado lá). O botão
+  // "ALTERAR" abaixo passa a chamar window.vxEditCompanyFull
+  // diretamente (explícito), em vez de depender da corrida de
+  // listeners. editStore()/`.vx-edit-store` abaixo não tem
+  // concorrente nenhum -- fora do escopo do C6 (é loja, não empresa),
+  // preservado intocado.
   async function editStore(id,done){
     if(!isGestor())return;
     const rows=await api(`stores?id=eq.${id}&select=*`);const s=rows?.[0];if(!s)return;
@@ -94,7 +95,7 @@
     enhancing=true;
     try{
       const [companies,stores]=await Promise.all([api('companies?select=*&order=trade_name.nullslast,legal_name').catch(()=>[]),api('stores?select=*&order=name').catch(()=>[])]);
-      companyCard?.querySelectorAll('.vx-company-row').forEach((row,i)=>{if(row.querySelector('.vx-edit-company'))return;const c=companies?.[i];if(!c)return;const b=document.createElement('button');b.type='button';b.className='secondary vx-edit-company';b.textContent='ALTERAR';b.onclick=()=>editCompany(c.id,async()=>window.render('usuarios'));row.appendChild(b);});
+      companyCard?.querySelectorAll('.vx-company-row').forEach((row,i)=>{if(row.querySelector('.vx-edit-company'))return;const c=companies?.[i];if(!c)return;const b=document.createElement('button');b.type='button';b.className='secondary vx-edit-company';b.textContent='ALTERAR';b.onclick=()=>window.vxEditCompanyFull?.(c.id,async()=>window.render('usuarios'));row.appendChild(b);});
       storeCard?.querySelectorAll('.vx-company-row').forEach((row,i)=>{if(row.querySelector('.vx-edit-store'))return;const s=stores?.[i];if(!s)return;const b=document.createElement('button');b.type='button';b.className='secondary vx-edit-store';b.textContent='ALTERAR';b.onclick=()=>editStore(s.id,async()=>window.render('usuarios'));row.appendChild(b);});
     }finally{enhancing=false;}
   }

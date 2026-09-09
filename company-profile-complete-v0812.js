@@ -34,12 +34,17 @@
     }catch(err){toast('Falha ao salvar dados da empresa: '+err.message,'err');btn.disabled=false;}};
   }
 
-  document.addEventListener('click',e=>{
-    const b=e.target.closest('.vx-edit-company');if(!b||!isGestor())return;
-    e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
-    const rows=[...document.querySelectorAll('.vx-admin-card .vx-company-row')];const row=b.closest('.vx-company-row');const idx=rows.indexOf(row);
-    api('companies?select=id&order=trade_name.nullslast,legal_name').then(cs=>{const c=cs?.[idx];if(c)editCompanyFull(c.id,async()=>window.render('usuarios'));});
-  },true);
+  // C6 (Matriz Mestra de Configurações, resolvido 2026-09-09): achado
+  // ao investigar -- este arquivo é o formulário mais completo (dados
+  // fiscais, logo, horário de funcionamento) e, na prática, JÁ era o
+  // que abria de verdade: interceptava o clique em fase de CAPTURA
+  // (stopImmediatePropagation) antes do onclick normal criado por
+  // company-guard-confirm-edit-v0812.js (que chamava sua PRÓPRIA
+  // versão mais simples, `editCompany()`, nunca alcançada). Em vez de
+  // manter essa corrida implícita e frágil (mesma classe de problema
+  // do C4/C5), exposto explicitamente -- quem cria o botão chama isso
+  // direto, sem depender de ordem de listener.
+  window.vxEditCompanyFull=editCompanyFull;
 
   window.getActiveCompanyBranding=async function(){try{const id=state?.profile?.active_company_id;if(!id)return null;const r=await api(`companies?id=eq.${id}&select=id,legal_name,trade_name,document,phone,mobile,email,website,address,address_number,neighborhood,city,state,logo_url,business_hours,document_header_note,document_footer`);return r?.[0]||null;}catch{return null;}};
 

@@ -48,41 +48,14 @@
     finally{selectorBusy=false;}
   }
 
-  async function applyGlobalGestorView(){
-    if(state?.view!=='usuarios'||!isGestor())return;
-    const page=document.querySelector('.vx-admin-page');if(!page)return;
-    // Achado do usuário em 2026-09-07 (investigação de retrocesso em
-    // Configurações): esta função é hoje inalcançável de verdade (o
-    // render-wrap chain onde ela mora é sempre curto-circuitado por
-    // company-only-mode-v0813.js antes de chegar aqui), mas faltava o
-    // MESMO guard `.vx-admin-grid` que os 3 arquivos irmãos já têm
-    // (company-hierarchy-v0813.js/company-store-model-v0813.js/
-    // company-multilist-fix-v0813.js) -- sem ele, se essa função algum
-    // dia voltar a ser alcançada, sobrescreveria o parágrafo do
-    // cabeçalho (.vx-admin-hero p, que hoje inclui o botão ← Voltar)
-    // mesmo sem a classe antiga (.vx-admin-grid) existir mais no DOM.
-    // Endurecimento defensivo, não corrige nenhum bug ativo.
-    if(!page.querySelector('.vx-admin-grid'))return;
-    const hero=page.querySelector('.vx-admin-hero p');if(hero)hero.textContent='Configuração global do Gestor: todas as empresas, lojas/unidades, usuários e permissões. A Loja Ativa controla somente a operação diária.';
-    const companyCard=page.querySelector('.vx-admin-grid .vx-admin-card:first-child');
-    if(companyCard){
-      companyCard.querySelector('.vx-admin-title h3')&&(companyCard.querySelector('.vx-admin-title h3').textContent='EMPRESAS / CNPJ');
-      companyCard.querySelectorAll('[data-use],.vx-company-actions-inline em').forEach(x=>x.remove());
-      companyCard.querySelectorAll('.vx-company-actions-inline span').forEach(x=>{if(x.textContent.trim()==='DISPONÍVEL')x.textContent='ATIVA'});
-    }
-    try{
-      const stores=await api('stores?select=id,name,code,company_id,active&order=name');
-      const companies=await api('companies?select=id,trade_name,legal_name');
-      const cmap=new Map((companies||[]).map(c=>[c.id,c]));
-      const card=page.querySelector('.vx-admin-grid .vx-admin-card:nth-child(2)');
-      if(card){
-        card.querySelector('.vx-admin-title h3')&&(card.querySelector('.vx-admin-title h3').textContent='TODAS AS LOJAS / UNIDADES');
-        card.querySelector('.vx-admin-title span')&&(card.querySelector('.vx-admin-title span').textContent=String((stores||[]).length));
-        [...card.children].forEach(ch=>{if(!ch.classList.contains('vx-admin-title'))ch.remove()});
-        (stores||[]).forEach(s=>{const c=cmap.get(s.company_id)||{};const r=document.createElement('div');r.className='vx-company-row';r.innerHTML=`<div><b>${E(s.code||s.name)}</b><small>${E(c.trade_name||c.legal_name||'EMPRESA')} • ${E(s.name)}</small></div><span class="${s.active?'vx-ok':'vx-off'}">${s.active?'ATIVA':'INATIVA'}</span>`;card.appendChild(r)});
-      }
-    }catch(err){console.error('Configuração global:',err);}
-  }
+  // C6 (Matriz Mestra de Configurações, resolvido 2026-09-09): a
+  // função applyGlobalGestorView() foi removida -- já era código
+  // morto autoconfirmado (comentário do usuário em 2026-09-07: guard
+  // `.vx-admin-grid` nunca casava com o DOM real de company-only-
+  // mode-v0813.js, função nunca executava). company-hierarchy-v0813.js
+  // e company-multilist-fix-v0813.js têm o mesmo guard morto -- fora
+  // do escopo estrito do C6 (formulário de empresa), registrado na
+  // Matriz Mestra como achado pra limpeza futura, não removidos aqui.
 
   async function enhanceUserModal(){
     if(!isGestor())return;
@@ -105,7 +78,7 @@
 
   document.addEventListener('click',e=>{if(e.target.closest('#vxNewUser'))setTimeout(enhanceUserModal,80)});
   const prior=window.render;
-  window.render=async function(view){const r=await prior(view);setTimeout(()=>{populateStoreSelector();if(view==='usuarios')applyGlobalGestorView()},120);return r};
+  window.render=async function(view){const r=await prior(view);setTimeout(()=>{populateStoreSelector()},120);return r};
   setTimeout(()=>populateStoreSelector(true),500);
   const st=document.createElement('style');st.textContent='.vx-user-store-access{display:grid;gap:7px;margin:8px 0}.vx-store-checks{display:grid;gap:5px;padding:8px;border:1px solid #dbe5ee;border-radius:7px;background:#f8fafc}.vx-store-checks label{display:flex;align-items:center;gap:6px;font-size:10px}';document.head.appendChild(st);
 })();
