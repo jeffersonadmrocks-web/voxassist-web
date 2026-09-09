@@ -86,13 +86,29 @@
 
   async function printWhirlpool(id){const d=await loadBundle(id),o=d.o,p=d.imp?.extracted_data||{},c=o.clients||{},e=o.equipments||{},a=d.appt||{},parts=d.parts||[];const body=`<div class="doc wp"><table><tr><td style="width:70%"><b>AUTORIZADA:</b> ${E(d.brand.trade_name||d.brand.legal_name||'VOX')}<br>${E([d.brand.address,d.brand.address_number,d.brand.city,d.brand.state].filter(Boolean).join(' • '))}<br>FONE: ${E(d.brand.phone||d.brand.mobile)}</td><td><b>CENTRAL DE ATENDIMENTO WHIRLPOOL</b></td></tr></table><table><tr><td class="title">NÚMERO DA OS<br><b style="font-size:14px">${E(o.manufacturer_os_number||o.os_number)}</b></td><td>TÉCNICO<br>${E(o.profiles?.full_name||'')}</td><td>DATA AGENDA: ${E(brDate(a.appointment_date||p.dataAgenda))}<br>PERÍODO: ${E(a.period||p.periodo||'')}</td></tr></table><table><tr><td>CONSUMIDOR: ${E(p.cliente||c.name)}</td><td>CPF/CNPJ: ${E(p.documento||c.document)}</td></tr><tr><td>ENDEREÇO: ${E(p.endereco||c.address)}</td><td>CEP: ${E(p.cep||c.zip_code)}</td></tr><tr><td>BAIRRO: ${E(p.bairro||c.neighborhood)}</td><td>CIDADE/UF: ${E((p.cidade||c.city)+' / '+(p.uf||c.state||''))}</td></tr><tr><td colspan="2">TELEFONE: ${E(p.telefone||c.phone_primary)}</td></tr></table><table><tr><td>PRODUTO: ${E(p.productLine||e.product_type)}</td><td>MARCA: ${E(p.manufacturer||e.brand)}</td></tr><tr><td>SÉRIE: ${E(p.serie||e.serial_number)}</td><td>TIPO DE OS: ${E(p.tipoOS||o.order_type)}</td></tr></table><table><tr><th>DEFEITO RECLAMADO</th><td>${E(p.defeitoReclamado||o.reported_defect)}</td><th>DEFEITO CONSTATADO</th><td>${E(p.defeitoConstatado||o.diagnosed_defect)}</td></tr><tr><th>RECLAMAÇÃO / ATENDIMENTO</th><td colspan="3">${E(p.reclamacaoAtendimento||p.reclamacao||'')}</td></tr><tr><th>LAUDO TÉCNICO</th><td colspan="3" style="height:55px">${E(p.laudoTecnico||o.technical_service||'')}</td></tr></table><table><thead><tr><th>QTD</th><th>CÓDIGO</th><th>DESCRIÇÃO DA PEÇA</th><th>VALOR</th></tr></thead><tbody>${Array.from({length:Math.max(8,parts.length)}).map((_,i)=>{const x=parts[i]||{};return `<tr><td>${E(x.quantity||'')}</td><td>${E(x.part_code||x.code||'')}</td><td>${E(x.description||'')}</td><td>${x.unit_value?money(x.unit_value):''}</td></tr>`}).join('')}</tbody></table><table><tr><td style="height:48px"><b>OBSERVAÇÃO</b><br>${E(p.observacao||'')}</td></tr></table><div class="grid"><div class="sign">ASSINATURA DO CONSUMIDOR</div><div class="sign">ASSINATURA DO TÉCNICO</div></div></div>`;printShell('Whirlpool OS '+(o.manufacturer_os_number||o.os_number),body)}
 
+  // Achado do usuário (plano "Arquitetura de Documentos da OS", Fase 1
+  // -- 2026-09-09): "GERAR PDF" do cabeçalho (kind='auto') e o botão da
+  // aba Whirlpool chamavam 2 documentos DIFERENTES pra mesma OS
+  // Whirlpool -- este arquivo tinha seu PRÓPRIO printWhirlpool (mais
+  // antigo), enquanto whirlpool-faithful-mode-v0813.js (que carrega
+  // DEPOIS e embrulha window.vxPrintOsDocument) só intercepta
+  // kind==='whirlpool' explícito, deixando o caminho 'auto' cair aqui
+  // e usar o documento antigo. Decisão do usuário: printFaithful é o
+  // layout oficial daqui pra frente -- o conteúdo de printFaithful e
+  // de printWhirlpool NÃO é reescrito, só a ROTA muda. Fallback pro
+  // documento antigo só se o arquivo mais novo não tiver carregado por
+  // algum motivo (nunca deveria acontecer, ordem de carregamento real
+  // já garante isso).
+  function printWhirlpoolOfficial(id){
+    return typeof window.vxPrintWhirlpoolFaithful==='function'?window.vxPrintWhirlpoolFaithful(id):printWhirlpool(id);
+  }
   window.vxPrintOsDocument=async function(kind='auto'){
     const o=state?.activeOs;if(!o)return toast('Abra uma OS antes de imprimir.','err');
-    if(kind==='whirlpool')return printWhirlpool(o.id);
+    if(kind==='whirlpool')return printWhirlpoolOfficial(o.id);
     if(kind==='vox')return printVox(o.id);
     if(isWhirlpool(o)){
       const useWp=confirm('Esta é uma OS Whirlpool (Brastemp/Consul).\n\nOK = imprimir documento Whirlpool\nCancelar = imprimir modelo padrão VoxAssist');
-      return useWp?printWhirlpool(o.id):printVox(o.id);
+      return useWp?printWhirlpoolOfficial(o.id):printVox(o.id);
     }
     return printVox(o.id);
   };

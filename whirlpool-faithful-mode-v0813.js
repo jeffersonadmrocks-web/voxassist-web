@@ -56,6 +56,12 @@
     </div><script>setTimeout(()=>window.print(),250)<\/script></body></html>`;
     const w=window.open('','_blank','width=1000,height=850');if(!w)return toast('O navegador bloqueou a janela de impressão.','err');w.document.write(html);w.document.close();
   }
+  // Exposto pra os-whirlpool-extension-v0813.js poder chamar o mesmo
+  // documento oficial (printFaithful) também no caminho 'auto', sem
+  // depender só desta interceptação de window.vxPrintOsDocument (que
+  // só cobria kind==='whirlpool' explícito -- ver achado no outro
+  // arquivo, plano "Arquitetura de Documentos da OS" Fase 1).
+  window.vxPrintWhirlpoolFaithful=printFaithful;
   const oldPrint=window.vxPrintOsDocument;
   window.vxPrintOsDocument=async function(type){const o=state?.activeOs;if(type==='whirlpool'&&o&&wp(o))return printFaithful(o.id);return oldPrint?oldPrint(type):null};
   async function technicianBadge(){const o=state?.activeOs;if(!o||!wp(o))return;const role=N(state?.profile?.role);if(role==='TECNICO'){const tab=document.querySelector('[data-section="whirlpool"]');if(tab){tab.title='Modo de atendimento Whirlpool do técnico';tab.textContent='WHIRLPOOL • ATENDIMENTO'}const note=document.querySelector('.vx-wp-head small');if(note)note.textContent='Fluxo Whirlpool de atendimento externo. Preencha e salve diretamente no VoxAssist.'}}
