@@ -105,7 +105,7 @@
   };
   window.printOs=()=>window.vxPrintOsDocument('auto');
 
-  async function technicianBadge(){const o=state?.activeOs;if(!o||!isWhirlpool(o))return;const role=norm(state?.profile?.role);if(role==='TECNICO'){const tab=document.querySelector('[data-section="whirlpool"]');if(tab){tab.title='Modo de atendimento Whirlpool do técnico';tab.textContent='WHIRLPOOL • ATENDIMENTO'}const note=document.querySelector('.vx-wp-head small');if(note)note.textContent='Fluxo Whirlpool de atendimento externo. Preencha e salve diretamente no VoxAssist.'}}
+  async function technicianBadge(){const o=state?.activeOs;if(!o||!isWhirlpool(o))return;const role=norm(state?.profile?.role);if(role==='TECNICO'){const tab=document.querySelector('[data-section="whirlpool"]');if(tab){tab.title='Modo de atendimento Whirlpool do técnico';if(tab.textContent!=='WHIRLPOOL • ATENDIMENTO')tab.textContent='WHIRLPOOL • ATENDIMENTO'}const note=document.querySelector('.vx-wp-head small');const noteText='Fluxo Whirlpool de atendimento externo. Preencha e salve diretamente no VoxAssist.';if(note&&note.textContent!==noteText)note.textContent=noteText}}
   const obs=new MutationObserver(()=>setTimeout(technicianBadge,40));obs.observe(document.documentElement,{childList:true,subtree:true});setTimeout(technicianBadge,300);
 
   const base=window.renderOsDetail;

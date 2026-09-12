@@ -77,6 +77,13 @@
   window.vxPrintWhirlpoolFaithful=printFaithful;
   const oldPrint=window.vxPrintOsDocument;
   window.vxPrintOsDocument=async function(type){const o=state?.activeOs;if(type==='whirlpool'&&o&&wp(o))return printFaithful(o.id);return oldPrint?oldPrint(type):null};
-  async function technicianBadge(){const o=state?.activeOs;if(!o||!wp(o))return;const role=N(state?.profile?.role);if(role==='TECNICO'){const tab=document.querySelector('[data-section="whirlpool"]');if(tab){tab.title='Modo de atendimento Whirlpool do técnico';tab.textContent='WHIRLPOOL • ATENDIMENTO'}const note=document.querySelector('.vx-wp-head small');if(note)note.textContent='Fluxo Whirlpool de atendimento externo. Preencha e salve diretamente no VoxAssist.'}}
-  const obs=new MutationObserver(()=>setTimeout(technicianBadge,40));obs.observe(document.documentElement,{childList:true,subtree:true});setTimeout(technicianBadge,300);
+  // Achado em 2026-09-12 (P0 -- travamento do navegador): existia aqui
+  // uma SEGUNDA copia inteira de technicianBadge() (a original e a
+  // canonica ficam em os-whirlpool-extension-v0813.js), sem nenhuma
+  // guarda contra reescrita redundante -- sozinha, ja bastava pra
+  // travar a aba inteira num loop de mutacao infinito (seta
+  // tab.textContent/note.textContent incondicionalmente a cada
+  // mutacao, o que por si so dispara o proprio observer de novo, pra
+  // sempre). Removida -- a versao de os-whirlpool-extension-v0813.js
+  // ja cobre exatamente o mesmo efeito, com guarda.
 })();

@@ -44,7 +44,7 @@
   function apply(){
     ensureStyle();const form=document.querySelector('#vxWpForm');if(!form)return;
     const address=form.querySelector('[name="enderecoAutorizada"]');
-    if(address){const wrap=address.closest('.wp-exact-field');if(wrap){wrap.classList.add('wp-address-field');const cap=wrap.querySelector(':scope>span');if(cap)cap.textContent='ENDEREÇO:'}}
+    if(address){const wrap=address.closest('.wp-exact-field');if(wrap){wrap.classList.add('wp-address-field');const cap=wrap.querySelector(':scope>span');if(cap&&cap.textContent!=='ENDEREÇO:')cap.textContent='ENDEREÇO:'}}
     const clientTable=closestTableByField(form,'consumidor');if(clientTable)clientTable.classList.add('wp-client-unified');
     const equipmentTable=closestTableByField(form,'produto');if(equipmentTable)equipmentTable.classList.add('wp-equipment-unified');
   }

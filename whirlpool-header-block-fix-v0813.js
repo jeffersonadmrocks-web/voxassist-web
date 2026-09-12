@@ -27,7 +27,7 @@
     const central=header.querySelector('[name="centralAtendimento"]');
     if(central){
       const w=central.closest('.wp-exact-field');
-      if(w){w.classList.add('wp-central-field'); const cap=w.querySelector(':scope>span'); if(cap) cap.textContent='CENTRAL DE ATENDIMENTO';}
+      if(w){w.classList.add('wp-central-field'); const cap=w.querySelector(':scope>span'); if(cap&&cap.textContent!=='CENTRAL DE ATENDIMENTO') cap.textContent='CENTRAL DE ATENDIMENTO';}
       const brand=((form.querySelector('[name="marca"]')?.value)||central.value||'').toUpperCase();
       central.value=brand.includes('BRASTEMP')?'BRASTEMP':'CONSUL';
     }
@@ -38,7 +38,7 @@
   /* Hotfix 23/08: carrega o refinamento que unifica Cliente/Aparelho e corrige o endereço superior. */
   if(!document.querySelector('script[data-wp-client-equipment-fix]')){
     const sc=document.createElement('script');
-    sc.src='whirlpool-client-equipment-block-fix-v0813.js?v=0813-20260823-WPCLIENTEQ1-20260912RESTORED';
+    sc.src='whirlpool-client-equipment-block-fix-v0813.js?v=0813-20260823-WPCLIENTEQ1-20260912P0FREEZE';
     sc.dataset.wpClientEquipmentFix='1';
     document.head.appendChild(sc);
   }
