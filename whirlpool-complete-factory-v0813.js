@@ -96,7 +96,17 @@
     t=table();t.appendChild(tr(td(cellFields(form,[['consumidor','CONSUMIDOR']]),'w50'),td(cellFields(form,[['cep','CEP'],['regiao','REGIÃO']]),'w50')));t.appendChild(tr(td(cellFields(form,[['endereco','ENDEREÇO'],['complemento','COMPLEMENTO']]),'w50'),td(cellFields(form,[['bairro','BAIRRO'],['cidade','CIDADE'],['uf','UF']]),'w50')));t.appendChild(tr(td(cellFields(form,[['cnpjCpf','CNPJ/CPF'],['foneResidencia','FONE RESIDÊNCIA'],['foneComercial','FONE COMERCIAL'],['foneOutros','FONE (OUTROS)']]),'w50'),td(cellFields(form,[['enderecoEletronico','ENDEREÇO ELETRÔNICO'],['localizacao','LOCALIZAÇÃO']]),'w50')));doc.appendChild(t);
     t=table();t.appendChild(tr(td(cellFields(form,[['produto','PRODUTO'],['produtoConsumidor','PRODUTO CONSUMIDOR']]),'w50'),td(cellFields(form,[['marca','MARCA'],['linha','LINHA']]),'w50')));t.appendChild(tr(td(cellFields(form,[['serie','SÉRIE'],['nomeComercial','NOME COMERCIAL']]),'w50'),td(cellFields(form,[['tempoUso','TEMPO DE USO'],['tipoOS','TIPO DE OS']]),'w50')));t.appendChild(tr(td(cellFields(form,[['nrNotaFiscal','NR NOTA FISCAL'],['dataCompra','DATA COMPRA'],['cor','COR']]),'w50'),td(cellFields(form,[['voltagem','VOLTAGEM'],['capacidade','CAPACIDADE']]),'w50')));doc.appendChild(t);
     t=table();t.appendChild(tr(td('DEFEITO<br>RECLAMADO','wpf-side'),td(cellFields(form,[['defeitoReclamado','1','basic','textarea'],['defeitoReclamado2','2','basic','textarea']])) ,td('DEFEITO<br>CONSTATADO','wpf-side'),td(cellFields(form,[['defeitoConstatado','1','basic','textarea'],['defeitoConstatado2','2','basic','textarea']]))));t.appendChild(tr(td('RECLAMAÇÃO<br>ATENDIMENTO','wpf-side'),Object.assign(td(cellFields(form,[['reclamacaoAtendimento','','basic','textarea']])),{colSpan:3})));t.appendChild(tr(td('LAUDO<br>TÉCNICO','wpf-side'),Object.assign(td(cellFields(form,[['laudoTecnico','','basic','textarea']])),{colSpan:3})));doc.appendChild(t);
-    const parts=Array.isArray(d.imp?.extracted_data?.pecas)&&d.imp.extracted_data.pecas.length?d.imp.extracted_data.pecas:d.parts.map(x=>({quantidade:x.quantity,codigo:x.code,descricao:x.description,fcta:'',ocor:'',valor:x.unit_value}));
+    // Achado B4 (2026-09-12): esta linha antes priorizava extracted_data.pecas
+    // (um SNAPSHOT congelado na última vez que o Whirlpool salvou) sobre
+    // os_parts (a tabela real, usada também pelo Orçamento e pela dedução de
+    // estoque). Resultado: peça editada aqui nunca aparecia no Orçamento, e
+    // as duas visões divergiam pra sempre depois do primeiro salvamento --
+    // exatamente a "sincronização por cópia" que a Fase B proíbe. Agora
+    // sempre parte de os_parts (fonte única); FCTA/OCOR (exclusivos deste
+    // documento, sem coluna correspondente em os_parts) continuam vindo de
+    // extracted_data.pecasExtra, pareados por posição com d.parts.
+    const partsExtra=Array.isArray(d.imp?.extracted_data?.pecasExtra)?d.imp.extracted_data.pecasExtra:[];
+    const parts=d.parts.map((x,i)=>({id:x.id,quantidade:x.quantity,codigo:x.code,descricao:x.description,fcta:partsExtra[i]?.fcta||'',ocor:partsExtra[i]?.ocor||'',valor:x.unit_value}));
     const pt=table();pt.classList.add('wpf-parts');pt.innerHTML='<thead><tr><th>QUANTIDADE</th><th>CÓDIGO</th><th>DESCRIÇÃO DA PEÇA</th><th>FCTA</th><th>OCOR.</th><th>VALOR EM R$</th></tr></thead><tbody id="wpfPartsBody"></tbody>';doc.appendChild(pt);const body=pt.querySelector('tbody');for(let i=0;i<Math.max(8,parts.length);i++)addPartRow(body,parts[i]||{});const add=document.createElement('button');add.type='button';add.id='wpfAddPart';add.className='wpf-inline-action';add.textContent='+ ADICIONAR PEÇA';doc.appendChild(add);add.onclick=()=>addPartRow(body,{});
     t=table();const obs=td(cellFields(form,[['observacao','OBSERVAÇÃO','basic','textarea']]),'w72');obs.rowSpan=3;t.appendChild(tr(obs,td('TOTAL DE PEÇAS'),td('<span id="wpfTotalParts">R$ 0,00</span>')));t.appendChild(tr(td('MÃO DE OBRA'),td('<input id="wpfLabor" class="vx-control" data-entity="financial" data-name="labor_value" inputmode="decimal" value="'+E(d.fin.labor_value||0)+'">')));t.appendChild(tr(td('TOTAL DE ORÇAMENTO'),td('<span id="wpfGrandTotal">R$ 0,00</span>')));doc.appendChild(t);
     t=table();const orc=td(cellFields(form,[['validadeOrcamento','ORÇAMENTO']]),'w40');orc.rowSpan=4;t.appendChild(tr(orc,td('PARCELAS'),td('VENCIMENTO'),td('VALOR'),td('CONDIÇÃO DE PAGAMENTO')));t.appendChild(tr(td(cellFields(form,[['parcelas','']])),td(cellFields(form,[['vencimento','']])),td('<span id="wpfBudgetValue">R$ 0,00</span>'),td(cellFields(form,[['condicaoPagamento','']]))));for(let i=0;i<2;i++)t.appendChild(tr(td('&nbsp;'),td('&nbsp;'),td('&nbsp;'),td('&nbsp;')));doc.appendChild(t);
@@ -104,10 +114,16 @@
     const term=document.createElement('div');term.className='wpf-box wpf-term';term.innerHTML='<div class="wpf-center"><b>TERMO DE GARANTIA DO SERVIÇO AUTORIZADO</b></div><p>CONFORME DESCRITO NO ORÇAMENTO JÁ APROVADO, FIRMAMOS A GARANTIA DO SERVIÇO (MÃO DE OBRA) DE ASSISTÊNCIA TÉCNICA POR UM PERÍODO DE <span class="wpf-term-slot" data-slot="garantiaServico"></span> MESES E DAS PEÇAS APLICADAS POR UM PERÍODO DE <span class="wpf-term-slot" data-slot="garantiaPecas"></span> MESES, A PARTIR DE <span class="wpf-term-slot" data-slot="dataConclusao"></span> (DATA DE CONCLUSÃO), QUANDO O SERVIÇO FOI DEVIDAMENTE EXECUTADO, ESTANDO EM PERFEITAS CONDIÇÕES DE UTILIZAÇÃO, TENDO RECEBIDO AS ORIENTAÇÕES NECESSÁRIAS PARA A CORRETA UTILIZAÇÃO DO PRODUTO.</p><p>EXCLUEM-SE DA GARANTIA OS DEFEITOS CAUSADOS POR USO IMPRÓPRIO OU INADEQUADO DO PRODUTO E PROBLEMAS DECORRENTES DE ACIDENTES NATURAIS, COMO POR EXEMPLO: RAIO, INCÊNDIO, INUNDAÇÕES E ETC.</p><p>DENTRO DO PRAZO DE GARANTIA DO SERVIÇO E DAS PEÇAS SUBSTITUÍDAS, A TROCA DESSAS PEÇAS E COMPONENTES EVENTUALMENTE DEFEITUOSAS SERÁ GRATUITA, ASSIM COMO A MÃO DE OBRA APLICADA.</p><p>DE ACORDO.</p>';['garantiaServico','garantiaPecas','dataConclusao'].forEach(n=>term.querySelector(`[data-slot="${n}"]`).appendChild(fieldWrap(form,n,'','basic')));doc.appendChild(term);
     form.prepend(doc);bindTotals(doc);return doc;
   }
-  function addPartRow(body,p){const r=document.createElement('tr');r.className='wpf-part-row';['quantidade','codigo','descricao','fcta','ocor','valor'].forEach(k=>{const c=document.createElement('td');const i=document.createElement('input');i.dataset.part=k;i.value=p[k]??'';i.disabled=true;c.appendChild(i);r.appendChild(c)});body.appendChild(r);r.querySelectorAll('input').forEach(i=>i.addEventListener('input',()=>calcTotals(document)));}
+  function addPartRow(body,p){const r=document.createElement('tr');r.className='wpf-part-row';r.dataset.partId=p.id||'';['quantidade','codigo','descricao','fcta','ocor','valor'].forEach(k=>{const c=document.createElement('td');const i=document.createElement('input');i.dataset.part=k;i.value=p[k]??'';i.disabled=true;c.appendChild(i);r.appendChild(c)});body.appendChild(r);r.querySelectorAll('input').forEach(i=>i.addEventListener('input',()=>calcTotals(document)));}
   const num=v=>Number(String(v||'0').replace(/[^0-9,.-]/g,'').replaceAll('.','').replace(',','.'))||0;
   const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-  function partsData(root=document){return $$('.wpf-part-row',root).map(r=>Object.fromEntries($$('input[data-part]',r).map(i=>[i.dataset.part,i.value]))).filter(p=>Object.values(p).some(Boolean))}
+  const PART_FIELDS=['quantidade','codigo','descricao','fcta','ocor','valor'];
+  // id vem do dataset da linha (o os_parts.id real, quando a linha já existia
+  // na tabela canônica) -- nunca entra no filtro de "linha vazia" abaixo, senão
+  // uma linha existente que o usuário esvaziou de propósito (única forma hoje
+  // de "remover" uma peça, já que não há botão de remover linha) nunca seria
+  // detectada como removida em saveAll().
+  function partsData(root=document){return $$('.wpf-part-row',root).map(r=>{const o=Object.fromEntries($$('input[data-part]',r).map(i=>[i.dataset.part,i.value]));o.id=r.dataset.partId||'';return o}).filter(p=>PART_FIELDS.some(k=>p[k]))}
   function calcTotals(root=document){const ps=partsData(root);const total=ps.reduce((s,p)=>s+num(p.quantidade||1)*num(p.valor),0),labor=num($('#wpfLabor',root)?.value);if($('#wpfTotalParts',root))$('#wpfTotalParts',root).textContent=money(total);if($('#wpfGrandTotal',root))$('#wpfGrandTotal',root).textContent=money(total+labor);if($('#wpfBudgetValue',root))$('#wpfBudgetValue',root).textContent=money(total+labor)}
   function bindTotals(root){$$('.wpf-part-row input,#wpfLabor',root).forEach(i=>i.addEventListener('input',()=>calcTotals(root)));calcTotals(root)}
   function setMode(form,mode){form.dataset.wpMode=mode;$$('[data-wp-managed]',form).forEach(el=>{if(el.dataset.wpAgendaLocked==='1'){el.disabled=true;return}const req=el.closest('[data-edit]')?.dataset.edit||'advanced';const ok=mode==='advanced'||(mode==='basic'&&req==='basic');el.disabled=!ok;el.classList.toggle('wpf-editable',ok)});$$('.wpf-part-row input',form).forEach(el=>{const ok=mode!=='view';el.disabled=!ok;el.classList.toggle('wpf-editable',ok)});const labor=$('#wpfLabor',form);if(labor)labor.disabled=mode==='view';const add=$('#wpfAddPart',form);if(add)add.style.display=mode==='view'?'none':'inline-block';const editAgenda=$('#wpfEditAgenda',form);if(editAgenda)editAgenda.style.display=mode==='view'?'none':'inline-block';const save=$('#vxWpSave');if(save)save.disabled=mode==='view';const attach=$('#wpfAttachments');if(attach)attach.classList.toggle('wpf-disabled',mode==='view');$$('[data-wp-mode]').forEach(b=>b.classList.toggle('active',b.dataset.wpMode===mode));const st=$('#vxWpModeStatus');if(st)st.textContent=mode==='view'?'Visualização protegida':mode==='basic'?'Edição operacional':'Edição avançada'}
@@ -125,13 +141,31 @@
   // um PATCH direto na tabela canônica, igual ao resto do sistema já
   // faz (mesmo padrão de os-detail-v0812.js/os-global-save-v0812.js).
   // extracted_data preserva só os campos exclusivamente documentais.
-  async function saveAll(form,o,d){try{const data=Object.fromEntries(new FormData(form).entries());data.pecas=partsData(form);data.totalPecas=$('#wpfTotalParts',form)?.textContent||'';data.maoDeObra=$('#wpfLabor',form)?.value||'0';data.totalOrcamento=$('#wpfGrandTotal',form)?.textContent||'';data.valorOrcamento=$('#wpfBudgetValue',form)?.textContent||'';const sig=$('#wpfSignature');if(sig?.getSignature)data.assinaturaConsumidor=sig.getSignature();
+  async function saveAll(form,o,d){try{const data=Object.fromEntries(new FormData(form).entries());data.totalPecas=$('#wpfTotalParts',form)?.textContent||'';data.maoDeObra=$('#wpfLabor',form)?.value||'0';data.totalOrcamento=$('#wpfGrandTotal',form)?.textContent||'';data.valorOrcamento=$('#wpfBudgetValue',form)?.textContent||'';const sig=$('#wpfSignature');if(sig?.getSignature)data.assinaturaConsumidor=sig.getSignature();
     const clientBody={},equipmentBody={},orderBody={};
     Object.entries(CANON).forEach(([field,map])=>{if(data[field]===undefined)return;const v=data[field]||null;if(map.entity==='client')clientBody[map.name]=v;else if(map.entity==='equipment')equipmentBody[map.name]=v;else if(map.entity==='order')orderBody[map.name]=v;});
     orderBody.updated_at=new Date().toISOString();
     const jobs=[api(`service_orders?id=eq.${o.id}`,{method:'PATCH',body:JSON.stringify(orderBody)})];
     if(o.client_id&&Object.keys(clientBody).length)jobs.push(api(`clients?id=eq.${o.client_id}`,{method:'PATCH',body:JSON.stringify(clientBody)}));
     if(o.equipment_id&&Object.keys(equipmentBody).length)jobs.push(api(`equipments?id=eq.${o.equipment_id}`,{method:'PATCH',body:JSON.stringify(equipmentBody)}));
+    // Achado B4 (2026-09-12): peças (os_parts) tinham a MESMA fonte canônica
+    // única de client/equipment/order só na leitura -- na gravação, a grade
+    // inteira ia pra extracted_data.pecas (cópia isolada), nunca pra os_parts
+    // (a tabela real, usada pelo Orçamento e pela dedução de estoque via
+    // stock_item_id). Corrigido com o mesmo padrão: cada linha vira uma
+    // gravação direta em os_parts (POST se nova, PATCH se já existia). Uma
+    // linha que tinha id e foi esvaziada pelo usuário (única forma hoje de
+    // "remover" uma peça na grade, sem botão dedicado) é tratada como remoção
+    // (DELETE). FCTA/OCOR não têm coluna em os_parts (documentais, exclusivos
+    // deste formulário) -- continuam em extracted_data.pecasExtra, pareados
+    // por posição com os_parts.
+    const currentParts=partsData(form);
+    const originalPartIds=new Set((d.parts||[]).map(x=>x.id));
+    const currentPartIds=new Set(currentParts.filter(p=>p.id).map(p=>p.id));
+    currentParts.filter(p=>!p.id).forEach(p=>jobs.push(api('os_parts',{method:'POST',body:JSON.stringify({service_order_id:o.id,code:p.codigo||null,description:p.descricao||'PEÇA',quantity:num(p.quantidade)||1,unit_value:num(p.valor)||0,is_manual:true,move_stock:false})})));
+    currentParts.filter(p=>p.id).forEach(p=>jobs.push(api(`os_parts?id=eq.${p.id}`,{method:'PATCH',body:JSON.stringify({code:p.codigo||null,description:p.descricao||'PEÇA',quantity:num(p.quantidade)||1,unit_value:num(p.valor)||0})})));
+    [...originalPartIds].filter(id=>!currentPartIds.has(id)).forEach(id=>jobs.push(api(`os_parts?id=eq.${id}`,{method:'DELETE'})));
+    data.pecasExtra=currentParts.map(p=>({fcta:p.fcta||'',ocor:p.ocor||''}));
     const extras=Object.fromEntries(Object.entries(data).filter(([k])=>!CANON[k]));
     if(d.imp?.id)jobs.push(api(`manufacturer_imports?id=eq.${d.imp.id}`,{method:'PATCH',body:JSON.stringify({extracted_data:{...(d.imp.extracted_data||{}),...extras},updated_at:new Date().toISOString()})}));
     if(d.appt?.id)jobs.push(api(`appointments?id=eq.${d.appt.id}`,{method:'PATCH',body:JSON.stringify({customer_signature:data.assinaturaConsumidor||null,customer_signed_at:data.assinaturaConsumidor?new Date().toISOString():null,updated_at:new Date().toISOString()})}));
