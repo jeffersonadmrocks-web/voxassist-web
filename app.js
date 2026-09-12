@@ -4,6 +4,19 @@ const CFG={
 };
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const state={session:null,profile:null,view:'dashboard',orders:[],clients:[],tests:[],tasks:[],stock:[],openTabs:['dashboard'],activeOs:null};
+// PWA-0.1 (2026-09-12) -- contrato de estado. `const state` no topo de um
+// <script> clássico nunca vira propriedade de `window` (diferente de
+// `function`, que vira) -- então `window.state` sempre foi `undefined`,
+// mesmo com `state` (sem "window.") funcionando normalmente no resto do
+// app. Já causava bugs reais antes de qualquer PWA: presence-heartbeat-v1.js
+// e os-notes-modal.js liam `window.state?...` e sempre caíam no branch de
+// "nada a fazer" silenciosamente (achado documentado antes em
+// event-alerts-v0904.js, corrigido lá trocando pra `state` puro). Em vez de
+// caçar cada consumidor um por um pra sempre, este alias resolve a causa:
+// como `state` é `const`, a referência nunca muda, então `window.state` e
+// `state` são o MESMO objeto pra sempre -- não uma segunda cópia
+// sincronizada, é literalmente uma única fonte de verdade sob dois nomes.
+window.state=state;
 const statusFlow=['AGUARDANDO ANALISE','AGUARDANDO APROVACAO','AGUARDANDO CONSERTO','PRONTO PARA ENTREGA','FINALIZADA'];
 const navMap={dashboard:'Dashboard',os:'Ordens de Serviço',clientes:'Clientes',oficina:'Oficina',agenda:'Agenda / Tarefas',estoque:'Estoque',financeiro:'Financeiro',testes:'Testes de Funções',usuarios:'Usuários / Segurança'};
 

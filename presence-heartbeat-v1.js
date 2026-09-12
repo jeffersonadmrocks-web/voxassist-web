@@ -10,8 +10,8 @@
   let timer=null;
   async function ping(){
     try{
-      const uid=window.state?.session?.user?.id;
-      const cid=window.state?.profile?.active_company_id;
+      const uid=state?.session?.user?.id;
+      const cid=state?.profile?.active_company_id;
       if(!uid||!cid||typeof window.api!=='function')return;
       // logged_out_at:null -- achado do usuário em 2026-09-02: qualquer
       // atividade nova precisa voltar pra ONLINE imediatamente, mesmo
