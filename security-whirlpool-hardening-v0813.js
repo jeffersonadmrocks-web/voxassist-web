@@ -20,7 +20,19 @@
     const s=String(raw||'');
     let msg;
     if(/row-level security|violates row-level security|42501/i.test(s)) msg='A ação foi bloqueada por segurança. Confira se a Empresa Ativa corresponde ao cadastro e se seu usuário possui acesso a esta empresa.';
-    else if(/invalid input syntax for type uuid|22P02/i.test(s)) msg='Não foi possível salvar por um problema técnico ao identificar um dos registros envolvidos. Tente novamente; se persistir, contate o suporte -- os detalhes já foram registrados no log técnico.';
+    // Achado do usuário em 2026-09-12: 22P02 é o código genérico do
+    // Postgres pra "texto malformado pro tipo da coluna" -- serve tanto
+    // pra "invalid input syntax for type uuid" quanto "for type numeric"
+    // (ou qualquer outro tipo). Esta condição respondia SEMPRE com a
+    // frase de "identificar um registro" (uuid) só por bater 22P02 no
+    // texto, mesmo quando o erro real era um valor monetário formatado
+    // ("R$ 0,00") indo pra uma coluna numeric -- confundia quem via o
+    // log, fazendo parecer um problema de vínculo/registro quando na
+    // verdade era formatação de número. Checa o tipo citado na mensagem
+    // antes de decidir qual frase mostrar.
+    else if(/invalid input syntax for type uuid/i.test(s)) msg='Não foi possível salvar por um problema técnico ao identificar um dos registros envolvidos. Tente novamente; se persistir, contate o suporte -- os detalhes já foram registrados no log técnico.';
+    else if(/invalid input syntax for type numeric/i.test(s)) msg='Não foi possível salvar porque um valor numérico ficou em formato inválido (ex.: "R$ 0,00" em vez de um número). Tente novamente; se persistir, contate o suporte -- os detalhes já foram registrados no log técnico.';
+    else if(/22P02/i.test(s)) msg='Não foi possível salvar por um problema técnico ao interpretar um dos valores enviados. Tente novamente; se persistir, contate o suporte -- os detalhes já foram registrados no log técnico.';
     else if(/duplicate key|23505|already exists|already registered/i.test(s)) msg='Já existe um cadastro com estes dados.';
     else if(/jwt|session|sessão|token.*expired|expired.*token/i.test(s)) msg='Sua sessão expirou. Entre novamente no VoxAssist para continuar.';
     else if(/Failed to fetch|NetworkError|network request failed/i.test(s)) msg='Não foi possível comunicar com o servidor. Verifique a conexão e tente novamente.';

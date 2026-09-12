@@ -61,6 +61,21 @@
     if(String(o.status||'').toUpperCase()==='FINALIZADA'&&!isGestor())return toast('OS finalizada só pode ser alterada pelo GESTOR.','err');
     const b=btn();saving=true;if(b)b.disabled=true;setDirty(dirty);
     try{
+      // Achado do usuário em 2026-09-12 (erro "invalid input syntax for
+      // type numeric: \"R$ 0,00\"" ao clicar FINALIZAR): currency-format-
+      // v0812.js mascara os campos monetários como texto formatado
+      // ("R$ 0,00") enquanto o operador edita, e só desfaz isso (volta
+      // pro número puro) em quem explicitamente chama
+      // vxNormalizeCurrencyFields -- até agora só o clique no botão
+      // SALVAR do cabeçalho (#vxGlobalSave, via os-save-currency-fix-
+      // v0812.js, e só pra 5 nomes de campo). O botão FINALIZAR (aba
+      // FINALIZAR OS) chama esta mesma função por um caminho diferente
+      // (não passa pelo listener de #vxGlobalSave) e nunca normalizava
+      // -- o valor mascarado ia direto pro Postgres. Corrigido na fonte
+      // única: normaliza aqui dentro, cobrindo QUALQUER chamador desta
+      // função (SALVAR, FINALIZAR, Ctrl+W), em vez de depender de cada
+      // botão novo lembrar de repetir o patch.
+      window.vxNormalizeCurrencyFields?.(document);
       const orderBody=collect('order'),equipmentBody=collect('equipment'),clientBody=collect('client'),financialBody=collect('financial');
       const jobs=[];
       if(Object.keys(orderBody).length){orderBody.updated_at=new Date().toISOString();jobs.push(api(`service_orders?id=eq.${encodeURIComponent(o.id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(orderBody)}));}
