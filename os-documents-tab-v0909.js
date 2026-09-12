@@ -100,37 +100,61 @@
       </div>`).join('')}</div>`;
   }
 
+  function hisenseHeaderHtml(){
+    return `<div data-avoid-break>
+      <div style="margin:0 -15mm">
+        <div style="padding:14px 24px 8px;background:#fff"><span style="font-family:'Arial Black',Arial,sans-serif;font-weight:900;font-size:42px;letter-spacing:-1px;color:#00A79D;line-height:1">Hisense</span></div>
+        <div style="height:10px;background:#00A79D"></div><div style="height:3px;background:#fff"></div><div style="height:3px;background:#008E86"></div>
+      </div>
+      <h1 style="font-size:22px;font-weight:700;margin:12px 0 10px;text-align:center;color:#008E86">Relatório de Atendimento ao Cliente</h1>
+    </div>`;
+  }
+  function hisensePlugDiagramHtml(){
+    return `<div style="width:130px;height:90px;border:1px solid #888;border-radius:10px;background:#e8e8e8;position:relative;flex-shrink:0" aria-hidden="true">
+      <div style="position:absolute;top:24px;left:18px;font-size:11px;color:#c00;font-weight:700">F1</div>
+      <div style="position:absolute;top:24px;right:18px;font-size:11px;color:#c00;font-weight:700">F2</div>
+      <div style="position:absolute;top:30px;left:50%;transform:translateX(-50%);width:10px;height:10px;border-radius:50%;background:#333"></div>
+      <div style="position:absolute;top:30px;left:32px;width:8px;height:8px;border-radius:50%;background:#333"></div>
+      <div style="position:absolute;top:30px;right:32px;width:8px;height:8px;border-radius:50%;background:#333"></div>
+      <div style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);font-size:10px;color:#c00;font-weight:700">&#9650; Terra</div>
+    </div>`;
+  }
   function buildHisenseBody(d){
     const cell='border:1px solid #000;padding:6px 8px;font-size:11px;vertical-align:top;color:#000';
     const label=`${cell};font-weight:700;background:#00A79D`;
-    return `<div style="background:#fff;color:#000;font-family:'Calibri',Arial,sans-serif;padding:15mm;width:210mm;margin:0 auto">
-      <div style="padding:14px 0 8px"><span style="font-family:'Arial Black',Arial,sans-serif;font-weight:900;font-size:42px;letter-spacing:-1px;color:#00A79D">Hisense</span></div>
-      <div style="height:10px;background:#00A79D"></div><div style="height:3px;background:#fff"></div><div style="height:3px;background:#008E86"></div>
-      <h1 style="font-size:22px;font-weight:700;margin:12px 0 10px;text-align:center;color:#008E86">Relatório de Atendimento ao Cliente</h1>
+    const fotos=d.fotos||[];
+    return `<div id="parecer-print" style="background:#fff;color:#000;font-family:'Calibri',Arial,sans-serif;padding:0 15mm 15mm;width:210mm;min-height:297mm;margin:0 auto">
+      ${hisenseHeaderHtml()}
       <table style="width:100%;border-collapse:collapse">
         <tr><td style="${label};width:18%">NÚMERO OS</td><td style="${cell}">${E(d.os_numero)}</td><td style="${label};width:20%">ASSISTÊNCIA TÉC.</td><td style="${cell}">${E(d.assistenciaTec)}</td></tr>
         <tr><td style="${label}">NOME DO CLIENTE</td><td style="${cell}" colspan="3">${E(d.cliente)}</td></tr>
         <tr><td style="${label}">MODELO DO PROD.</td><td style="${cell}">${E(d.modeloProduto)}</td><td style="${label}">Nº DE SÉRIE</td><td style="${cell}">${E(d.numeroSerie)}</td></tr>
         <tr><td style="${label}">ART ou Batch</td><td style="${cell}">${E(d.artBatch)}</td>
-          <td style="${cell};text-align:center;font-weight:700">Produto Gorenje <span style="display:inline-block;width:28px;border-bottom:1px solid #000;text-align:center">${d.marcaProduto==='gorenje'?'X':' '}</span></td>
-          <td style="${cell};text-align:center;font-weight:700">Produto Hisense <span style="display:inline-block;width:28px;border-bottom:1px solid #000;text-align:center">${d.marcaProduto==='hisense'?'X':' '}</span></td></tr>
+          <td style="${cell};text-align:center;font-weight:700">Produto Gorenje <span style="display:inline-block;width:28px;border-bottom:1px solid #000;text-align:center">${d.marcaProduto==='gorenje'?'X':' '}</span></td>
+          <td style="${cell};text-align:center;font-weight:700">Produto Hisense <span style="display:inline-block;width:28px;border-bottom:1px solid #000;text-align:center">${d.marcaProduto==='hisense'?'X':' '}</span></td></tr>
       </table>
       <table style="width:100%;border-collapse:collapse;margin-top:10px">
-        <tr><td style="${label};width:28%">DEFEITO RELATADO PELO CLIENTE</td><td style="${cell};white-space:pre-wrap">${E(d.defeitoRelatado)}</td></tr>
-        <tr><td style="${label}">DIAGNÓSTICO TÉC.</td><td style="${cell};white-space:pre-wrap">${E(d.diagnosticoTec)}</td></tr>
-        <tr><td style="${label}">INSTALAÇÃO CORRETA?<br><span style="font-weight:400;font-size:9px">(Relatar as irregularidades encontradas na instalação)</span></td><td style="${cell};white-space:pre-wrap">${E(d.instalacaoCorreta)}</td></tr>
-        <tr><td style="${label}">PEÇAS NECESSÁRIAS<br><span style="font-weight:700;font-size:11px">PARA REPARO *</span></td><td style="${cell};white-space:pre-wrap">${E(d.pecasNecessarias)}</td></tr>
+        <tr><td style="${label};width:28%;height:48px">DEFEITO RELATADO PELO CLIENTE</td><td style="${cell};white-space:pre-wrap">${E(d.defeitoRelatado)}</td></tr>
+        <tr><td style="${label};height:48px">DIAGNÓSTICO TÉC.</td><td style="${cell};white-space:pre-wrap">${E(d.diagnosticoTec)}</td></tr>
+        <tr><td style="${label};height:56px">INSTALAÇÃO CORRETA?<br><span style="font-weight:400;font-size:9px">(Relatar as irregularidades encontradas na instalação)</span></td><td style="${cell};white-space:pre-wrap">${E(d.instalacaoCorreta)}</td></tr>
+        <tr><td style="${label};height:48px">PEÇAS NECESSÁRIAS<br><span style="font-weight:700;font-size:11px">PARA REPARO *</span></td><td style="${cell};white-space:pre-wrap">${E(d.pecasNecessarias)}</td></tr>
       </table>
       <p style="font-size:9px;font-style:italic;margin:4px 0 10px">*** Consultar a vista explodida no sistema para inserir o código correto da peça. ***</p>
-      ${photoGridHtml((d.fotos||[]).slice(0,4),2,220)}
-      ${photoGridHtml((d.fotos||[]).slice(4,8),2,220)}
+      <div>${photoGridHtml(fotos.slice(0,4),2,220)}</div>
+      <div>
+        <div style="page-break-before:always;break-before:page;margin-top:0">${hisenseHeaderHtml()}</div>
+        <div style="margin-top:10px">${photoGridHtml(fotos.slice(4,8),2,220)}</div>
+      </div>
       <p style="font-size:11px;font-style:italic;margin-top:12px;margin-bottom:4px">Detalhamento da Tensão de Alimentação do Produto:</p>
-      <table style="border-collapse:collapse">
-        <tr><th colspan="2" style="${cell};font-weight:700;text-align:center;background:#fff">Leitura de Tensão na Tomada</th></tr>
-        <tr><td style="${cell};text-align:center;width:110px">F1 + F2</td><td style="${cell};width:90px">${E(d.tensaoF1F2)}</td></tr>
-        <tr><td style="${cell};text-align:center">F1 + Terra</td><td style="${cell}">${E(d.tensaoF1Terra)}</td></tr>
-        <tr><td style="${cell};text-align:center">F2 + Terra</td><td style="${cell}">${E(d.tensaoF2Terra)}</td></tr>
-      </table>
+      <div style="display:flex;align-items:flex-start;gap:16px">
+        ${hisensePlugDiagramHtml()}
+        <table style="border-collapse:collapse">
+          <tr><th colspan="2" style="${cell};font-weight:700;text-align:center;background:#fff">Leitura de Tensão na Tomada</th></tr>
+          <tr><td style="${cell};text-align:center;width:110px">F1 + F2</td><td style="${cell};width:90px">${E(d.tensaoF1F2)}</td></tr>
+          <tr><td style="${cell};text-align:center">F1 + Terra</td><td style="${cell}">${E(d.tensaoF1Terra)}</td></tr>
+          <tr><td style="${cell};text-align:center">F2 + Terra</td><td style="${cell}">${E(d.tensaoF2Terra)}</td></tr>
+        </table>
+      </div>
       <p style="font-size:11px;font-style:italic;font-weight:700;margin-top:12px;margin-bottom:4px">Anotações Técnicas:</p>
       <div style="border:1px solid #000;min-height:70px;padding:8px;font-size:11px;white-space:pre-wrap">${E(d.anotacoes)}</div>
       <div style="margin-top:24px;font-style:italic">
@@ -144,20 +168,22 @@
     const cell='border:1px solid #333;padding:6px 8px;font-size:11px;vertical-align:top;height:22px';
     const label=`${cell};font-weight:700;background:#dbeafe;white-space:nowrap;width:22%`;
     const bar='background:#1e3a8a;color:#fff;font-weight:700;font-size:12px;padding:6px 10px;text-align:center;letter-spacing:1px';
+    const colgroup='<colgroup><col style="width:22%"><col style="width:28%"><col style="width:22%"><col style="width:28%"></colgroup>';
     const row=(l,v)=>`<tr><td style="${label}">${l}</td><td style="${cell}">${E(v)||'&nbsp;'}</td></tr>`;
-    return `<div style="background:#fff;color:#000;font-family:'Calibri',Arial,sans-serif;padding:15mm;width:210mm;margin:0 auto">
+    return `<div id="parecer-print" style="background:#fff;color:#000;font-family:'Calibri',Arial,sans-serif;padding:15mm;width:210mm;min-height:297mm;margin:0 auto">
       <h1 style="font-size:22px;font-weight:800;margin:0 0 8px;letter-spacing:2px;text-align:center">ANÁLISE TÉCNICA</h1>
       <div style="${bar}">ASSISTÊNCIA TÉCNICA</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed"><tr>${row('Assistência:',d.assistenciaTec)}${row('CNPJ:',d.cnpj)}</tr></table>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed">${colgroup}<tr>${row('Assistência:',d.assistenciaTec)}${row('CNPJ:',d.cnpj)}</tr></table>
       <div style="${bar}">CONSUMIDOR</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed"><tr>${row('Serial:',d.numeroSerie)}${row('Sinistro:',d.sinistro)}</tr></table>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed">${colgroup}<tr>${row('Serial:',d.numeroSerie)}${row('Sinistro:',d.sinistro)}</tr></table>
       <div style="${bar}">PRODUTO</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed"><tr>${row('Marca:',d.produtoMarca)}${row('Modelo:',d.modeloProduto)}</tr></table>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed">${colgroup}<tr>${row('Marca:',d.produtoMarca)}${row('Modelo:',d.modeloProduto)}</tr></table>
       <div style="${bar}">PARECER TÉCNICO APÓS ANÁLISE DO PRODUTO:</div>
       <div style="border:1px solid #333;border-top:none;padding:8px;font-size:11px;min-height:50px;white-space:pre-wrap">${E(d.parecerTecnico)}</div>
       <div style="${bar};margin-top:6px">PEÇA QUE NECESSITA SER TROCADA E MOTIVO?</div>
       <div style="border:1px solid #333;border-top:none;padding:8px;font-size:11px;min-height:40px;white-space:pre-wrap">${E(d.pecaTrocar)}</div>
       <table style="width:100%;border-collapse:collapse;margin-top:6px;table-layout:fixed">
+        <colgroup><col style="width:44%"><col style="width:56%"></colgroup>
         <tr><td style="${label};width:44%">MOTIVO:</td><td style="${cell}">${E(d.motivo)||'&nbsp;'}</td></tr>
         <tr><td style="${label};width:44%">QUAL FOI A FORMA DE ATENDIMENTO?</td><td style="${cell}">${E(d.formaAtendimento)||'&nbsp;'}</td></tr>
         <tr><td style="${label};width:44%">PRODUTO FOI COLETADO?</td><td style="${cell}">${E(d.produtoColetado)||'&nbsp;'}</td></tr>
@@ -166,7 +192,13 @@
       ${photoGridHtml([{legenda:'COTAÇÃO DO ORÇAMENTO DA PEÇA ATÉ 30 DIAS',dataUrl:(d.cotacaoImgs||[])[0]},{legenda:'COTAÇÃO DO ORÇAMENTO DA PEÇA ATÉ 30 DIAS',dataUrl:(d.cotacaoImgs||[])[1]}],2,150)}
       ${photoGridHtml([{legenda:'FOTO RESIDÊNCIA DO SEGURADO',dataUrl:d.residenciaImg}],1,150)}
       <div style="margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
-        <div style="text-align:center"><div style="border-top:1px solid #000;padding-top:4px;font-size:11px;font-weight:700">${E(d.responsavel)}</div><div style="font-size:10px">Assinatura Técnico Responsável</div></div>
+        <div style="text-align:center">
+          <div style="position:relative;border-top:1px solid #000;padding-top:4px;font-size:11px;font-weight:700">
+            ${d.responsavel?`<span style="position:absolute;left:50%;bottom:100%;transform:translate(-50%,20%) rotate(-4deg);font-family:'Jennifer Lynne Bold','Jennifer Lynne','Kristabelle','Great Vibes','Segoe Script',cursive;font-size:20px;font-weight:400;color:#1d4ed8;white-space:nowrap;pointer-events:none">${E(d.responsavel)}</span>`:''}
+            ${E(d.responsavel)}
+          </div>
+          <div style="font-size:10px">Assinatura Técnico Responsável</div>
+        </div>
         <div style="text-align:center"><div style="border-top:1px solid #000;padding-top:4px;font-size:11px">${E(d.cidade)} - ${E(d.dataParecer)||'___/___/______'}</div><div style="font-size:10px">Local e Data</div></div>
       </div>
     </div>`;
