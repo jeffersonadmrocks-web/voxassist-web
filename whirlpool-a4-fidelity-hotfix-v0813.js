@@ -47,6 +47,25 @@
 #vxWpForm .wp-exact-term{padding:5px 6px!important;min-height:0!important;height:auto!important;font-weight:700!important;overflow:visible!important} #vxWpForm .wp-exact-term .wp-exact-title,#vxWpForm .wp-exact-term .wp-title-inline{font-size:9.5pt!important;line-height:1.15!important;text-align:center!important} #vxWpForm .wp-exact-term p{margin:4px 0!important;padding:0!important;font-size:7.5pt!important;line-height:1.2!important;text-align:justify!important;min-height:0!important;height:auto!important}
 #vxWpForm .wp-exact-doc .vx-wp-tech-sign,#vxWpForm .wp-exact-doc .wpf-attachments,#vxWpForm .wp-exact-doc #wpfAddPart{display:none!important}
 @media print{@page{size:A4 portrait;margin:0!important}html,body{width:210mm!important;height:297mm!important;margin:0!important;padding:0!important}#vxWpForm .wp-exact-doc{width:210mm!important;min-width:210mm!important;max-width:210mm!important;height:297mm!important;min-height:297mm!important;max-height:297mm!important;padding:5mm 7mm!important;margin:0!important;overflow:hidden!important;break-after:avoid-page!important;page-break-after:avoid!important}#vxWpForm .wp-block-head td{height:20mm!important}#vxWpForm .wp-block-os tr:first-child{height:18mm!important}}
+/* PWA-0: regressão da B5 (2026-09-12) -- esta regra existia em
+   whirlpool-factory-css-sync-v0813.js, removido por redundância
+   comprovada, mas SÓ testado em viewport desktop (1300px); em viewport
+   estreito era a ÚNICA regra que encolhia .wp-exact-doc, e sua remoção
+   passou a estourar a largura da tela em celular/tablet. Restaurada
+   aqui -- .wp-exact-doc é definido por ESTE arquivo (única fonte de
+   width/min-width/max-width/font-size/line-height/min-height para essa
+   classe hoje; os outros dois arquivos que ainda tocam largura --
+   dimension-fix -- só repetem os MESMOS valores de tela cheia, sem
+   nenhuma regra responsiva própria). Achado adicional: a regra original
+   nunca sobrescrevia min-width:210mm!important (linha acima, fora de
+   media query) -- ela sozinha já forçava overflow horizontal em
+   qualquer tela mais estreita que 793px, com ou sem a regra antiga.
+   Corrigido incluindo min-width:0 aqui, senão a "restauração" seria só
+   aparente. Não é redesenho: só impede que a TELA quebre horizontalmente;
+   o documento continua vertical/scrollável, sem otimização de UX móvel
+   (isso fica para a arquitetura PWA definitiva, com formulário e
+   preview A4 separados). Impressão (@media print acima) intocada. */
+@media(max-width:900px){#vxWpForm .wp-exact-doc{width:100%!important;min-width:0!important;max-width:100%!important;padding:10px!important;font-size:8pt!important}}
 `;
     document.head.appendChild(s);
   }

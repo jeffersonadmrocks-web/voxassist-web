@@ -125,7 +125,14 @@
   if(typeof base==='function')window.renderOsDetail=async function(){const r=await base.apply(this,arguments);setTimeout(injectWhirlpoolTab,100);return r};
   setTimeout(injectWhirlpoolTab,500);
 
-  const st=document.createElement('style');st.textContent=`.vx-whirlpool-badge{font-size:9px;font-weight:800;color:#7a4a00;background:#fff4d6;border:1px solid #f1c86b;border-radius:12px;padding:5px 9px}.vx-whirlpool-tab{color:#8a5200!important}.vx-wp-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}.vx-wp-head h3{margin:0;color:#17324e}.vx-wp-head small{font-size:9px;color:#718397}.vx-wp-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.vx-wp-grid label{display:grid;gap:4px;font-size:9px;font-weight:700;color:#5f7183}.vx-wp-grid input,.vx-wp-grid textarea{border:1px solid #ccd7e2;border-radius:5px;padding:7px;font-size:10px}.vx-wp-grid textarea{min-height:70px;resize:vertical}.vx-wp-grid .wide{grid-column:1/-1}.vx-wp-note{background:#fff8e6;border:1px solid #eed39a;padding:9px;border-radius:6px;font-size:9px;color:#715416}.vx-wp-actions{display:flex;gap:8px}@media(max-width:900px){.vx-wp-grid{grid-template-columns:1fr}}`;document.head.appendChild(st);
+  const st=document.createElement('style');st.textContent=`.vx-whirlpool-badge{font-size:9px;font-weight:800;color:#7a4a00;background:#fff4d6;border:1px solid #f1c86b;border-radius:12px;padding:5px 9px}.vx-whirlpool-tab{color:#8a5200!important}.vx-wp-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}.vx-wp-head h3{margin:0;color:#17324e}.vx-wp-head small{font-size:9px;color:#718397}.vx-wp-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.vx-wp-grid label{display:grid;gap:4px;font-size:9px;font-weight:700;color:#5f7183}.vx-wp-grid input,.vx-wp-grid textarea{border:1px solid #ccd7e2;border-radius:5px;padding:7px;font-size:10px}.vx-wp-grid textarea{min-height:70px;resize:vertical}.vx-wp-grid .wide{grid-column:1/-1}.vx-wp-note{background:#fff8e6;border:1px solid #eed39a;padding:9px;border-radius:6px;font-size:9px;color:#715416}.vx-wp-actions{display:flex;gap:8px}@media(max-width:900px){.vx-wp-grid{grid-template-columns:minmax(0,1fr)}}`;document.head.appendChild(st);
+  // Achado PWA-0 (2026-09-12): 1fr sozinho (sem minmax) tem mínimo implícito
+  // igual ao min-content do item de grade -- como .wp-exact-doc é uma tabela
+  // densa, essa coluna nunca encolhia de verdade abaixo de ~793px em tela
+  // estreita, mesmo com a media query já existente. Bug pré-existente,
+  // alheio à remoção do B5 (whirlpool-factory-css-sync-v0813.js) -- só
+  // corrige a regra responsiva já declarada aqui pra ela cumprir o que já
+  // dizia fazer, sem criar seletor/regra nova.
 
   function money(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
 })();
