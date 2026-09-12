@@ -26,11 +26,77 @@ function money(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',c
 function dt(v){return v?new Date(v).toLocaleString('pt-BR'):'—'}
 function toast(msg,type='ok'){const x=document.createElement('div');x.className='toast '+type;x.textContent=msg;document.body.appendChild(x);setTimeout(()=>x.remove(),3200)}
 function authHeaders(json=true){const h={apikey:CFG.key};if(state.session?.access_token)h.Authorization='Bearer '+state.session.access_token;if(json)h['Content-Type']='application/json';return h}
-async function api(path,opt={}){const r=await fetch(CFG.url+'/rest/v1/'+path,{...opt,headers:{...authHeaders(),...(opt.headers||{})}});if(!r.ok){let e=await r.text();throw new Error(e||r.statusText)}const t=await r.text();return t?JSON.parse(t):null}
-async function auth(path,body){const r=await fetch(CFG.url+'/auth/v1/'+path,{method:'POST',headers:{apikey:CFG.key,'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.msg||d.error_description||d.message||'Falha de autenticação');return d}
+// PWA-0.1 (2026-09-12) -- api()/auth() agora marcam o erro que lançam com
+// `.kind` ('network' = fetch nem chegou a ter resposta -- sem conexão, DNS,
+// timeout; 'http' = servidor respondeu, `.status` traz o código HTTP). É a
+// única forma de restoreSession() diferenciar "sessão realmente inválida"
+// de "rede/servidor temporariamente indisponível" sem adivinhar a partir
+// da mensagem de erro. Não muda o comportamento de quem só lê `e.message`.
+async function api(path,opt={}){
+  let r;
+  try{ r=await fetch(CFG.url+'/rest/v1/'+path,{...opt,headers:{...authHeaders(),...(opt.headers||{})}}); }
+  catch(networkErr){ const e=new Error('Falha de rede ao acessar o servidor.'); e.kind='network'; throw e; }
+  if(!r.ok){ let msg=await r.text(); const e=new Error(msg||r.statusText); e.kind='http'; e.status=r.status; throw e; }
+  const t=await r.text();
+  return t?JSON.parse(t):null;
+}
+async function auth(path,body){
+  let r;
+  try{ r=await fetch(CFG.url+'/auth/v1/'+path,{method:'POST',headers:{apikey:CFG.key,'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+  catch(networkErr){ const e=new Error('Falha de rede ao acessar o servidor de autenticação.'); e.kind='network'; throw e; }
+  let d;
+  try{ d=await r.json(); }
+  catch(parseErr){ const e=new Error('Resposta inválida do servidor de autenticação.'); e.kind='network'; throw e; }
+  if(!r.ok){ const e=new Error(d.msg||d.error_description||d.message||'Falha de autenticação'); e.kind='http'; e.status=r.status; throw e; }
+  return d;
+}
 function saveSession(s){state.session=s;localStorage.setItem('vox_session',JSON.stringify(s))}
 function clearSession(){state.session=null;state.profile=null;localStorage.removeItem('vox_session')}
-async function restoreSession(){try{const s=JSON.parse(localStorage.getItem('vox_session')||'null');if(!s)return false;if(s.expires_at && Date.now()/1000>s.expires_at-60 && s.refresh_token){const n=await auth('token?grant_type=refresh_token',{refresh_token:s.refresh_token});n.expires_at=Math.floor(Date.now()/1000)+(n.expires_in||3600);saveSession(n)}else state.session=s;await loadProfile();return true}catch(e){clearSession();return false}}
+// PWA-0.1 (2026-09-12) -- achado da auditoria PWA-0: restoreSession()
+// apagava a sessão local (localStorage + state.session/profile) sempre que
+// QUALQUER coisa no try dava erro -- inclusive uma simples falha de rede
+// (sem internet no momento do refresh, servidor fora do ar, etc.) ou
+// loadProfile() indisponível. Isso derrubava o usuário pro login mesmo com
+// um token de sessão perfeitamente válido, só porque a rede oscilou.
+// Diferencia agora: só invalida a sessão de fato quando o PRÓPRIO servidor
+// de auth rejeita o refresh token (erro 'http', ex.: 400 invalid_grant --
+// token realmente expirado/revogado) ou quando o profile responde 401
+// (token rejeitado pela API). Erro de rede ou 5xx em qualquer uma das duas
+// chamadas mantém a sessão local como estava e retorna true -- sem
+// implementar fila/retry/offline, só sem destruir uma sessão válida por
+// causa de uma indisponibilidade temporária.
+async function restoreSession(){
+  const s=JSON.parse(localStorage.getItem('vox_session')||'null');
+  if(!s)return false;
+  if(s.expires_at && Date.now()/1000>s.expires_at-60 && s.refresh_token){
+    try{
+      const n=await auth('token?grant_type=refresh_token',{refresh_token:s.refresh_token});
+      n.expires_at=Math.floor(Date.now()/1000)+(n.expires_in||3600);
+      saveSession(n);
+    }catch(e){
+      if(e.kind==='network' || (e.kind==='http' && e.status>=500)){
+        state.session=s;
+      }else{
+        clearSession();
+        return false;
+      }
+    }
+  }else{
+    state.session=s;
+  }
+  try{
+    await loadProfile();
+  }catch(e){
+    if(e.kind==='http' && e.status===401){
+      clearSession();
+      return false;
+    }
+    // rede/servidor indisponível (ou outro erro não relacionado à validade
+    // do token) -- mantém a sessão; state.profile fica null até a próxima
+    // tentativa (ex.: navegação seguinte chamando loadProfile() de novo).
+  }
+  return true;
+}
 async function loadProfile(){if(!state.session?.user?.id)return;const p=await api(`profiles?id=eq.${state.session.user.id}&select=*`);state.profile=p?.[0]||null}
 function can(area){const r=state.profile?.role||'GESTOR';if(r==='GESTOR')return true;if(area==='usuarios')return false;if(r==='TECNICO' && ['financeiro','usuarios'].includes(area))return false;return true}
 
