@@ -1,4 +1,17 @@
-/* VoxAssist V0.8.13 — dados fixos do cabeçalho Whirlpool */
+/* VoxAssist V0.8.13 — dados fixos do cabeçalho Whirlpool
+   Classificação (achado em 2026-09-12, auditoria parecer-fabrica):
+   - FIXED = dados da AUTORIZADA (a loja Vox) -- hoje sem coluna própria
+     em `companies` (getActiveCompanyBranding não tem CNPJ-formatado nem
+     inscrição estadual). Continuam fixos aqui até existir cadastro de
+     empresa com esses campos -- não é escopo desta fase criar essa
+     estrutura, só não duplicar o valor em mais de um lugar.
+   - CENTRAL = dado do FABRICANTE (telefone de suporte Whirlpool/Consul/
+     Brastemp), não da loja -- não pertence a `companies` de jeito
+     nenhum, é constante por marca do fabricante. Mesma observação:
+     fixo aqui até existir um cadastro de fabricantes.
+   Único ponto de definição -- window.vxWhirlpoolFixedData é consumido
+   também por whirlpool-faithful-mode-v0813.js (pipeline de impressão),
+   pra nunca reaparecer hardcoded em dois arquivos ao mesmo tempo. */
 (function(){
   const FIXED={
     autorizada:'VOX SERRA LTDA',
@@ -17,6 +30,7 @@
     CONSUL:['4004 0021','0800 722 7799'],
     BRASTEMP:['3003 0777','0800 970 0777']
   };
+  window.vxWhirlpoolFixedData={FIXED,CENTRAL};
   function brand(){
     const form=document.querySelector('#vxWpForm');
     const raw=(form?.querySelector('[name="marca"]')?.value||form?.querySelector('[name="centralAtendimento"]')?.value||'').toUpperCase();

@@ -18,14 +18,14 @@
         numeroOS:first(o.manufacturer_os_number,o.os_number,p.numeroOS),
         tecnico:first(o.profiles?.full_name,p.tecnico),
         dataAgenda:first(a.appointment_date,p.dataAgenda),periodo:first(a.period,p.periodo),tipoAgenda:first(a.appointment_type,p.tipoAgenda),dataChamado:first(p.dataChamado,String(o.opened_at||'').slice(0,10)),
-        consumidor:first(p.consumidor,p.cliente,c.name),cnpjCpf:first(p.cnpjCpf,p.documento,c.document),cep:first(p.cep,c.zip_code),regiao:p.regiao,
-        endereco:first(p.endereco,c.address),complemento:first(p.complemento,c.complement),bairro:first(p.bairro,c.neighborhood),cidade:first(p.cidade,c.city),uf:first(p.uf,c.state),
-        enderecoEletronico:first(p.enderecoEletronico,p.email,c.email),foneResidencia:first(p.foneResidencia,p.telefone,c.phone_primary),foneComercial:first(p.foneComercial,c.phone_secondary),foneOutros:p.foneOutros,localizacao:p.localizacao,
-        produto:first(p.produto,p.productLine,e.model,e.product_type),produtoConsumidor:p.produtoConsumidor,marca:first(p.marca,p.manufacturer,e.brand),linha:first(p.linha,e.product_type),serie:first(p.serie,e.serial_number),nomeComercial:p.nomeComercial,tempoUso:p.tempoUso,
-        tipoOS:first(p.tipoOS,o.order_type),nrNotaFiscal:first(p.nrNotaFiscal,p.notaFiscal,e.invoice_number),dataCompra:first(p.dataCompra,e.purchase_date),cor:first(p.cor,e.color),voltagem:first(p.voltagem,e.voltage),capacidade:first(p.capacidade,e.capacity),
-        defeitoReclamado:first(p.defeitoReclamado,o.reported_defect),defeitoReclamado2:p.defeitoReclamado2,defeitoConstatado:first(p.defeitoConstatado,o.diagnosed_defect),defeitoConstatado2:p.defeitoConstatado2,
-        reclamacaoAtendimento:first(p.reclamacaoAtendimento,p.reclamacao,o.reported_defect),laudoTecnico:first(p.laudoTecnico,o.technical_service),observacao:p.observacao,
-        validadeOrcamento:first(p.validadeOrcamento,'10 DIAS'),parcelas:p.parcelas,vencimento:p.vencimento,condicaoPagamento:p.condicaoPagamento,dataAprovacao:first(p.dataAprovacao,o.approval_date),garantiaServico:p.garantiaServico,garantiaPecas:p.garantiaPecas,dataConclusao:p.dataConclusao,responsavel:p.responsavel
+        consumidor:first(c.name,p.consumidor,p.cliente),cnpjCpf:first(c.document,p.cnpjCpf,p.documento),cep:first(c.zip_code,p.cep),regiao:p.regiao,
+        endereco:first(c.address,p.endereco),complemento:first(c.complement,p.complemento),bairro:first(c.neighborhood,p.bairro),cidade:first(c.city,p.cidade),uf:first(c.state,p.uf),
+        enderecoEletronico:first(c.email,p.enderecoEletronico,p.email),foneResidencia:first(c.phone_primary,p.foneResidencia,p.telefone),foneComercial:first(c.phone_secondary,p.foneComercial),foneOutros:p.foneOutros,localizacao:p.localizacao,
+        produto:first(p.produto,p.productLine,e.model,e.product_type),produtoConsumidor:p.produtoConsumidor,marca:first(e.brand,p.marca,p.manufacturer),linha:first(e.product_type,p.linha),serie:first(e.serial_number,p.serie),nomeComercial:p.nomeComercial,tempoUso:p.tempoUso,
+        tipoOS:first(o.order_type,p.tipoOS),nrNotaFiscal:first(e.invoice_number,p.nrNotaFiscal,p.notaFiscal),dataCompra:first(e.purchase_date,p.dataCompra),cor:first(p.cor,e.color),voltagem:first(p.voltagem,e.voltage),capacidade:first(p.capacidade,e.capacity),
+        defeitoReclamado:first(o.reported_defect,p.defeitoReclamado),defeitoReclamado2:p.defeitoReclamado2,defeitoConstatado:first(o.diagnosed_defect,p.defeitoConstatado),defeitoConstatado2:p.defeitoConstatado2,
+        reclamacaoAtendimento:first(p.reclamacaoAtendimento,p.reclamacao,o.reported_defect),laudoTecnico:first(o.technical_service,p.laudoTecnico),observacao:p.observacao,
+        validadeOrcamento:first(p.validadeOrcamento,'10 DIAS'),parcelas:p.parcelas,vencimento:p.vencimento,condicaoPagamento:p.condicaoPagamento,dataAprovacao:first(o.approval_date,p.dataAprovacao),garantiaServico:p.garantiaServico,garantiaPecas:p.garantiaPecas,dataConclusao:p.dataConclusao,responsavel:p.responsavel
       };
       Object.entries(map).forEach(([k,v])=>set(form,k,v));
       st.activeOs={...st.activeOs,...o,clients:c,equipments:e,profiles:o.profiles||st.activeOs?.profiles};
