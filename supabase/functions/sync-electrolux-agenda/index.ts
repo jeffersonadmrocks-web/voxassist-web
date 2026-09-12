@@ -4,7 +4,7 @@
 // Nunca escreve em appointments/service_orders nativas. Agendada via
 // Supabase Cron a cada 10min (mesma cadência do cron interno da Electrolux).
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { mapOrderToRow, resolveConcludedAt, type ElectroluxOrder } from "../_shared/electrolux.ts";
+import { mapOrderToRow, resolveConcludedAt, isForaDeGarantia, type ElectroluxOrder } from "../_shared/electrolux.ts";
 import { matchOrCreateTechnician } from "../_shared/technicianMatch.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -118,6 +118,33 @@ Deno.serve(async (req) => {
 
       if (error || !saved) continue;
       processed++;
+
+      // Ponte FG Electrolux -> OS VoxAssist (item 1 da especificação):
+      // só pra atendimentos identificados como Fora de Garantia, e só
+      // quando dá pra resolver uma conexão sem ambiguidade (mesma
+      // simplificação já usada acima pro connection_id de
+      // external_appointments -- hoje só existe Serra). upsertRow.
+      // connection_id já é o valor final resolvido (existing ou
+      // default) usado no upsert acima.
+      if (isForaDeGarantia(order.orderType) && upsertRow.connection_id) {
+        try {
+          await supabase.rpc("upsert_electrolux_fg_service_order", {
+            p_connection_id: upsertRow.connection_id,
+            p_svo_number: order.svoNumber,
+            p_client_name: order.clientName,
+            p_client_phone: order.clientPhone,
+            p_product_name: order.productName ?? null,
+            p_claimed_defect: order.claimedDefect,
+            p_electrolux_status_raw: order.status,
+          });
+        } catch (fgError) {
+          // Best-effort: uma falha na ponte FG (ex.: conexão sem loja
+          // mapeada ainda) nunca pode derrubar o sync de agenda/NPS
+          // inteiro -- fica só registrado pro próximo ciclo tentar de
+          // novo (a RPC é idempotente).
+          console.error("[sync-electrolux-agenda] falha na ponte FG pro SVO " + order.svoNumber + ":", fgError);
+        }
+      }
 
       if (existing) {
         const changed =

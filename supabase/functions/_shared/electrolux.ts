@@ -26,7 +26,21 @@ export type ElectroluxOrder = {
   updatedAt: string;
   technicianName?: string | null;
   technicianExternalId?: string | null;
+  // Tipo do atendimento ("Garantia"/"Fora de Garantia"/"Fora de Garantia
+  // c/ Autorização"/"Atendimento Seguradora") -- existe na resposta bruta
+  // do endpoint (confirmado ao vivo: electrolux-reports-v0813.js já usa
+  // esse campo direto da API, so.orderType), mas até 2026-09-12 nunca
+  // tinha sido persistido pelo sync -- necessário pra identificar FG e
+  // acionar a ponte SVO<->OS (upsert_electrolux_fg_service_order).
+  orderType?: string | null;
 };
+
+// Mesma classificação de electrolux-reports-v0813.js (orderTypeCategoryFor)
+// -- "Fora de Garantia" e "Fora de Garantia c/ Autorização" contam como FG.
+export function isForaDeGarantia(orderType: string | null | undefined): boolean {
+  const t = (orderType || "").toLowerCase();
+  return t.includes("fora de garantia");
+}
 
 const CLOSED_STATUSES: Record<string, "CANCELADO" | "CONCLUIDO"> = {
   Cancelada: "CANCELADO",
