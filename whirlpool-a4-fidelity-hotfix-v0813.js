@@ -1,4 +1,14 @@
-/* VoxAssist V0.8.13 — fidelidade A4 Whirlpool por blocos */
+/* VoxAssist V0.8.13 — fidelidade A4 Whirlpool por blocos
+   Achado em 2026-09-12 (investigação do "congelamento" reportado após uso
+   prolongado real, não reproduzido num teste curto): trocar de aba dentro
+   da MESMA OS (Cliente/Financeiro/Fotos/etc.) só alterna a classe .hidden
+   no painel Whirlpool -- nunca remove #vxWpForm do DOM. Sem esta guarda,
+   normalize() (que força reflow síncrono via scrollHeight logo após um
+   style.height='auto') rodava a cada mutação do DOM em QUALQUER lugar do
+   app (heartbeat de presença, polling de alertas, etc.), mesmo com o
+   Whirlpool oculto e o técnico em outra aba há minutos -- medido em teste:
+   30 mutações de fundo não relacionadas gerando 540 callbacks de
+   MutationObserver enquanto o form ficava oculto. */
 (function(){
   const STYLE_ID='vxWpA4FidelityHotfix';
   function addStyle(){
@@ -49,6 +59,6 @@
     const totals=tables.find(t=>/TOTAL DE PEÇAS/i.test(t.textContent||'')); if(totals)setWidths(totals,[72,16,12]);
     const budget=tables.find(t=>/CONDIÇÃO DE PAGAMENTO/i.test(t.textContent||'')); if(budget)setWidths(budget,[40,12,14,12,22]);
   }
-  function normalize(){addStyle();const form=document.querySelector('#vxWpForm');const doc=form?.querySelector('.wp-exact-doc');if(!doc)return;markBlocks(doc);form.querySelectorAll('.wp-exact-field textarea').forEach(el=>{el.style.height='auto';el.style.height=Math.max(el.scrollHeight,12)+'px';});form.querySelectorAll('.wp-exact-term,.wp-exact-auth,.wp-exact-box').forEach(el=>{el.style.maxHeight='none';el.style.overflow='visible';});}
+  function normalize(){addStyle();const form=document.querySelector('#vxWpForm');if(!form||form.closest('.hidden'))return;const doc=form?.querySelector('.wp-exact-doc');if(!doc)return;markBlocks(doc);form.querySelectorAll('.wp-exact-field textarea').forEach(el=>{el.style.height='auto';el.style.height=Math.max(el.scrollHeight,12)+'px';});form.querySelectorAll('.wp-exact-term,.wp-exact-auth,.wp-exact-box').forEach(el=>{el.style.maxHeight='none';el.style.overflow='visible';});}
   const mo=new MutationObserver(()=>requestAnimationFrame(normalize));mo.observe(document.documentElement,{childList:true,subtree:true});addStyle();setTimeout(normalize,200);setTimeout(normalize,800);setTimeout(normalize,1600);
 })();

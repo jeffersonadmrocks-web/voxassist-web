@@ -41,11 +41,24 @@
     const head=document.querySelector('.vx-os-head-left');if(head&&!head.querySelector('.vx-whirlpool-badge')){const badge=document.createElement('span');badge.className='vx-whirlpool-badge';badge.textContent=`${norm(o.manufacturer)||norm(o.equipments?.brand)||'WHIRLPOOL'} • OS FABRICANTE`;head.appendChild(badge)}
   }
 
+  // Achado em 2026-09-12 (investigação do congelamento/EDITAR inoperante):
+  // showWhirlpoolPanel() não tinha nenhuma proteção contra reentrância. Um
+  // usuário clicando a aba WHIRLPOOL de novo (comum quando a tela "parece"
+  // não responder) disparava uma SEGUNDA chamada, com seu próprio
+  // loadBundle() concorrente -- e como nada cancelava a primeira, quem
+  // escrevia por último no painel era a chamada cuja resposta de rede
+  // chegasse depois, não necessariamente a do clique mais recente. wpPanelGen
+  // marca qual é a chamada "atual"; uma chamada cuja resposta chega depois
+  // de já ter sido substituída por uma mais nova simplesmente não escreve
+  // mais nada no DOM.
+  let wpPanelGen=0;
   async function showWhirlpoolPanel(id){
+    const gen=++wpPanelGen;
     document.querySelectorAll('.vx-os-panel').forEach(p=>p.classList.add('hidden'));
     document.querySelectorAll('.vx-os-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.section==='whirlpool'));
     let panel=document.querySelector('#vx-whirlpool');if(!panel){panel=document.createElement('section');panel.id='vx-whirlpool';panel.className='vx-os-panel';document.querySelector('#app')?.appendChild(panel)}panel.classList.remove('hidden');panel.innerHTML='<div class="vx-screen-box">Carregando modo Whirlpool...</div>';
     const d=await loadBundle(id),o=d.o;
+    if(gen!==wpPanelGen)return; // uma chamada mais nova (outro clique) já assumiu -- esta ficou obsoleta
     // O corpo do formulário (documento fiel Whirlpool, com todos os
     // campos) é injetado por whirlpool-complete-factory-v0813.js dentro
     // do <form id="vxWpForm"> -- este painel só monta a casca (cabeçalho,
