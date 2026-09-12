@@ -43,7 +43,7 @@
     if(lock){el.readOnly=true;el.dataset.wpFixed='1';}
   }
   function apply(){
-    const form=document.querySelector('#vxWpForm');if(!form)return;
+    const form=document.querySelector('#vxWpForm');if(!form||form.closest('.hidden'))return;
     Object.entries(FIXED).forEach(([k,v])=>set(k,v,true));
     const b=brand(),[c1,c2]=CENTRAL[b]||CENTRAL.CONSUL;
     set('centralAtendimento',b,true);set('foneCentral1',c1,true);set('foneCentral2',c2,true);

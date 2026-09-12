@@ -33,6 +33,18 @@
       bar.innerHTML=`<span id="vxWpModeStatus" class="vx-wp-mode-status">Visualização protegida</span><button type="button" data-wp-mode="view">VISUALIZAR</button><button type="button" data-wp-mode="basic">EDITAR</button><button type="button" data-wp-mode="advanced" ${canAdvanced()?'':'disabled title="Somente Gestor"'}>EDIÇÃO AVANÇADA</button>`;
       const print=$('#vxWpPrint'); head.insertBefore(bar,print||null);
       form.dataset.wpModeBarInstalled='1';
+      // O listener é ligado AQUI, no exato instante síncrono em que a barra
+      // é criada -- nunca depende de enhance() (whirlpool-complete-factory-
+      // v0813.js) já ter rodado. Se o usuário clicar antes de enhance()
+      // terminar (ou até antes dela começar), o próprio clique aguarda a
+      // prontidão via vxWpEnsureEnhanced() (idempotente) antes de aplicar
+      // o modo -- ver achado datado em 2026-09-12 no outro arquivo.
+      bar.addEventListener('click',async e=>{
+        const b=e.target.closest('[data-wp-mode]');if(!b||b.disabled)return;
+        const f=$('#vxWpForm');if(!f)return;
+        if(typeof window.vxWpEnsureEnhanced==='function')await window.vxWpEnsureEnhanced();
+        if(typeof window.vxWpSetMode==='function')window.vxWpSetMode(f,b.dataset.wpMode);
+      },true);
     }
   }
   document.addEventListener('click',e=>{if(e.target.closest('[data-section="whirlpool"]'))setTimeout(ensureModeBar,120)},true);

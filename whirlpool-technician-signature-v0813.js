@@ -5,7 +5,7 @@
   let scheduled=false;
   function cleanup(){
     scheduled=false;
-    const form=$('#vxWpForm'); if(!form)return;
+    const form=$('#vxWpForm'); if(!form||form.closest('.hidden'))return;
     // O modelo canônico de assinaturas é o par consumidor/técnico dentro da AUTORIZAÇÃO.
     // Remove blocos legados independentes que eram reinjetados pelo MutationObserver.
     $$('.vx-wp-tech-sign',form).forEach(x=>x.remove());

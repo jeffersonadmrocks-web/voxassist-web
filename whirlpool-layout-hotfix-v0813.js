@@ -1,9 +1,14 @@
-/* VoxAssist V0.8.13 — hotfix de layout do modo Whirlpool */
+/* VoxAssist V0.8.13 — hotfix de layout do modo Whirlpool
+   Guarda de visibilidade adicionada em 2026-09-12 (mesmo achado de
+   whirlpool-a4-fidelity-hotfix-v0813.js: trocar de aba só oculta o painel,
+   nunca o remove -- sem isso, fix() e seu setInterval(1000) rodavam pra
+   sempre em cada mutação global mesmo com o Whirlpool oculto). */
 (function(){
   function fix(){
     const tabs=document.querySelector('.vx-os-tabs');
     const panel=document.querySelector('#vx-whirlpool');
     if(!tabs||!panel)return;
+    if(panel.classList.contains('hidden'))return;
     // O painel Whirlpool deve ocupar a mesma região visual das demais abas,
     // imediatamente abaixo das abas, nunca no fim do #app.
     if(panel.previousElementSibling!==tabs) tabs.insertAdjacentElement('afterend',panel);
