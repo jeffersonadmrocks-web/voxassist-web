@@ -18,6 +18,19 @@
   // real que a pessoa digitou.
   const validMoney=v=>{const s=String(v||'').trim();return s&&!/undefined|nan/i.test(s)?s:null};
   const cleanFreeText=v=>String(v||'').replace(/\s*\|?\s*(VISITA|DESLOCAMENTO)\s*R\$\s*undefined/gi,'').trim();
+  // Achado em 2026-09-12: este arquivo gera o documento REALMENTE impresso
+  // (window.vxPrintOsDocument -> printFaithful), num pipeline totalmente
+  // separado da aba editável em tela (whirlpool-complete-factory-v0813.js +
+  // whirlpool-exact-factory-layout-v0813.js). Correções feitas só na aba
+  // em tela (ex.: whirlpool-fixed-header-data-v0813.js) nunca chegavam na
+  // impressão real porque este arquivo nunca lia aqueles valores -- só
+  // `p.inscEstadualAutorizada`/`p.foneCentral1/2`, que nunca existem em
+  // manufacturer_imports.extracted_data (são dados fixos da loja, não do
+  // PDF do fabricante importado). getActiveCompanyBranding() também não
+  // tem coluna de inscrição estadual. Por isso os valores fixos abaixo,
+  // replicados de whirlpool-fixed-header-data-v0813.js.
+  const IE_FIXED='084.574.55-0';
+  const CENTRAL_FIXED={CONSUL:['4004 0021','0800 722 7799'],BRASTEMP:['3003 0777','0800 970 0777']};
   async function bundle(id){
     const [os,imp,appt,parts,fin,brand]=await Promise.all([
       api(`service_orders?id=eq.${id}&select=*,clients(*),equipments(*),profiles!service_orders_technician_id_fkey(full_name)`),
@@ -34,11 +47,12 @@
   async function printFaithful(id){
     const d=await bundle(id),o=d.o;if(!o)return;const p=d.p,c=o.clients||{},e=o.equipments||{},a=d.appt||{},b=d.brand||{};
     const totalPecas=d.parts.reduce((s,x)=>s+Number(x.quantity||0)*Number(x.unit_value||0),0);const mao=Number(d.fin.labor_value||0);const total=totalPecas+mao;
+    const centralBrand=N(p.centralAtendimento||e.brand)==='BRASTEMP'?'BRASTEMP':'CONSUL';const[centralFone1,centralFone2]=CENTRAL_FIXED[centralBrand];
     const data={
-      autorizada:p.autorizada||b.legal_name||b.trade_name||'VOX', enderecoAutorizada:p.enderecoAutorizada||[b.address,b.address_number,b.city,b.state].filter(Boolean).join(' - '), cnpjAutorizada:p.cnpjAutorizada||b.document||'', foneAutorizada:p.foneAutorizada||b.phone||b.mobile||'', inscEstadualAutorizada:p.inscEstadualAutorizada||'',
-      centralAtendimento:p.centralAtendimento||((N(e.brand)==='CONSUL')?'CONSUL':'BRASTEMP'), foneCentral1:p.foneCentral1||'', foneCentral2:p.foneCentral2||'', numeroOS:o.manufacturer_os_number||o.os_number, tecnico:p.tecnico||o.profiles?.full_name||'', dataAgenda:br(a.appointment_date||p.dataAgenda), dataChamado:br(p.dataChamado||o.opened_at), periodo:a.period||p.periodo||'', tipoAgenda:p.tipoAgenda||'',
+      autorizada:p.autorizada||b.legal_name||b.trade_name||'VOX', enderecoAutorizada:p.enderecoAutorizada||[b.address,b.address_number,b.city,b.state].filter(Boolean).join(' - '), cnpjAutorizada:p.cnpjAutorizada||b.document||'', foneAutorizada:p.foneAutorizada||b.phone||b.mobile||'', inscEstadualAutorizada:p.inscEstadualAutorizada||IE_FIXED,
+      centralAtendimento:centralBrand, foneCentral1:p.foneCentral1||centralFone1, foneCentral2:p.foneCentral2||centralFone2, numeroOS:o.manufacturer_os_number||o.os_number, tecnico:p.tecnico||o.profiles?.full_name||'', dataAgenda:br(a.appointment_date||p.dataAgenda), dataChamado:br(p.dataChamado||o.opened_at), periodo:a.period||p.periodo||'', tipoAgenda:p.tipoAgenda||'',
       consumidor:p.consumidor||p.cliente||c.name||'', cep:p.cep||c.zip_code||'', regiao:p.regiao||'', endereco:p.endereco||c.address||'', bairro:p.bairro||c.neighborhood||'', complemento:p.complemento||c.complement||'', cidade:p.cidade||c.city||'', uf:p.uf||c.state||'', cnpjCpf:p.cnpjCpf||p.documento||c.document||'', enderecoEletronico:p.enderecoEletronico||p.email||c.email||'', foneResidencia:p.foneResidencia||p.telefone||c.phone_primary||'', foneComercial:p.foneComercial||c.phone_secondary||'', foneOutros:p.foneOutros||'', localizacao:p.localizacao||'',
-      produto:p.produto||p.productLine||e.product_type||'', marca:p.marca||p.manufacturer||e.brand||'', produtoConsumidor:p.produtoConsumidor||p.productLine||'', linha:p.linha||e.product_type||'', serie:p.serie||e.serial_number||'', nomeComercial:p.nomeComercial||e.model||'', tempoUso:p.tempoUso||'', tipoOS:p.tipoOS||o.order_type||'', nrNotaFiscal:p.nrNotaFiscal||p.notaFiscal||e.invoice_number||'', dataCompra:br(p.dataCompra||e.purchase_date), cor:p.cor||'', voltagem:p.voltagem||'', capacidade:p.capacidade||'',
+      produto:p.produto||p.productLine||e.product_type||'', marca:p.marca||p.manufacturer||e.brand||'', produtoConsumidor:p.produtoConsumidor||'', linha:p.linha||e.product_type||'', serie:p.serie||e.serial_number||'', nomeComercial:p.nomeComercial||'', tempoUso:p.tempoUso||'', tipoOS:p.tipoOS||o.order_type||'', nrNotaFiscal:p.nrNotaFiscal||p.notaFiscal||e.invoice_number||'', dataCompra:br(p.dataCompra||e.purchase_date), cor:p.cor||'', voltagem:p.voltagem||'', capacidade:p.capacidade||'',
       defeitoReclamado:p.defeitoReclamado||o.reported_defect||'', defeitoReclamado2:p.defeitoReclamado2||'', defeitoConstatado:p.defeitoConstatado||o.diagnosed_defect||'', defeitoConstatado2:p.defeitoConstatado2||'', reclamacaoAtendimento:cleanFreeText(p.reclamacaoAtendimento||p.reclamacao||''), laudoTecnico:cleanFreeText(p.laudoTecnico||o.technical_service||''), observacao:p.observacao||'', totalPecas:validMoney(p.totalPecas)||money(totalPecas), maoDeObra:validMoney(p.maoDeObra)||money(mao), totalOrcamento:validMoney(p.totalOrcamento)||money(total), validadeOrcamento:p.validadeOrcamento||'O ORÇAMENTO É VÁLIDO POR 10 DIAS, APÓS ESSE PRAZO O MESMO ESTARÁ SUJEITO A MODIFICAÇÕES.', parcelas:p.parcelas||'', vencimento:p.vencimento||'', valorOrcamento:validMoney(p.valorOrcamento)||money(total), condicaoPagamento:p.condicaoPagamento||'', dataAprovacao:p.dataAprovacao||'', assinaturaConsumidor:p.assinaturaConsumidor||''
     };
     const tel=[data.foneResidencia&&`FONE RESIDÊNCIA: ${data.foneResidencia}`,data.foneComercial&&`FONE COMERCIAL: ${data.foneComercial}`,data.foneOutros&&`FONE (OUTROS): ${data.foneOutros}`].filter(Boolean).join('   ');
