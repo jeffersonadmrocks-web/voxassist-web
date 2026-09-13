@@ -12,12 +12,11 @@
   // restritivas em service_orders/os_parts/os_financial/payments).
   // Checagem aqui evita erro cru de RLS pra quem tentar registrar/
   // editar/excluir pagamento numa OS já finalizada sem ser gestor.
-  const blockedFinalized=()=>{
-    if(String(ctx?.o?.status||'').toUpperCase()!=='FINALIZADA')return false;
-    if(String(state?.profile?.role||'').toUpperCase()==='GESTOR')return false;
-    toast('OS finalizada só pode ser alterada pelo GESTOR.','err');
-    return true;
-  };
+  // Delega pra window.vxOsFinalizedLocked (app.js) -- mesma lógica que
+  // antes vivia só aqui, extraída pra ser reaproveitada pelos outros
+  // pontos que gravam nas mesmas tabelas (Whirlpool, peça manual,
+  // correções) e tinham o mesmo buraco.
+  const blockedFinalized=()=>window.vxOsFinalizedLocked(ctx?.o);
   const localDateISO=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const fmtDate=v=>v?new Date(String(v).slice(0,10)+'T12:00:00').toLocaleDateString('pt-BR'):'—';
   const inferGroup=t=>{t=String(t||'').toUpperCase();if(t.includes('TV'))return 'TV';if(/REFRIG|FREEZER|AR-COND|GELADEIRA/.test(t))return 'REFRIGERAÇÃO';if(/MICRO|FOG|LAVA|BEBED/.test(t))return 'LINHA BRANCA';if(/AUDIO|SOM/.test(t))return 'ÁUDIO';return 'GERAL'};
@@ -507,7 +506,7 @@
   window.vxAddPhone=async()=>{const p=up(prompt('Novo telefone:')||'');if(!p)return;const label=up(prompt('Identificação (ex.: trabalho, recado):')||'OUTRO');try{await api('client_phones',{method:'POST',body:JSON.stringify({client_id:ctx.c.id,phone:p,label})});toast('Telefone adicionado.');reload()}catch(e){toast(e.message,'err')}};
   window.vxAddAddress=async()=>{const address=up(prompt('Endereço:')||'');if(!address)return;const address_number=up(prompt('Número:')||''),city=up(prompt('Cidade:')||''),statev=up(prompt('UF:')||'');try{await api('client_addresses',{method:'POST',body:JSON.stringify({client_id:ctx.c.id,label:'ADICIONAL',address,address_number,city,state:statev})});toast('Endereço adicionado.');reload()}catch(e){toast(e.message,'err')}};
   window.vxSearchParts=()=>{const d=up(document.querySelector('#vxPartDescription')?.value||''),b=up(document.querySelector('#vxPartBrand')?.value||''),c=up(document.querySelector('#vxPartCode')?.value||'');let rows=state.stock||[];if(d)rows=rows.filter(x=>up(x.description).includes(d));if(b)rows=rows.filter(x=>up(x.manufacturer).includes(b));if(c)rows=rows.filter(x=>up(x.code).includes(c));const body=document.querySelector('#vxPartResults');body.innerHTML=rows.slice(0,100).map(x=>`<tr onclick="vxUseStockPart('${x.id}')"><td>${val(x.code)}</td><td>${val(x.description)}</td><td>${val(x.manufacturer)}</td><td>${num(x.available_quantity)}</td><td>${money(0)}</td></tr>`).join('')||tableEmpty(5,'NENHUMA PEÇA ENCONTRADA')};
-  window.vxUseStockPart=async id=>{const x=(state.stock||[]).find(i=>i.id===id);if(!x)return;const q=num(prompt('Quantidade:','1')||1);if(!q)return;const price=num(String(prompt('Valor unitário:','0')||'0').replace(',','.'));try{await api('os_parts',{method:'POST',body:JSON.stringify({service_order_id:ctx.o.id,stock_item_id:x.id,code:x.code,description:x.description,quantity:q,unit_value:price,is_manual:false})});await window.vxAdvanceOsStatus?.(ctx.o.id);toast('Peça incluída.');reload()}catch(e){toast(e.message,'err')}};
+  window.vxUseStockPart=async id=>{if(blockedFinalized())return;const x=(state.stock||[]).find(i=>i.id===id);if(!x)return;const q=num(prompt('Quantidade:','1')||1);if(!q)return;const price=num(String(prompt('Valor unitário:','0')||'0').replace(',','.'));try{await api('os_parts',{method:'POST',body:JSON.stringify({service_order_id:ctx.o.id,stock_item_id:x.id,code:x.code,description:x.description,quantity:q,unit_value:price,is_manual:false})});await window.vxAdvanceOsStatus?.(ctx.o.id);toast('Peça incluída.');reload()}catch(e){toast(e.message,'err')}};
   window.vxShowAttachmentSub=(which,btn)=>{document.querySelector('#vxAttFiles').classList.toggle('hidden',which!=='files');document.querySelector('#vxAttDocs').classList.toggle('hidden',which!=='docs');btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active'));btn.classList.add('active')};
   window.vxShowClientSub=(which,btn)=>{document.querySelector('#vxClientSubOrders').classList.toggle('hidden',which!=='orders');document.querySelector('#vxClientSubEquip').classList.toggle('hidden',which!=='equip');document.querySelector('#vxClientSubVendas').classList.toggle('hidden',which!=='vendas');btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active'));btn.classList.add('active')};
   window.vxAttach=category=>{const input=document.querySelector('#vxFileInput');input.value='';input.onchange=async()=>{const f=input.files?.[0];if(!f)return;try{const existing=ctx.atts.find(a=>a.category===category);if(existing)await api(`attachments?id=eq.${existing.id}`,{method:'DELETE'});await api('attachments',{method:'POST',body:JSON.stringify({service_order_id:ctx.o.id,client_id:ctx.c.id,category,file_name:f.name,storage_path:'',mime_type:f.type,source:'HOMOLOGACAO',created_by:state.session.user.id})});toast('Anexo registrado para homologação.');reload()}catch(e){toast(e.message,'err')}};input.click()};

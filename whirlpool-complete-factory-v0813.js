@@ -174,7 +174,14 @@
   // um PATCH direto na tabela canônica, igual ao resto do sistema já
   // faz (mesmo padrão de os-detail-v0812.js/os-global-save-v0812.js).
   // extracted_data preserva só os campos exclusivamente documentais.
-  async function saveAll(form,o,d){try{const data=Object.fromEntries(new FormData(form).entries());data.totalPecas=$('#wpfTotalParts',form)?.textContent||'';data.maoDeObra=$('#wpfLabor',form)?.value||'0';data.totalOrcamento=$('#wpfGrandTotal',form)?.textContent||'';data.valorOrcamento=$('#wpfBudgetValue',form)?.textContent||'';const sig=$('#wpfSignature');const sigTouched=!!(sig?.isSignatureDirty&&sig.isSignatureDirty());if(sigTouched)data.assinaturaConsumidor=sig.getSignature();
+  // Achado do usuário ("falha ao acessar/usar o Financeiro após
+  // finalizar OS"): OS FINALIZADA só pode ser alterada pelo GESTOR
+  // (migration 20260907060000, mesma trava de os-detail-v0812.js) --
+  // faltava aqui. Um não-GESTOR salvando o Whirlpool (EDITAR fica
+  // disponível pra qualquer papel, só EDIÇÃO AVANÇADA é exclusiva do
+  // GESTOR) numa OS já finalizada batia direto na policy restritiva de
+  // service_orders/os_parts/os_financial e via o erro cru do Postgres.
+  async function saveAll(form,o,d){if(window.vxOsFinalizedLocked(o))return;try{const data=Object.fromEntries(new FormData(form).entries());data.totalPecas=$('#wpfTotalParts',form)?.textContent||'';data.maoDeObra=$('#wpfLabor',form)?.value||'0';data.totalOrcamento=$('#wpfGrandTotal',form)?.textContent||'';data.valorOrcamento=$('#wpfBudgetValue',form)?.textContent||'';const sig=$('#wpfSignature');const sigTouched=!!(sig?.isSignatureDirty&&sig.isSignatureDirty());if(sigTouched)data.assinaturaConsumidor=sig.getSignature();
     const clientBody={},equipmentBody={},orderBody={};
     Object.entries(CANON).forEach(([field,map])=>{if(data[field]===undefined)return;const v=data[field]||null;if(map.entity==='client')clientBody[map.name]=v;else if(map.entity==='equipment')equipmentBody[map.name]=v;else if(map.entity==='order')orderBody[map.name]=v;});
     orderBody.updated_at=new Date().toISOString();
@@ -222,6 +229,12 @@
     $$('[data-entity][data-name]',form).forEach(el=>{
       el.addEventListener('change',async()=>{
         const entity=el.dataset.entity,name=el.dataset.name,v=el.value||null;
+        // Mesmo buraco de os-detail-v0812.js (bind()): "order"/
+        // "financial" são travados pra OS FINALIZADA (migration
+        // 20260907060000), mas esse auto-save por campo nunca checava
+        // antes de gravar. "client"/"equipment" continuam de fora (não
+        // são travados por essa migration).
+        if((entity==='order'||entity==='financial')&&window.vxOsFinalizedLocked(o)){el.value=el.defaultValue||'';return}
         try{
           if(entity==='client'){if(!o.client_id)return;await api(`clients?id=eq.${o.client_id}`,{method:'PATCH',body:JSON.stringify({[name]:v})});}
           else if(entity==='equipment'){if(!o.equipment_id)return;await api(`equipments?id=eq.${o.equipment_id}`,{method:'PATCH',body:JSON.stringify({[name]:v})});}

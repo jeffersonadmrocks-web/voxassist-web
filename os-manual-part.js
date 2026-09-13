@@ -17,6 +17,13 @@
   }
 
   window.vxSaveManualPart=async function(){
+    // Achado do usuário ("falha ao acessar/usar o Financeiro após
+    // finalizar OS"): mesma trava de os_parts pra OS FINALIZADA
+    // (migration 20260907060000, ver app.js/vxOsFinalizedLocked) --
+    // sem essa checagem, um não-GESTOR incluindo peça manual numa OS já
+    // finalizada batia direto na policy restritiva e via o erro cru do
+    // Postgres em vez do aviso amigável já usado em outros pontos.
+    if(window.vxOsFinalizedLocked(state.activeOs))return;
     const btn=document.querySelector('#vxMpSave');
     const code=up(document.querySelector('#vxMpCode')?.value||'').trim();
     const description=up(document.querySelector('#vxMpDescription')?.value||'').trim();
