@@ -20,15 +20,41 @@
    payments.service_order_id passou a ser opcional (migration
    20260913080000) pra permitir "RECEBIMENTO AVULSO" (venda de balcão
    sem OS vinculada, ex.: peça avulsa) -- a mesma migration adicionou
-   payments.company_id (agora a base real do RLS de payments) e por
-   isso window.vxRegisterPayment (os-detail-v0812.js) também passou a
-   enviar esse campo. */
+   payments.company_id (agora a base real do RLS de payments).
+
+   Fase 2 (decisão do usuário): parar de gravar payments por INSERT
+   direto do frontend -- toda criação passa por rpc/register_payment
+   (valida empresa ativa, OS×empresa, forma de pagamento e permissão no
+   servidor) e todo estorno por rpc/reverse_payment (nunca DELETE/
+   UPDATE do valor original -- cria uma NOVA transação negativa
+   vinculada via reversal_of_payment_id). O status 'ESTORNO' do estorno
+   NÃO entra na lista de status excluídos do extrato/totais de
+   propósito -- é o valor negativo dele que zera o líquido
+   automaticamente nas somas abaixo, sem precisar de nenhum caso
+   especial.
+
+   Fase 3 (etapas 7-9): tela reconstruída como extrato operacional --
+   header identifica a EMPRESA ATIVA (nunca Loja/Serra/Vitória: essas
+   são EMPRESAS distintas, cada uma só vê a própria); filtros adicionais
+   por usuário/forma/situação; colunas Usuário e Situação; clique na
+   linha abre um DRAWER de detalhe (nunca oferece EXCLUIR pra um
+   RECEBIDO -- só Abrir OS/Comprovante/Auditoria/Estornar, cada um
+   condicionado ao que faz sentido pra aquela transação); estorno
+   passou de prompt() pra um modal próprio com valor editável (parcial
+   nativo) + motivo obrigatório, igual ao padrão adotado em
+   vxOpenReversePayment (os-detail-v0812.js). */
 (function () {
   const $ = (s, r = document) => r.querySelector(s);
   const CANCELLED = ['CANCELADO', 'CANCELADA', 'ESTORNADO', 'ESTORNADA'];
-  const isDiscount = (m) => up(m) === 'DESCONTO';
+  // Achado (revisão independente do Financeiro fase 2): register_payment
+  // agora grava status='DESCONTO' pra pagamentos com payment_methods.
+  // is_discount (migration 20260913100000) -- sinal robusto que não
+  // depende do nome exato do método. Checado junto com o método por
+  // compatibilidade com linhas gravadas antes dessa migration.
+  const isDiscount = (p) => up(p?.method) === 'DESCONTO' || up(p?.status) === 'DESCONTO';
   const isCancelled = (s) => CANCELLED.includes(up(s));
   const hhmm = (v) => (v ? new Date(v).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—');
+  const dtFull = (v) => (v ? new Date(v).toLocaleString('pt-BR') : '—');
   const isoDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
   const endOfDay = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; };
@@ -44,6 +70,29 @@
     return 'Outros';
   }
 
+  // Situação exibida por linha -- nunca string-matching solto: reversal
+  // via reversal_of_payment_id (é a própria transação de estorno) e
+  // reversal_state (marcado só na linha ORIGINAL) são os dois sinais
+  // estruturais gravados pelas RPCs.
+  const SITUACAO_LABEL = { RECEBIDO: 'RECEBIDO', ESTORNO: 'ESTORNO', PARCIAL_ESTORNADO: 'PARCIAL ESTORNADO', ESTORNADO: 'ESTORNADO' };
+  function situacaoOf(p) {
+    if (p.reversal_of_payment_id) return 'ESTORNO';
+    if (p.reversal_state === 'TOTAL') return 'ESTORNADO';
+    if (p.reversal_state === 'PARCIAL') return 'PARCIAL_ESTORNADO';
+    return 'RECEBIDO';
+  }
+
+  // Quanto ainda pode ser estornado de p (amount - soma dos estornos já
+  // ligados a ele). Único ponto de cálculo -- usado pela linha (menu ⋮),
+  // pelo drawer e pelo modal de estorno, pra nunca divergir entre eles.
+  function remainingFor(p) {
+    const already = ui.rows.filter((x) => x.reversal_of_payment_id === p.id).reduce((s, x) => s + Math.abs(Number(x.amount || 0)), 0);
+    return Number(p.amount || 0) - already;
+  }
+  function canReverseRow(p) {
+    return !p.reversal_of_payment_id && remainingFor(p) > 0.004;
+  }
+
   function rangeFor(preset) {
     const now = new Date();
     if (preset === 'hoje') return [startOfDay(now), endOfDay(now)];
@@ -55,11 +104,22 @@
 
   // Estado só desta tela (filtro/busca) -- nunca em window.state, que é o
   // contrato global do app (ver PWA-0.1).
-  let ui = { range: 'hoje', from: null, to: null, q: '', rows: [], methods: [] };
+  let ui = { range: 'hoje', from: null, to: null, q: '', userId: '', method: '', situacao: '', rows: [], methods: [], users: [], companyName: 'EMPRESA' };
 
   async function loadPaymentMethods() {
     const rows = await api(`payment_methods?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=sort_order`).catch(() => []);
     return rows?.length ? rows : [{ name: 'DINHEIRO' }, { name: 'PIX' }, { name: 'CARTÃO DE DÉBITO' }, { name: 'CARTÃO DE CRÉDITO' }, { name: 'CHEQUE' }, { name: 'TRANSFERÊNCIA' }];
+  }
+
+  async function loadCompanyName() {
+    const id = state.profile?.active_company_id;
+    if (!id) return 'EMPRESA';
+    const rows = await api(`companies?id=eq.${id}&select=trade_name,legal_name`).catch(() => []);
+    return rows?.[0]?.trade_name || rows?.[0]?.legal_name || 'EMPRESA';
+  }
+
+  async function loadUsers() {
+    return api('profiles?select=id,full_name&active=eq.true&order=full_name').catch(() => []);
   }
 
   async function loadRows() {
@@ -70,8 +130,12 @@
     } else {
       [from, to] = rangeFor(ui.range) || rangeFor('hoje');
     }
-    const rows = await api(`payments?paid_at=gte.${encodeURIComponent(from.toISOString())}&paid_at=lte.${encodeURIComponent(to.toISOString())}&select=*,service_orders(os_number,clients(name,document))&order=paid_at.desc&limit=2000`).catch(() => []);
-    return (rows || []).filter((p) => !isCancelled(p.status) && !isDiscount(p.method));
+    // company_id explícito (não confiar só na RLS): um usuário pode ter
+    // acesso a mais de uma empresa (user_companies) -- aqui só a EMPRESA
+    // ATIVA importa, nunca uma Loja/seletor Serra×Vitória (essas são
+    // empresas distintas, cada uma só enxerga a própria).
+    const rows = await api(`payments?company_id=eq.${state.profile?.active_company_id}&paid_at=gte.${encodeURIComponent(from.toISOString())}&paid_at=lte.${encodeURIComponent(to.toISOString())}&select=*,service_orders(os_number,client_id,clients(name,document)),profiles(full_name)&order=paid_at.desc&limit=2000`).catch(() => []);
+    return (rows || []).filter((p) => !isCancelled(p.status) && !isDiscount(p));
   }
 
   function matchesSearch(p, q) {
@@ -91,32 +155,54 @@
   function rowHtml(p) {
     const os = p.service_orders?.os_number;
     const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO';
-    return `<tr class="${os ? '' : 'vx-fin-avulso-row'}" ${os ? `onclick="render('os:${p.service_order_id}')"` : ''}>
+    const isReversal = !!p.reversal_of_payment_id;
+    const situacao = situacaoOf(p);
+    // Só a linha TOTALMENTE estornada fica riscada/atenuada por inteiro
+    // (ela deixou de existir financeiramente) -- uma PARCIAL_ESTORNADO
+    // ainda representa dinheiro de verdade (o restante não estornado) e
+    // continua contando nos totais por esse restante, então não é
+    // riscada. A célula de Situação nunca é riscada (precisa continuar
+    // legível pra dizer exatamente o que aconteceu).
+    const fullyReversed = situacao === 'ESTORNADO';
+    const canRev = canReverseRow(p);
+    return `<tr class="${os ? '' : 'vx-fin-avulso-row'}${fullyReversed ? ' vx-fin-row-reversed' : ''}" onclick="vxFinOpenDrawer('${p.id}')">
       <td>${hhmm(p.paid_at)}</td>
       <td>${os ? esc(os) : '—'}</td>
       <td>${esc(cliente)}</td>
       <td>${esc(p.notes || '—')}</td>
       <td><span class="vx-fin-method-tag">${esc(p.method)}</span></td>
-      <td class="vx-fin-amount">${money(p.amount)}</td>
+      <td class="vx-fin-amount ${isReversal ? 'vx-fin-reversal-tag' : ''}">${money(p.amount)}</td>
+      <td>${esc(p.profiles?.full_name || '—')}</td>
+      <td class="vx-fin-situacao-cell"><span class="vx-fin-situacao vx-fin-situacao-${situacao.toLowerCase()}">${SITUACAO_LABEL[situacao]}</span></td>
+      <td class="vx-fin-actions-cell" onclick="event.stopPropagation()">
+        <button type="button" class="vx-fin-kebab" onclick="vxFinToggleMenu('${p.id}')" aria-label="Ações">⋮</button>
+        <div class="vx-fin-menu" id="vxFinMenu-${p.id}" hidden>
+          <button type="button" onclick="vxFinOpenDrawer('${p.id}')">Ver detalhes</button>
+          ${canRev ? `<button type="button" class="vx-fin-menu-danger" onclick="vxFinQuickReverse('${p.id}')">Estornar recebimento</button>` : ''}
+        </div>
+      </td>
     </tr>`;
   }
 
   function totalsHtml(t) {
     return `<div class="vx-fin-totals-grid">${BUCKETS.map((b) => `<div class="vx-fin-total-row"><span>${b}</span><b>${money(t.totals[b])}</b></div>`).join('')}</div>
-      <div class="vx-fin-total-line"><span>TOTAL</span><b>${money(t.total)}</b></div>
-      <div class="vx-fin-count">${t.count} recebimento${t.count === 1 ? '' : 's'}</div>`;
+      <div class="vx-fin-total-line"><span>TOTAL RECEBIDO</span><b>${money(t.total)}</b></div>
+      <div class="vx-fin-count">${t.count} lançamento${t.count === 1 ? '' : 's'}</div>`;
   }
 
   function filteredRows() {
     const q = up(ui.q);
-    return ui.rows.filter((p) => matchesSearch(p, q));
+    return ui.rows.filter((p) => matchesSearch(p, q)
+      && (!ui.userId || p.created_by === ui.userId)
+      && (!ui.method || up(p.method) === up(ui.method))
+      && (!ui.situacao || situacaoOf(p) === ui.situacao));
   }
 
   function repaint() {
     const rows = filteredRows();
     $('#vxFinRows').innerHTML = rows.length
       ? rows.map(rowHtml).join('')
-      : `<tr><td colspan="6" class="vx-empty">Nenhum recebimento encontrado neste período.</td></tr>`;
+      : `<tr><td colspan="9" class="vx-empty">Nenhum recebimento encontrado neste período.</td></tr>`;
     $('#vxFinTotals').innerHTML = totalsHtml(computeTotals(rows));
   }
 
@@ -142,7 +228,12 @@
     const close = () => bg.remove();
     bg.querySelector('[data-close]').onclick = close;
     bg.addEventListener('click', (e) => { if (e.target === bg) close(); });
-    bg.querySelector('#vxFinAvSave').onclick = async () => {
+    // Mesma chave de idempotência por abertura do modal -- ver
+    // comentário equivalente em vxOpenRegisterPayment (os-detail-v0812.js).
+    const idempotencyKey = (crypto.randomUUID ? crypto.randomUUID() : 'idem-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    const saveBtn = bg.querySelector('#vxFinAvSave');
+    saveBtn.onclick = async () => {
+      if (saveBtn.disabled) return;
       const amount = Number(String($('#vxFinAvAmount').value || '0').replace(',', '.'));
       const method = $('#vxFinAvMethod').value;
       const dateVal = $('#vxFinAvDate').value || isoDate();
@@ -152,32 +243,264 @@
       const paidAt = new Date(dateVal + 'T00:00:00');
       const now = new Date();
       paidAt.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+      saveBtn.disabled = true;
       try {
-        await api('payments', {
+        await api('rpc/register_payment', {
           method: 'POST',
           body: JSON.stringify({
-            service_order_id: null,
-            company_id: state.profile?.active_company_id,
-            amount, method, status: 'RECEBIDO',
-            paid_at: paidAt.toISOString(),
-            notes, created_by: state.session?.user?.id,
+            p_service_order_id: null,
+            p_components: [{ method, amount }],
+            p_notes: notes || null,
+            p_paid_at: paidAt.toISOString(),
+            p_idempotency_key: idempotencyKey,
           }),
         });
         toast('Recebimento avulso registrado.');
         close();
         await reload();
-      } catch (e) { toast('Erro ao registrar recebimento: ' + e.message, 'err'); }
+      } catch (e) { toast('Erro ao registrar recebimento: ' + e.message, 'err'); saveBtn.disabled = false; }
     };
   }
+
+  // ---- Etapa 8: drawer de detalhe da transação ----
+  // "Saldo resultante" é o saldo da OS logo APÓS esta transação -- soma
+  // cumulativa de tudo que já tinha paid_at <= o desta linha (não o
+  // saldo atual da OS, que pode já ter mudado por lançamentos
+  // posteriores).
+  async function computeSaldoResultante(p) {
+    if (!p.service_order_id) return null;
+    const [finRows, parts, payRows] = await Promise.all([
+      api(`os_financial?service_order_id=eq.${p.service_order_id}&select=*`).catch(() => []),
+      api(`os_parts?service_order_id=eq.${p.service_order_id}&select=quantity,unit_value`).catch(() => []),
+      api(`payments?service_order_id=eq.${p.service_order_id}&select=amount,status,method,paid_at`).catch(() => []),
+    ]);
+    const fin = finRows?.[0] || {};
+    const partsTotal = (parts || []).reduce((s, x) => s + Number(x.quantity || 0) * Number(x.unit_value || 0), 0);
+    const budget = partsTotal + Number(fin.labor_value || 0) + Number(fin.freight_value || 0) + Number(fin.auxiliary_material_value || 0) + Number(fin.technical_report_value || 0) - Number(fin.discount_value || 0);
+    const cutoff = new Date(p.paid_at).getTime();
+    const allocated = (payRows || [])
+      .filter((x) => !isCancelled(x.status) && new Date(x.paid_at).getTime() <= cutoff)
+      .reduce((s, x) => s + Number(x.amount || 0), 0);
+    return budget - allocated;
+  }
+
+  async function loadAuditLog(paymentId) {
+    return api(`audit_log?entity_type=eq.PAYMENT&entity_id=eq.${paymentId}&select=*,profiles(full_name)&order=created_at.desc`).catch(() => []);
+  }
+
+  function auditActionLabel(a) {
+    if (a === 'REGISTRAR_RECEBIMENTO') return 'Recebimento registrado';
+    if (a === 'ESTORNAR_RECEBIMENTO') return 'Estorno registrado';
+    return a || '—';
+  }
+
+  function closeDrawer() { document.querySelector('#vxFinDrawer')?.remove(); }
+
+  function closeAllMenus() { document.querySelectorAll('.vx-fin-menu').forEach((m) => { m.hidden = true; }); }
+  window.vxFinToggleMenu = function (id) {
+    const target = document.querySelector(`#vxFinMenu-${id}`);
+    const willOpen = !!(target && target.hidden);
+    closeAllMenus();
+    if (target) target.hidden = !willOpen;
+  };
+  window.vxFinQuickReverse = function (id) {
+    closeAllMenus();
+    const p = ui.rows.find((x) => x.id === id);
+    if (!p) return;
+    const remaining = remainingFor(p);
+    if (!canReverseRow(p)) return toast('Este lançamento não pode ser estornado.', 'err');
+    openReverseModal(p, remaining);
+  };
+
+  window.vxFinOpenDrawer = async function (paymentId) {
+    const p = ui.rows.find((x) => x.id === paymentId);
+    if (!p) return;
+    closeDrawer();
+    closeAllMenus();
+    const os = p.service_orders?.os_number;
+    const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO (sem OS)';
+    const situacao = situacaoOf(p);
+    const remaining = remainingFor(p);
+    const canReverse = canReverseRow(p);
+    // Estorno(s) já aplicados a ESTE lançamento (se for o original) --
+    // pra "Detalhes do estorno" (quem estornou, quando, motivo) sem
+    // precisar abrir a transação de estorno separadamente.
+    const reversalsOfThis = p.reversal_state
+      ? ui.rows.filter((x) => x.reversal_of_payment_id === p.id).sort((a, b) => new Date(a.paid_at) - new Date(b.paid_at))
+      : [];
+
+    const bg = document.createElement('div');
+    bg.id = 'vxFinDrawer';
+    bg.className = 'vx-modal-bg';
+    bg.innerHTML = `<div class="vx-modal vx-fin-drawer">
+      <h3>${situacao === 'ESTORNADO' ? 'ESTORNADO — ' : ''}DETALHE DO LANÇAMENTO</h3>
+      <div class="vx-fin-drawer-grid">
+        <div><span>OS</span><b>${os ? esc(os) : 'SEM OS (AVULSO)'}</b></div>
+        <div><span>CLIENTE</span><b>${esc(cliente)}</b></div>
+        <div><span>VALOR ORIGINAL</span><b class="${Number(p.amount) < 0 ? 'vx-fin-reversal-tag' : ''}">${money(p.amount)}</b></div>
+        <div><span>FORMA</span><b>${esc(p.method)}</b></div>
+        <div><span>RECEBIDO EM</span><b>${dtFull(p.paid_at)}</b></div>
+        <div><span>RECEBIDO POR</span><b>${esc(p.profiles?.full_name || '—')}</b></div>
+        <div><span>EMPRESA</span><b>${esc(ui.companyName)}</b></div>
+        <div><span>OPERATION ID</span><b class="vx-fin-mono">${esc(p.operation_id || '—')}</b></div>
+        <div><span>SITUAÇÃO</span><b>${SITUACAO_LABEL[situacao]}${p.reversal_state === 'PARCIAL' ? ` (restam ${money(remaining)} p/ estornar)` : ''}</b></div>
+        <div><span>VALOR DA OS</span><b id="vxFinDrawerBudget">carregando…</b></div>
+        <div><span>SALDO RESULTANTE</span><b id="vxFinDrawerSaldo">carregando…</b></div>
+      </div>
+      <div><span class="vx-fin-drawer-label">OBSERVAÇÃO</span><p class="vx-fin-drawer-notes">${esc(p.notes || '—')}</p></div>
+      ${p.reversal_of_payment_id ? `<div class="vx-fin-drawer-note-box">Este lançamento é o ESTORNO de outra transação (id ${esc(p.reversal_of_payment_id)}).</div>` : ''}
+      ${reversalsOfThis.length ? `<div class="vx-fin-drawer-reversals"><h4>ESTORNO${reversalsOfThis.length > 1 ? 'S' : ''} DESTE LANÇAMENTO</h4>${reversalsOfThis.map((r) => `
+        <div class="vx-fin-reversal-item">
+          <div><span>VALOR ESTORNADO</span><b class="vx-fin-reversal-tag">${money(Math.abs(r.amount))}</b></div>
+          <div><span>ESTORNADO POR</span><b>${esc(r.profiles?.full_name || '—')}</b></div>
+          <div><span>ESTORNADO EM</span><b>${dtFull(r.paid_at)}</b></div>
+          <div><span>MOTIVO / OBSERVAÇÃO</span><b>${esc(r.notes || '—')}</b></div>
+        </div>`).join('')}</div>` : ''}
+      <div id="vxFinDrawerAudit" class="vx-fin-drawer-audit"></div>
+      <div class="vx-modal-actions" style="justify-content:space-between;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${os ? `<button type="button" id="vxFinDrawerOpenOs">ABRIR OS</button>` : ''}
+          <button type="button" id="vxFinDrawerReceipt">COMPROVANTE</button>
+          <button type="button" id="vxFinDrawerAuditBtn">AUDITORIA</button>
+          ${canReverse ? `<button type="button" class="vx-orange-btn" id="vxFinDrawerReverse">ESTORNAR RECEBIMENTO</button>` : ''}
+        </div>
+        <button type="button" data-close>FECHAR</button>
+      </div>
+    </div>`;
+    document.body.appendChild(bg);
+    bg.querySelector('[data-close]').onclick = closeDrawer;
+    bg.addEventListener('click', (e) => { if (e.target === bg) closeDrawer(); });
+    if (os) bg.querySelector('#vxFinDrawerOpenOs').onclick = () => { closeDrawer(); render(`os:${p.service_order_id}`); };
+    bg.querySelector('#vxFinDrawerReceipt').onclick = () => openReceipt(p, cliente, os);
+    bg.querySelector('#vxFinDrawerAuditBtn').onclick = async () => {
+      const box = bg.querySelector('#vxFinDrawerAudit');
+      box.innerHTML = 'Carregando auditoria…';
+      const logs = await loadAuditLog(p.id);
+      box.innerHTML = logs.length
+        ? `<h4>AUDITORIA</h4><ul>${logs.map((l) => `<li>${dtFull(l.created_at)} — ${esc(auditActionLabel(l.action))} — ${esc(l.profiles?.full_name || '—')}</li>`).join('')}</ul>`
+        : '<h4>AUDITORIA</h4><p class="vx-empty">Nenhum registro de auditoria encontrado.</p>';
+    };
+    if (canReverse) bg.querySelector('#vxFinDrawerReverse').onclick = () => openReverseModal(p, remaining);
+
+    computeSaldoResultante(p).then((saldo) => {
+      if (saldo === null) {
+        bg.querySelector('#vxFinDrawerBudget').textContent = '—';
+        bg.querySelector('#vxFinDrawerSaldo').textContent = '—';
+      } else {
+        bg.querySelector('#vxFinDrawerSaldo').textContent = money(saldo);
+      }
+    });
+    // Valor da OS (orçamento) mostrado à parte -- reaproveita a mesma
+    // consulta pra não duplicar chamadas de rede.
+    if (p.service_order_id) {
+      Promise.all([
+        api(`os_financial?service_order_id=eq.${p.service_order_id}&select=*`).catch(() => []),
+        api(`os_parts?service_order_id=eq.${p.service_order_id}&select=quantity,unit_value`).catch(() => []),
+      ]).then(([finRows, parts]) => {
+        const fin = finRows?.[0] || {};
+        const partsTotal = (parts || []).reduce((s, x) => s + Number(x.quantity || 0) * Number(x.unit_value || 0), 0);
+        const budget = partsTotal + Number(fin.labor_value || 0) + Number(fin.freight_value || 0) + Number(fin.auxiliary_material_value || 0) + Number(fin.technical_report_value || 0) - Number(fin.discount_value || 0);
+        bg.querySelector('#vxFinDrawerBudget').textContent = money(budget);
+      });
+    } else {
+      bg.querySelector('#vxFinDrawerBudget').textContent = '—';
+    }
+  };
+
+  function openReceipt(p, cliente, os) {
+    document.querySelector('#vxFinReceipt')?.remove();
+    const box = document.createElement('div');
+    box.id = 'vxFinReceipt';
+    box.className = 'vx-fin-receipt-print';
+    box.innerHTML = `<div class="vx-fin-receipt-box">
+      <h2>${esc(ui.companyName)}</h2>
+      <h3>COMPROVANTE DE RECEBIMENTO</h3>
+      <p>OS: ${os ? esc(os) : 'AVULSO (SEM OS)'}</p>
+      <p>Cliente: ${esc(cliente)}</p>
+      <p>Valor: ${money(p.amount)}</p>
+      <p>Forma: ${esc(p.method)}</p>
+      <p>Data/Hora: ${dtFull(p.paid_at)}</p>
+      <p>Usuário: ${esc(p.profiles?.full_name || '—')}</p>
+      <p>Observação: ${esc(p.notes || '—')}</p>
+      <div class="vx-fin-receipt-actions"><button type="button" onclick="window.print()">IMPRIMIR</button><button type="button" onclick="document.querySelector('#vxFinReceipt').remove()">FECHAR</button></div>
+    </div>`;
+    document.body.appendChild(box);
+  }
+
+  // ---- Estorno (modal próprio, valor editável -- parcial nativo) ----
+  // Motivos fixos pedidos pelo usuário (2026-09-13, "Implementar estorno
+  // de recebimentos") -- concatenados com a observação livre num único
+  // texto (reverse_payment só tem UM parâmetro p_reason; reaproveitar
+  // esse contrato existente em vez de mudar a RPC pra separar os dois
+  // campos no banco).
+  const REVERSAL_REASONS = ['Lançamento duplicado', 'Forma de pagamento incorreta', 'Valor incorreto', 'Pagamento não realizado/confirmado', 'Outro'];
+
+  function openReverseModal(p, remaining) {
+    document.querySelector('#vxFinReverseModal')?.remove();
+    const os = p.service_orders?.os_number;
+    const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO';
+    const bg = document.createElement('div');
+    bg.id = 'vxFinReverseModal';
+    bg.className = 'vx-modal-bg';
+    bg.innerHTML = `<div class="vx-modal vx-fin-avulso-modal vx-fin-reverse-modal">
+      <h3>Estornar recebimento</h3>
+      <div class="vx-fin-reverse-summary">
+        <div><span>OS</span><b>${os ? esc(os) : 'SEM OS (AVULSO)'}</b></div>
+        <div><span>Cliente</span><b>${esc(cliente)}</b></div>
+        <div><span>Valor</span><b>${money(p.amount)}</b></div>
+        <div><span>Forma</span><b>${esc(p.method)}</b></div>
+        <div><span>Data/hora</span><b>${dtFull(p.paid_at)}</b></div>
+      </div>
+      <div class="vx-field"><label>VALOR A ESTORNAR (R$) — disponível: ${money(remaining)}</label><input class="vx-control" type="number" step=".01" min="0.01" max="${remaining}" id="vxFinRevAmount" value="${remaining.toFixed(2)}"></div>
+      <div class="vx-field"><label>MOTIVO *</label><select class="vx-control" id="vxFinRevReasonSelect"><option value="">Selecione...</option>${REVERSAL_REASONS.map((r) => `<option>${esc(r)}</option>`).join('')}</select></div>
+      <div class="vx-field"><label>OBSERVAÇÃO COMPLEMENTAR</label><textarea class="vx-control" id="vxFinRevNotes" rows="2" placeholder="Opcional"></textarea></div>
+      <p class="vx-fin-reverse-warning">Este recebimento deixará de compor os valores financeiros (totais, saldo da OS e relatórios). O lançamento original é preservado no histórico, marcado como estornado.</p>
+      <div class="vx-modal-actions"><button type="button" data-close>Cancelar</button><button type="button" class="vx-orange-btn" id="vxFinRevConfirm">Confirmar estorno</button></div>
+    </div>`;
+    document.body.appendChild(bg);
+    const close = () => bg.remove();
+    bg.querySelector('[data-close]').onclick = close;
+    bg.addEventListener('click', (e) => { if (e.target === bg) close(); });
+    const confirmBtn = bg.querySelector('#vxFinRevConfirm');
+    confirmBtn.onclick = async () => {
+      // Trava de duplo-clique: o backend (lock FOR UPDATE + soma dos
+      // estornos já ligados) já impede um estorno acima do disponível
+      // mesmo que duas chamadas cheguem quase juntas -- mas desabilitar
+      // aqui evita a segunda chamada de rede inútil/confusa.
+      if (confirmBtn.disabled) return;
+      const amount = Number(String($('#vxFinRevAmount', bg).value || '0').replace(',', '.'));
+      const reasonPick = $('#vxFinRevReasonSelect', bg).value;
+      const notes = ($('#vxFinRevNotes', bg).value || '').trim();
+      if (!(amount > 0)) return toast('Informe um valor maior que zero.', 'err');
+      if (amount > remaining + 0.004) return toast(`Valor não pode ultrapassar o disponível (${money(remaining)}).`, 'err');
+      if (!reasonPick) return toast('Selecione o motivo do estorno.', 'err');
+      const fullReason = notes ? `${reasonPick} — ${notes}` : reasonPick;
+      if (!confirm(`Confirmar estorno de ${money(amount)}? O recebimento deixará de compor os valores financeiros.`)) return;
+      confirmBtn.disabled = true;
+      try {
+        await api('rpc/reverse_payment', { method: 'POST', body: JSON.stringify({ p_payment_id: p.id, p_reason: fullReason, p_amount: amount }) });
+        toast('Estorno registrado.');
+        close();
+        closeDrawer();
+        await reload();
+      } catch (e) { toast('Erro ao estornar: ' + e.message, 'err'); confirmBtn.disabled = false; }
+    };
+  }
+
+  // Fecha qualquer menu ⋮ aberto ao clicar fora dele -- os próprios
+  // botões do menu chamam vxFinToggleMenu/vxFinQuickReverse a partir de
+  // uma célula com stopPropagation, então esse clique nunca chega aqui
+  // pra se fechar sozinho antes de agir.
+  document.addEventListener('click', closeAllMenus);
 
   window.renderFinance = async function () {
     if (typeof can === 'function' && !can('financeiro')) {
       $('#app').innerHTML = `<div class="card error-card"><h3>Acesso restrito</h3><p>Seu perfil não tem acesso ao Financeiro.</p></div>`;
       return;
     }
-    ui.methods = await loadPaymentMethods();
+    [ui.methods, ui.companyName, ui.users] = await Promise.all([loadPaymentMethods(), loadCompanyName(), loadUsers()]);
     $('#app').innerHTML = `<div class="vx-fin-wrap">
-      <div class="vx-fin-head"><div><h2>RECEBIMENTOS</h2><span class="vx-fin-date">${new Date().toLocaleDateString('pt-BR')}</span></div>
+      <div class="vx-fin-head"><div><h2>RECEBIMENTOS · ${esc(ui.companyName)}</h2><span class="vx-fin-date">${new Date().toLocaleDateString('pt-BR')}</span></div>
         <button type="button" class="vx-fin-btn primary" id="vxFinNewAvulso">+ RECEBIMENTO AVULSO</button></div>
       <div class="vx-fin-filters">
         <div class="vx-fin-chips">${['hoje', 'ontem', 'semana', 'mes', 'periodo'].map((r) => `<button type="button" data-range="${r}" class="${r === ui.range ? 'active' : ''}">${{ hoje: 'Hoje', ontem: 'Ontem', semana: 'Semana', mes: 'Mês', periodo: 'Período' }[r]}</button>`).join('')}</div>
@@ -188,7 +511,12 @@
         </div>
         <div class="vx-fin-search"><input class="vx-control" id="vxFinSearch" placeholder="🔎 Pesquisar OS, cliente, CPF/CNPJ..." value="${esc(ui.q)}"></div>
       </div>
-      <div class="vx-fin-table-wrap"><table class="vx-fin-table"><thead><tr><th>Hora</th><th>OS</th><th>Cliente</th><th>Descrição</th><th>Forma</th><th>Valor</th></tr></thead><tbody id="vxFinRows"></tbody></table></div>
+      <div class="vx-fin-filters">
+        <select class="vx-control" id="vxFinFilterUser"><option value="">Usuário (todos)</option>${ui.users.map((u) => `<option value="${u.id}">${esc(u.full_name)}</option>`).join('')}</select>
+        <select class="vx-control" id="vxFinFilterMethod"><option value="">Forma (todas)</option>${ui.methods.filter((m) => up(m.name) !== 'DESCONTO').map((m) => `<option>${esc(m.name)}</option>`).join('')}</select>
+        <select class="vx-control" id="vxFinFilterSituacao"><option value="">Situação (todas)</option><option value="RECEBIDO">Recebido</option><option value="PARCIAL_ESTORNADO">Parcial estornado</option><option value="ESTORNADO">Estornado</option><option value="ESTORNO">Estorno (lançamento)</option></select>
+      </div>
+      <div class="vx-fin-table-wrap"><table class="vx-fin-table"><thead><tr><th>Hora</th><th>OS</th><th>Cliente</th><th>Descrição</th><th>Forma</th><th>Valor</th><th>Usuário</th><th>Situação</th><th></th></tr></thead><tbody id="vxFinRows"></tbody></table></div>
       <div class="vx-fin-totals-box"><h3>RECEBIMENTOS DO PERÍODO</h3><div id="vxFinTotals"></div></div>
     </div>`;
 
@@ -200,6 +528,9 @@
     });
     $('#vxFinApplyPeriod').onclick = () => { ui.from = $('#vxFinFrom').value; ui.to = $('#vxFinTo').value; reload(); };
     $('#vxFinSearch').oninput = (e) => { ui.q = e.target.value; repaint(); };
+    $('#vxFinFilterUser').onchange = (e) => { ui.userId = e.target.value; repaint(); };
+    $('#vxFinFilterMethod').onchange = (e) => { ui.method = e.target.value; repaint(); };
+    $('#vxFinFilterSituacao').onchange = (e) => { ui.situacao = e.target.value; repaint(); };
     $('#vxFinNewAvulso').onclick = openAvulsoModal;
 
     await reload();

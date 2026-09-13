@@ -15,7 +15,7 @@
     {title:'Ordens de Serviço',items:[['os.view','Visualizar O.S.'],['os.create','Criar O.S.'],['os.edit','Editar O.S.'],['os.cancel','Cancelar O.S.'],['os.status','Alterar situação da O.S.']]},
     {title:'Whirlpool',items:[['whirlpool.view','Visualizar modo Whirlpool'],['whirlpool.edit','Preencher / editar atendimento Whirlpool']]},
     {title:'Agenda',items:[['agenda.view_all','Visualizar todas as agendas'],['agenda.edit','Agendar / reagendar atendimentos'],['agenda.block','Bloquear períodos de agenda']]},
-    {title:'Financeiro',critical:true,items:[['financeiro.view','Visualizar financeiro'],['financeiro.edit','Incluir / alterar lançamentos financeiros']]},
+    {title:'Financeiro',critical:true,items:[['financeiro.view','Visualizar financeiro'],['financeiro.edit','Incluir / alterar lançamentos financeiros'],['financeiro.reverse','Estornar recebimentos']]},
     {title:'Estoque',items:[['estoque.view','Visualizar estoque'],['estoque.edit','Movimentar / alterar estoque']]},
     {title:'Relatórios',items:[['relatorios.view','Visualizar e gerar relatórios']]},
     {title:'Configurações e Segurança',critical:true,items:[['config.view','Acessar Configurações'],['config.users','Gerenciar usuários e permissões']]}
@@ -26,7 +26,7 @@
     ATENDENTE:['os.view','os.create','os.edit','os.status','whirlpool.view','agenda.view_all','agenda.edit','estoque.view','relatorios.view'],
     TECNICO:['os.view','os.edit','whirlpool.view','whirlpool.edit','agenda.edit','estoque.view'],
     ESTOQUE:['estoque.view','estoque.edit','os.view'],
-    FINANCEIRO:['financeiro.view','financeiro.edit','relatorios.view','os.view']
+    FINANCEIRO:['financeiro.view','financeiro.edit','financeiro.reverse','relatorios.view','os.view']
   };
 
   function matrixTable(){

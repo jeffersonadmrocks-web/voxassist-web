@@ -626,7 +626,11 @@
     // contando em "validPayments" (paidByOrder, saldo já coberto de uma
     // OS) -- senão uma OS fechada com desconto pareceria eternamente
     // "a receber" pelo valor que já foi perdoado.
-    const revenuePayments=validPayments.filter(p=>norm(p.method)!=='DESCONTO');
+    // Achado (revisão independente do Financeiro fase 2): register_payment
+    // agora grava status='DESCONTO' pra essas linhas (payment_methods.
+    // is_discount, migration 20260913100000) -- checado junto com o
+    // método por compatibilidade com linhas anteriores a essa migration.
+    const revenuePayments=validPayments.filter(p=>norm(p.method)!=='DESCONTO'&&norm(p.status)!=='DESCONTO');
     const receivedMonth=revenuePayments.filter(p=>new Date(p.paid_at)>=month0).reduce((s,p)=>s+Number(p.amount||0),0);
 
     // Resumo Financeiro -- 6 métricas. Definição original dada pelo

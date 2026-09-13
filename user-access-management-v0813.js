@@ -20,10 +20,17 @@
   // financeiro.export, relatorios.export, config.companies) mantidas --
   // não removem nenhuma permissão já concedida, só não colidem mais com
   // as dos outros 2 arquivos.
+  // financeiro.reverse ("Estornar recebimentos") adicionado em
+  // 2026-09-13 (revisão do Financeiro fase 2, register_payment/
+  // reverse_payment -- ver migration 20260913100000): reaproveita este
+  // MESMO catálogo (is_valid_permission_key, no banco, atualizado
+  // junto) em vez de inventar um novo -- GESTOR já tem por papel
+  // (preset "*"), demais perfis precisam ser liberados aqui
+  // explicitamente, já que estornar é mais sensível que só lançar.
   const perms=[
     ['OS','os.view','Visualizar O.S.'],['OS','os.create','Criar O.S.'],['OS','os.edit','Alterar O.S.'],['OS','os.status','Alterar situação'],['OS','os.cancel','Cancelar O.S.'],['OS','os.print','Imprimir / PDF'],['OS','os.financial','Acessar financeiro da O.S.'],['OS','whirlpool.view','Visualizar modo Whirlpool'],['OS','whirlpool.edit','Preencher / editar atendimento Whirlpool'],
     ['AGENDA','agenda.view_all','Visualizar todas as agendas'],['AGENDA','agenda.view_own','Visualizar própria agenda'],['AGENDA','agenda.edit','Agendar / reagendar'],['AGENDA','agenda.drag','Arrastar entre técnicos / ordem'],['AGENDA','agenda.block','Bloquear períodos'],
-    ['FINANCEIRO','financeiro.view','Visualizar financeiro'],['FINANCEIRO','financeiro.edit','Lançar / alterar recebimentos'],['FINANCEIRO','financeiro.export','Exportar financeiro'],
+    ['FINANCEIRO','financeiro.view','Visualizar financeiro'],['FINANCEIRO','financeiro.edit','Lançar / alterar recebimentos'],['FINANCEIRO','financeiro.reverse','Estornar recebimentos'],['FINANCEIRO','financeiro.export','Exportar financeiro'],
     ['ESTOQUE','estoque.view','Visualizar estoque'],['ESTOQUE','estoque.edit','Movimentar estoque'],
     ['RELATÓRIOS','relatorios.view','Visualizar relatórios'],['RELATÓRIOS','relatorios.export','Exportar relatórios'],
     ['CONFIGURAÇÕES','config.view','Acessar configurações'],['CONFIGURAÇÕES','config.users','Gerenciar usuários'],['CONFIGURAÇÕES','config.companies','Gerenciar empresas / lojas']
@@ -33,7 +40,7 @@
     'ATENDENTE PADRÃO':['os.view','os.create','os.edit','os.status','os.print','os.financial','whirlpool.view','whirlpool.edit','agenda.view_all','agenda.edit','agenda.drag','relatorios.view'],
     'TÉCNICO EXTERNO':['os.view','os.edit','whirlpool.view','whirlpool.edit','agenda.view_own'],
     'TÉCNICO OFICINA':['os.view','os.edit','os.status','os.print','estoque.view'],
-    'FINANCEIRO':['financeiro.view','financeiro.edit','financeiro.export','os.view','os.financial','relatorios.view'],
+    'FINANCEIRO':['financeiro.view','financeiro.edit','financeiro.reverse','financeiro.export','os.view','os.financial','relatorios.view'],
     'ESTOQUE':['estoque.view','estoque.edit','os.view'],
     'PERSONALIZADO':[]
   };

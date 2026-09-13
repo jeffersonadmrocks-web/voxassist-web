@@ -14,6 +14,7 @@
 .vx-fin-period-inputs button{border:1px solid #0d4b84;background:#0d4b84;color:#fff;border-radius:7px;padding:8px 12px;font-weight:800;font-size:11px}
 .vx-fin-search{flex:1;min-width:220px}
 .vx-fin-search input{width:100%;border:1px solid #cbd7e3;border-radius:8px;padding:9px 12px}
+.vx-fin-filters select.vx-control{border:1px solid #cbd7e3;border-radius:8px;padding:9px 12px;background:#fff;color:#172033;min-width:170px}
 
 .vx-fin-table-wrap{width:100%;overflow:auto;border-radius:12px;border:1px solid #e2e8ef;background:#fff;margin-bottom:14px}
 .vx-fin-table{border-collapse:collapse;width:100%}
@@ -24,7 +25,78 @@
 .vx-fin-avulso-row{background:#fbfcfe}
 .vx-fin-amount{font-weight:800;color:#0b6f3c;text-align:right}
 .vx-fin-method-tag{display:inline-block;background:#eaf2fb;color:#245984;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:800}
+.vx-fin-reversal-tag{color:#a63131;font-weight:800}
+.vx-fin-amount.vx-fin-reversal-tag{color:#a63131}
+.vx-fin-reverse-btn{border:1px solid #a63131;background:#fff;color:#a63131;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:800;white-space:nowrap}
+.vx-fin-reverse-btn:hover{background:#fdf2f2}
 .vx-empty{text-align:center;color:#8494a6;padding:22px 0!important;white-space:normal!important}
+
+/* Linha totalmente estornada: risco + atenuação no dado em si, mas a
+   célula de Situação (badge "ESTORNADO") e a coluna de ações continuam
+   com contraste normal -- "isso existiu, mas foi invalidado", nunca
+   ilegível nem escondido. */
+.vx-fin-row-reversed{opacity:.55}
+.vx-fin-row-reversed td{text-decoration:line-through}
+.vx-fin-row-reversed td.vx-fin-situacao-cell,.vx-fin-row-reversed td.vx-fin-actions-cell{text-decoration:none;opacity:1}
+.vx-fin-row-reversed .vx-fin-amount{color:#8a8f96}
+
+.vx-fin-actions-cell{position:relative;text-align:right;white-space:nowrap}
+.vx-fin-kebab{border:1px solid #dfe6ee;background:#fff;color:#5c6e82;border-radius:7px;width:30px;height:30px;font-size:16px;font-weight:800;line-height:1}
+.vx-fin-kebab:hover{background:#f2f6fa}
+.vx-fin-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:20;background:#fff;border:1px solid #dfe6ee;border-radius:9px;box-shadow:0 10px 28px #0c234022;min-width:180px;overflow:hidden}
+.vx-fin-menu button{display:block;width:100%;text-align:left;padding:10px 14px;font-size:12.5px;font-weight:600;color:#172033;background:#fff;border:0;border-bottom:1px solid #f0f3f6}
+.vx-fin-menu button:last-child{border-bottom:0}
+.vx-fin-menu button:hover{background:#f6f8fb}
+.vx-fin-menu button.vx-fin-menu-danger{color:#a63131}
+
+.vx-fin-reverse-modal{width:min(460px,100%)}
+.vx-fin-reverse-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px 14px;background:#f6f8fb;border:1px solid #edf1f5;border-radius:9px;padding:11px 13px;margin-bottom:12px}
+.vx-fin-reverse-summary div{display:flex;flex-direction:column;gap:2px}
+.vx-fin-reverse-summary span{font-size:9.5px;font-weight:800;color:#8494a6;text-transform:uppercase;letter-spacing:.3px}
+.vx-fin-reverse-summary b{font-size:12.5px;color:#172033}
+.vx-fin-reverse-warning{background:#fdf3e3;color:#a35b00;border-radius:8px;padding:9px 12px;font-size:12px;font-weight:600;line-height:1.5;margin:4px 0 2px}
+
+.vx-fin-drawer-reversals{border-top:1px solid #edf1f5;margin-top:10px;padding-top:10px}
+.vx-fin-drawer-reversals h4{margin:0 0 8px;font-size:11px;color:#a63131;text-transform:uppercase;letter-spacing:.3px}
+.vx-fin-reversal-item{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px 14px;background:#fbeaea;border-radius:8px;padding:9px 12px;margin-bottom:8px}
+.vx-fin-reversal-item div{display:flex;flex-direction:column;gap:2px}
+.vx-fin-reversal-item span{font-size:9.5px;font-weight:800;color:#a35a5a;text-transform:uppercase;letter-spacing:.3px}
+.vx-fin-reversal-item b{font-size:12.5px;color:#5c2323}
+
+.vx-fin-situacao{display:inline-block;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:800}
+.vx-fin-situacao-recebido{background:#e7f6ee;color:#0b6f3c}
+.vx-fin-situacao-estorno{background:#fbeaea;color:#a63131}
+.vx-fin-situacao-estornado{background:#fbeaea;color:#a63131}
+.vx-fin-situacao-parcial_estornado{background:#fdf3e3;color:#a35b00}
+
+.vx-fin-drawer{width:min(620px,100%)}
+.vx-fin-drawer-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px 18px;margin-bottom:14px}
+.vx-fin-drawer-grid div{display:flex;flex-direction:column;gap:3px}
+.vx-fin-drawer-grid span{font-size:10px;font-weight:800;color:#617287;text-transform:uppercase;letter-spacing:.3px}
+.vx-fin-drawer-grid b{font-size:14px;color:#172033}
+.vx-fin-drawer-label{font-size:10px;font-weight:800;color:#617287;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:4px}
+.vx-fin-drawer-notes{margin:0 0 10px;color:#3c4c5e;font-size:13px}
+.vx-fin-drawer-note-box{background:#fdf3e3;color:#a35b00;border-radius:8px;padding:9px 12px;font-size:12px;font-weight:700;margin-bottom:10px}
+.vx-fin-drawer-audit ul{list-style:none;margin:6px 0 0;padding:0;font-size:12px;color:#3c4c5e}
+.vx-fin-drawer-audit li{padding:5px 0;border-bottom:1px solid #edf1f5}
+.vx-fin-drawer-audit h4{margin:10px 0 4px;font-size:11px;color:#5c6e82;text-transform:uppercase;letter-spacing:.3px}
+.vx-fin-mono{font-family:monospace;font-size:11px;word-break:break-all}
+.vx-fin-drawer .vx-modal-actions button{border:1px solid #b9c5d1;background:#fff;padding:8px 12px;font-weight:800;border-radius:7px;font-size:11px}
+.vx-fin-drawer .vx-modal-actions .vx-orange-btn{background:#a35b00;border-color:#a35b00;color:#fff}
+
+.vx-fin-receipt-print{position:fixed;inset:0;background:#0006;z-index:9999;display:grid;place-items:center;padding:16px}
+.vx-fin-receipt-box{width:min(360px,100%);background:#fff;border-radius:14px;padding:22px;box-shadow:0 20px 50px #0004}
+.vx-fin-receipt-box h2{margin:0 0 2px;font-size:16px;color:#0c2340}
+.vx-fin-receipt-box h3{margin:0 0 14px;font-size:12px;color:#5c6e82;text-transform:uppercase;letter-spacing:.4px}
+.vx-fin-receipt-box p{margin:6px 0;font-size:13px;color:#172033}
+.vx-fin-receipt-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.vx-fin-receipt-actions button{border:1px solid #b9c5d1;background:#fff;padding:8px 12px;font-weight:800;border-radius:7px;font-size:11px}
+@media print{
+  body *{visibility:hidden}
+  .vx-fin-receipt-box,.vx-fin-receipt-box *{visibility:visible}
+  .vx-fin-receipt-box{position:fixed;inset:0;box-shadow:none;border-radius:0}
+  .vx-fin-receipt-actions{display:none}
+}
 
 .vx-fin-totals-box{background:#fff;border:1px solid #dfe6ee;border-radius:12px;padding:16px 18px}
 .vx-fin-totals-box h3{margin:0 0 12px;font-size:13px;color:#5c6e82;letter-spacing:.4px}
