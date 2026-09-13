@@ -791,7 +791,13 @@
       const mine=orders.filter(o=>o.technician_id===t.id);
       const readyRowsMine=mine.filter(o=>norm(o.status)==='PRONTO PARA ENTREGA');
       const finalMine=mine.filter(o=>norm(o.status)==='FINALIZADA');
-      const valorRecebido=validPayments.filter(p=>mine.some(o=>String(o.id)===String(p.service_order_id))).reduce((s,p)=>s+Number(p.amount||0),0);
+      // Achado na auditoria do Financeiro (2026-09-13): este card usava
+      // validPayments (inclui DESCONTO) enquanto o Resumo Financeiro
+      // acima, na mesma tela, usa revenuePayments (exclui DESCONTO) --
+      // duas definições de "recebido" na mesma página. DESCONTO fecha
+      // saldo da OS mas não é receita de verdade (mesma regra usada em
+      // todo outro lugar do app, ver financePanel() em os-detail-v0812.js).
+      const valorRecebido=revenuePayments.filter(p=>mine.some(o=>String(o.id)===String(p.service_order_id))).reduce((s,p)=>s+Number(p.amount||0),0);
       return {tech:t,os:mine.length,osRows:mine,valor:valorRecebido,prontos:readyRowsMine.length,prontosRows:readyRowsMine,aproveitamento:pct(finalMine.length,mine.length||1)};
     }).filter(r=>r.os>0).sort((a,b)=>b.valor-a.valor);
     const totalRecebidoOS=prodRows.reduce((s,r)=>s+r.valor,0);
