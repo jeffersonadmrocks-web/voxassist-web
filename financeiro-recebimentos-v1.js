@@ -202,7 +202,12 @@
     const close = () => bg.remove();
     bg.querySelector('[data-close]').onclick = close;
     bg.addEventListener('click', (e) => { if (e.target === bg) close(); });
-    bg.querySelector('#vxFinAvSave').onclick = async () => {
+    // Mesma chave de idempotência por abertura do modal -- ver
+    // comentário equivalente em vxOpenRegisterPayment (os-detail-v0812.js).
+    const idempotencyKey = (crypto.randomUUID ? crypto.randomUUID() : 'idem-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    const saveBtn = bg.querySelector('#vxFinAvSave');
+    saveBtn.onclick = async () => {
+      if (saveBtn.disabled) return;
       const amount = Number(String($('#vxFinAvAmount').value || '0').replace(',', '.'));
       const method = $('#vxFinAvMethod').value;
       const dateVal = $('#vxFinAvDate').value || isoDate();
@@ -212,6 +217,7 @@
       const paidAt = new Date(dateVal + 'T00:00:00');
       const now = new Date();
       paidAt.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+      saveBtn.disabled = true;
       try {
         await api('rpc/register_payment', {
           method: 'POST',
@@ -220,12 +226,13 @@
             p_components: [{ method, amount }],
             p_notes: notes || null,
             p_paid_at: paidAt.toISOString(),
+            p_idempotency_key: idempotencyKey,
           }),
         });
         toast('Recebimento avulso registrado.');
         close();
         await reload();
-      } catch (e) { toast('Erro ao registrar recebimento: ' + e.message, 'err'); }
+      } catch (e) { toast('Erro ao registrar recebimento: ' + e.message, 'err'); saveBtn.disabled = false; }
     };
   }
 

@@ -596,17 +596,26 @@
     const wireRow=row=>{row.querySelector('.vx-pay-comp-amount').addEventListener('input',recalcTotal);row.querySelector('[data-remove-comp]').onclick=()=>{if(bg.querySelectorAll('.vx-pay-comp-row').length>1){row.remove();recalcTotal()}}};
     bg.querySelectorAll('.vx-pay-comp-row').forEach(wireRow);
     bg.querySelector('#vxPayAddComponent').onclick=()=>{const wrap=document.createElement('div');wrap.innerHTML=compRow();const row=wrap.firstElementChild;bg.querySelector('#vxPayComponents').appendChild(row);wireRow(row)};
-    bg.querySelector('#vxPayConfirm').onclick=async()=>{
+    // Chave de idempotência gerada UMA vez por abertura do modal -- um
+    // duplo clique ou um retry de rede reenvia a MESMA chave, e
+    // register_payment (payment_operations) garante que só a primeira
+    // chamada cria linhas novas; as demais só devolvem as mesmas.
+    // Sem isso, um duplo clique gravaria dois recebimentos reais.
+    const idempotencyKey=(crypto.randomUUID?crypto.randomUUID():'idem-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+    const confirmBtn=bg.querySelector('#vxPayConfirm');
+    confirmBtn.onclick=async()=>{
+      if(confirmBtn.disabled)return;
       const rows=[...bg.querySelectorAll('.vx-pay-comp-row')];
       const components=rows.map(r=>({method:r.querySelector('.vx-pay-comp-method').value,amount:Number(String(r.querySelector('.vx-pay-comp-amount').value||'0').replace(',','.'))})).filter(c=>c.method&&c.amount>0);
       if(!components.length)return toast('Informe ao menos uma forma de pagamento com valor.','err');
       const dateVal=bg.querySelector('#vxPayDate').value||localDateISO();
       const notes=up(bg.querySelector('#vxPayNotes').value||'');
       const paidAt=new Date(dateVal+'T00:00:00');const now=new Date();paidAt.setHours(now.getHours(),now.getMinutes(),now.getSeconds());
+      confirmBtn.disabled=true;
       try{
-        await api('rpc/register_payment',{method:'POST',body:JSON.stringify({p_service_order_id:ctx.o.id,p_components:components,p_notes:notes||null,p_paid_at:paidAt.toISOString(),p_installments:1})});
+        await api('rpc/register_payment',{method:'POST',body:JSON.stringify({p_service_order_id:ctx.o.id,p_components:components,p_notes:notes||null,p_paid_at:paidAt.toISOString(),p_installments:1,p_idempotency_key:idempotencyKey})});
         toast('Recebimento registrado.');close();reload();
-      }catch(e){toast(e.message,'err')}
+      }catch(e){toast(e.message,'err');confirmBtn.disabled=false}
     };
   };
 
