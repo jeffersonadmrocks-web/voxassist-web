@@ -15,7 +15,16 @@
    este aviso nunca dispara. */
 (function(){
   const CURRENT=document.querySelector('meta[name="vx-build"]')?.content||'';
-  const POLL_MS=5*60*1000;
+  // PWA-1 (2026-09-13) -- achado do usuário: "está acontecendo com
+  // certa frequência o VoxAssist carregar um modelo antigo". Instalado
+  // como PWA, o app fica vivo em segundo plano por muito mais tempo do
+  // que uma aba de navegador (o Android não mata o processo só por
+  // trocar de app) -- 5min de poll + só visibilitychange já não bastam.
+  // Intervalo reduzido e mais gatilhos de "o usuário voltou pro app"
+  // adicionados (pageshow/focus, além de visibilitychange) -- continua
+  // NUNCA recarregando sozinho (perderia trabalho não salvo), só avisa
+  // mais rápido.
+  const POLL_MS=2*60*1000;
   let shown=false;
 
   function banner(){
@@ -37,8 +46,10 @@
   }
 
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')check();});
+  window.addEventListener('pageshow',check);
+  window.addEventListener('focus',check);
   setInterval(check,POLL_MS);
-  setTimeout(check,15000);
+  setTimeout(check,5000);
 
   const style=document.createElement('style');
   style.textContent=`#vxBuildBanner{position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#0b2b4a;color:#fff;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:14px;padding:10px 16px;font-size:12.5px;font-weight:700;box-shadow:0 -4px 16px rgba(0,0,0,.25)}#vxBuildBanner button{height:32px;padding:0 16px;border:0;border-radius:999px;background:#1976d2;color:#fff;font-weight:800;font-size:11.5px;cursor:pointer;white-space:nowrap}#vxBuildBanner button:hover{background:#1467bb}`;
