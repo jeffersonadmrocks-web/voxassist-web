@@ -445,13 +445,17 @@
   // 20260913120000). Separados visualmente na mesma aba (não criou aba
   // nova pra não mexer em navegação): resumo financeiro + registro +
   // histórico primeiro, entrega/finalização depois.
-  function financePanel(){
-    // Achado (revisão independente do Financeiro fase 2): register_payment
-    // agora grava status='DESCONTO' pra essas linhas (payment_methods.
-    // is_discount, migration 20260913100000) -- sinal robusto que não
-    // depende do nome exato do método. Checado junto com o antigo
-    // método==='DESCONTO' (compatibilidade com qualquer linha anterior a
-    // essa migration).
+  // Achado (revisão independente do Financeiro fase 2): register_payment
+  // agora grava status='DESCONTO' pra essas linhas (payment_methods.
+  // is_discount, migration 20260913100000) -- sinal robusto que não
+  // depende do nome exato do método. Checado junto com o antigo
+  // método==='DESCONTO' (compatibilidade com qualquer linha anterior a
+  // essa migration).
+  // Extraído pra função própria (era só local a financePanel()) pra
+  // vxOpenRegisterPayment() poder mostrar o saldo a receber ANTES do
+  // usuário digitar o valor -- achado do usuário: a tela deixava esse
+  // valor em aberto, facilitando erro de digitação/cálculo.
+  function budgetSummary(){
     const isDiscountRow=p=>String(p.status||'').toUpperCase()==='DESCONTO'||String(p.method||'').toUpperCase()==='DESCONTO';
     const nonCancelled=ctx.payments.filter(p=>!['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA'].includes(String(p.status).toUpperCase()));
     const received=nonCancelled.filter(p=>!isDiscountRow(p)).reduce((s,p)=>s+num(p.amount),0);
@@ -460,6 +464,11 @@
     const partsTotal=ctx.parts.reduce((s,x)=>s+num(x.quantity)*num(x.unit_value),0);
     const budget=partsTotal+num(ctx.fin.labor_value)+num(ctx.fin.freight_value)+num(ctx.fin.auxiliary_material_value)+num(ctx.fin.technical_report_value)-num(ctx.fin.discount_value);
     const bal=budget-allocated;
+    return {received,discountGranted,allocated,budget,bal};
+  }
+
+  function financePanel(){
+    const {received,discountGranted,budget,bal}=budgetSummary();
     const paymentRow=p=>`<tr onclick="vxSelectPayment('${p.id}',this)"><td>${dt(p.paid_at)||dateOnly(p.due_date)}</td><td><span class="vx-pay-method">${val(p.method)}</span></td><td><b>${p.reversal_of_payment_id?'<span class="vx-pay-reversal">ESTORNO </span>':''}${money(p.amount)}</b></td><td><span class="vx-pay-status ${payStatusClass(p.status)}">${val(p.status)}</span>${p.reversal_state?`<small class="vx-pay-reversal"> (${p.reversal_state==='TOTAL'?'estornado':'parc. estornado'})</small>`:''}</td><td>${val(p.profiles?.full_name||'—')}</td></tr>`;
     return `<section id="vx-financeiro" class="vx-os-panel ${ctx.activeTab==='financeiro'?'':'hidden'}"><div class="vx-screen-box">
       <h3 class="vx-title green">FINANCEIRO DA OS</h3>
@@ -576,15 +585,27 @@
   window.vxOpenRegisterPayment=function(){
     closeVxModal('vxRegisterPayModal');
     const methods=ctx.paymentMethods?.length?ctx.paymentMethods:[{name:'DINHEIRO'},{name:'PIX'},{name:'CARTÃO DE DÉBITO'},{name:'CARTÃO DE CRÉDITO'},{name:'CHEQUE'},{name:'TRANSFERÊNCIA'},{name:'DESCONTO'}];
+    // Achado do usuário: o modal não mostrava quanto ainda falta receber
+    // da OS, deixando o valor "em aberto" pro usuário decidir de cabeça --
+    // risco de erro de digitação/cálculo. Mostra o saldo já calculado
+    // (mesma conta de financePanel/budgetSummary) e sugere esse valor
+    // como ponto de partida do primeiro campo (parcial continua livre,
+    // o usuário só apaga/edita).
+    const {budget,received,bal}=budgetSummary();
     const bg=document.createElement('div');bg.id='vxRegisterPayModal';bg.className='vx-modal-bg';
     const methodOptions=methods.map(m=>`<option>${val(m.name)}</option>`).join('');
-    const compRow=()=>`<div class="vx-pay-comp-row"><select class="vx-control vx-pay-comp-method"><option></option>${methodOptions}</select><input class="vx-control vx-pay-comp-amount" type="number" step=".01" placeholder="Valor (R$)"><button type="button" class="vx-orange-btn" data-remove-comp>×</button></div>`;
+    const compRow=(prefill)=>`<div class="vx-pay-comp-row"><select class="vx-control vx-pay-comp-method"><option></option>${methodOptions}</select><input class="vx-control vx-pay-comp-amount" type="number" step=".01" placeholder="Valor (R$)"${prefill?` value="${prefill}"`:''}><button type="button" class="vx-orange-btn" data-remove-comp>×</button></div>`;
     bg.innerHTML=`<div class="vx-modal vx-pay-modal">
       <h3>REGISTRAR RECEBIMENTO</h3>
+      <div class="vx-pay-balance-info">
+        <div><span>VALOR DA OS</span><b>${money(budget)}</b></div>
+        <div><span>JÁ RECEBIDO</span><b>${money(received)}</b></div>
+        <div><span>SALDO A RECEBER</span><b class="${bal>0.004?'vx-pay-balance-due':'vx-pay-balance-zero'}">${money(bal)}</b></div>
+      </div>
       <div class="vx-field"><label>DATA</label><input class="vx-control" id="vxPayDate" type="date" value="${localDateISO()}"></div>
-      <div id="vxPayComponents">${compRow()}</div>
+      <div id="vxPayComponents">${compRow(bal>0.004?bal.toFixed(2):'')}</div>
       <button type="button" class="vx-action" id="vxPayAddComponent">+ ADICIONAR FORMA</button>
-      <div class="vx-pay-comp-total">TOTAL INFORMADO: <b id="vxPayCompTotal">R$ 0,00</b></div>
+      <div class="vx-pay-comp-total">TOTAL INFORMADO: <b id="vxPayCompTotal">R$ 0,00</b> <span id="vxPayCompRemaining"></span></div>
       <div class="vx-field"><label>OBSERVAÇÃO</label><input class="vx-control" id="vxPayNotes"></div>
       <div class="vx-modal-actions"><button type="button" data-close>CANCELAR</button><button type="button" class="vx-green-btn" id="vxPayConfirm">CONFIRMAR</button></div>
     </div>`;
@@ -592,10 +613,19 @@
     const close=()=>bg.remove();
     bg.querySelector('[data-close]').onclick=close;
     bg.addEventListener('click',e=>{if(e.target===bg)close()});
-    const recalcTotal=()=>{const t=[...bg.querySelectorAll('.vx-pay-comp-amount')].reduce((s,el)=>s+(Number(String(el.value||'0').replace(',','.'))||0),0);bg.querySelector('#vxPayCompTotal').textContent=money(t)};
+    const recalcTotal=()=>{
+      const t=[...bg.querySelectorAll('.vx-pay-comp-amount')].reduce((s,el)=>s+(Number(String(el.value||'0').replace(',','.'))||0),0);
+      bg.querySelector('#vxPayCompTotal').textContent=money(t);
+      const rest=bal-t;
+      const restEl=bg.querySelector('#vxPayCompRemaining');
+      if(Math.abs(rest)<=0.004)restEl.innerHTML='<span class="vx-pay-rest-ok">• quita o saldo</span>';
+      else if(rest>0)restEl.innerHTML=`<span class="vx-pay-rest-due">• restará ${money(rest)} em aberto</span>`;
+      else restEl.innerHTML=`<span class="vx-pay-rest-over">• ${money(-rest)} acima do saldo (troco/excedente)</span>`;
+    };
     const wireRow=row=>{row.querySelector('.vx-pay-comp-amount').addEventListener('input',recalcTotal);row.querySelector('[data-remove-comp]').onclick=()=>{if(bg.querySelectorAll('.vx-pay-comp-row').length>1){row.remove();recalcTotal()}}};
     bg.querySelectorAll('.vx-pay-comp-row').forEach(wireRow);
     bg.querySelector('#vxPayAddComponent').onclick=()=>{const wrap=document.createElement('div');wrap.innerHTML=compRow();const row=wrap.firstElementChild;bg.querySelector('#vxPayComponents').appendChild(row);wireRow(row)};
+    recalcTotal();
     // Chave de idempotência gerada UMA vez por abertura do modal -- um
     // duplo clique ou um retry de rede reenvia a MESMA chave, e
     // register_payment (payment_operations) garante que só a primeira

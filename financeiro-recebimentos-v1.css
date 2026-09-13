@@ -27,9 +27,12 @@
 .vx-fin-method-tag{display:inline-block;background:#eaf2fb;color:#245984;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:800}
 .vx-fin-reversal-tag{color:#a63131;font-weight:800}
 .vx-fin-amount.vx-fin-reversal-tag{color:#a63131}
-.vx-fin-reverse-btn{border:1px solid #a63131;background:#fff;color:#a63131;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:800;white-space:nowrap}
+.vx-fin-reverse-btn{border:1px solid #a63131;background:#fff;color:#a63131;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:800;white-space:nowrap;margin-right:6px}
 .vx-fin-reverse-btn:hover{background:#fdf2f2}
 .vx-empty{text-align:center;color:#8494a6;padding:22px 0!important;white-space:normal!important}
+.vx-fin-link-btn{border:0;background:none;color:#0d4b84;font-weight:800;font-size:12.5px;text-decoration:underline;padding:0;margin-left:4px}
+.vx-fin-link-btn:hover{color:#093a68}
+.vx-fin-reverse-locked{font-size:11.5px;font-weight:700;color:#8494a6;align-self:center}
 
 /* Linha totalmente estornada: risco + atenuação no dado em si, mas a
    célula de Situação (badge "ESTORNADO") e a coluna de ações continuam

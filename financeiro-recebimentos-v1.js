@@ -53,6 +53,30 @@
   // compatibilidade com linhas gravadas antes dessa migration.
   const isDiscount = (p) => up(p?.method) === 'DESCONTO' || up(p?.status) === 'DESCONTO';
   const isCancelled = (s) => CANCELLED.includes(up(s));
+
+  // Achado do usuário (2026-09-13): o estorno já existia e funcionava,
+  // mas ficava pouco perceptível -- tela abria em "Hoje" (sem
+  // lançamentos), a ação só existia dentro do menu ⋮, e não havia
+  // nenhum sinal de PERMISSÃO na UI (só o backend barrava). Mesmo padrão
+  // de gate client-side já usado em os-cancel-v0812.js (isManager +
+  // consulta a user_permissions) -- nunca criou tabela/RPC nova, só lê o
+  // que já existe. É só conveniência de UX: quem tenta burlar via
+  // DOM/console ainda esbarra em reverse_payment/RLS no servidor.
+  const norm = (s) => String(s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replaceAll('_', ' ').trim();
+  const isManager = () => ['GESTOR', 'ADMIN', 'ADMINISTRADOR'].includes(norm(state?.profile?.role));
+  async function userCanReverse() {
+    if (isManager()) return true;
+    try {
+      const uid = state?.session?.user?.id;
+      if (!uid) return false;
+      const r = await api(`user_permissions?user_id=eq.${encodeURIComponent(uid)}&permission_key=eq.financeiro.reverse&allowed=eq.true&select=id&limit=1`);
+      return !!r?.length;
+    } catch (e) { return false; }
+  }
+
+  const RANGE_KEY = 'vx_fin_last_range';
+  function loadLastRange() { try { return localStorage.getItem(RANGE_KEY) || 'mes'; } catch (e) { return 'mes'; } }
+  function saveLastRange(r) { try { localStorage.setItem(RANGE_KEY, r); } catch (e) { /* per-viewer conveniência apenas */ } }
   const hhmm = (v) => (v ? new Date(v).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—');
   const dtFull = (v) => (v ? new Date(v).toLocaleString('pt-BR') : '—');
   const isoDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -104,7 +128,7 @@
 
   // Estado só desta tela (filtro/busca) -- nunca em window.state, que é o
   // contrato global do app (ver PWA-0.1).
-  let ui = { range: 'hoje', from: null, to: null, q: '', userId: '', method: '', situacao: '', rows: [], methods: [], users: [], companyName: 'EMPRESA' };
+  let ui = { range: loadLastRange(), from: null, to: null, q: '', userId: '', method: '', situacao: '', rows: [], methods: [], users: [], companyName: 'EMPRESA', canReverse: false };
 
   async function loadPaymentMethods() {
     const rows = await api(`payment_methods?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=sort_order`).catch(() => []);
@@ -164,7 +188,11 @@
     // riscada. A célula de Situação nunca é riscada (precisa continuar
     // legível pra dizer exatamente o que aconteceu).
     const fullyReversed = situacao === 'ESTORNADO';
-    const canRev = canReverseRow(p);
+    // canRev = pode ser estornado ESTRUTURALMENTE (canReverseRow) E o
+    // usuário logado TEM a permissão (ui.canReverse) -- sem a segunda
+    // parte, um usuário sem financeiro.reverse via a ação normalmente e
+    // só descobria que não podia ao clicar (erro do servidor).
+    const canRev = canReverseRow(p) && ui.canReverse;
     return `<tr class="${os ? '' : 'vx-fin-avulso-row'}${fullyReversed ? ' vx-fin-row-reversed' : ''}" onclick="vxFinOpenDrawer('${p.id}')">
       <td>${hhmm(p.paid_at)}</td>
       <td>${os ? esc(os) : '—'}</td>
@@ -175,6 +203,7 @@
       <td>${esc(p.profiles?.full_name || '—')}</td>
       <td class="vx-fin-situacao-cell"><span class="vx-fin-situacao vx-fin-situacao-${situacao.toLowerCase()}">${SITUACAO_LABEL[situacao]}</span></td>
       <td class="vx-fin-actions-cell" onclick="event.stopPropagation()">
+        ${canRev ? `<button type="button" class="vx-fin-reverse-btn" title="Estornar recebimento" onclick="vxFinQuickReverse('${p.id}')">↩ Estornar</button>` : ''}
         <button type="button" class="vx-fin-kebab" onclick="vxFinToggleMenu('${p.id}')" aria-label="Ações">⋮</button>
         <div class="vx-fin-menu" id="vxFinMenu-${p.id}" hidden>
           <button type="button" onclick="vxFinOpenDrawer('${p.id}')">Ver detalhes</button>
@@ -182,6 +211,15 @@
         </div>
       </td>
     </tr>`;
+  }
+
+  const RANGE_LABEL = { hoje: 'Hoje', ontem: 'Ontem', semana: 'Semana', mes: 'Mês', periodo: 'no período selecionado' };
+  function emptyMessage() {
+    const label = RANGE_LABEL[ui.range] || 'no período selecionado';
+    const hasOtherFilters = !!(ui.q || ui.userId || ui.method || ui.situacao);
+    if (hasOtherFilters) return `Nenhum recebimento encontrado com os filtros aplicados em "${label}". Tente limpar os filtros ou ampliar o período.`;
+    if (ui.range === 'hoje' || ui.range === 'ontem' || ui.range === 'semana') return `Nenhum recebimento encontrado em "${label}". Experimente o filtro "Mês" para ver o histórico recente.`;
+    return `Nenhum recebimento encontrado em "${label}".`;
   }
 
   function totalsHtml(t) {
@@ -200,10 +238,20 @@
 
   function repaint() {
     const rows = filteredRows();
+    const showGoMonth = !rows.length && ui.range !== 'mes' && ui.range !== 'periodo';
     $('#vxFinRows').innerHTML = rows.length
       ? rows.map(rowHtml).join('')
-      : `<tr><td colspan="9" class="vx-empty">Nenhum recebimento encontrado neste período.</td></tr>`;
+      : `<tr><td colspan="9" class="vx-empty">${esc(emptyMessage())}${showGoMonth ? ' <button type="button" class="vx-fin-link-btn" id="vxFinGoMonth">Ver mês</button>' : ''}</td></tr>`;
     $('#vxFinTotals').innerHTML = totalsHtml(computeTotals(rows));
+    if (showGoMonth) {
+      $('#vxFinGoMonth').onclick = () => {
+        ui.range = 'mes';
+        saveLastRange('mes');
+        $$('.vx-fin-chips [data-range]').forEach((x) => x.classList.toggle('active', x.dataset.range === 'mes'));
+        $('#vxFinPeriodBox').classList.add('hidden');
+        reload();
+      };
+    }
   }
 
   async function reload() {
@@ -307,6 +355,7 @@
     closeAllMenus();
     const p = ui.rows.find((x) => x.id === id);
     if (!p) return;
+    if (!ui.canReverse) return toast('Você não tem a permissão financeiro.reverse para estornar recebimentos.', 'err');
     const remaining = remainingFor(p);
     if (!canReverseRow(p)) return toast('Este lançamento não pode ser estornado.', 'err');
     openReverseModal(p, remaining);
@@ -321,7 +370,8 @@
     const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO (sem OS)';
     const situacao = situacaoOf(p);
     const remaining = remainingFor(p);
-    const canReverse = canReverseRow(p);
+    const reversibleHere = canReverseRow(p);
+    const canReverse = reversibleHere && ui.canReverse;
     // Estorno(s) já aplicados a ESTE lançamento (se for o original) --
     // pra "Detalhes do estorno" (quem estornou, quando, motivo) sem
     // precisar abrir a transação de estorno separadamente.
@@ -362,7 +412,8 @@
           ${os ? `<button type="button" id="vxFinDrawerOpenOs">ABRIR OS</button>` : ''}
           <button type="button" id="vxFinDrawerReceipt">COMPROVANTE</button>
           <button type="button" id="vxFinDrawerAuditBtn">AUDITORIA</button>
-          ${canReverse ? `<button type="button" class="vx-orange-btn" id="vxFinDrawerReverse">ESTORNAR RECEBIMENTO</button>` : ''}
+          ${canReverse ? `<button type="button" class="vx-orange-btn" id="vxFinDrawerReverse">ESTORNAR RECEBIMENTO</button>`
+            : (reversibleHere && !ui.canReverse ? `<span class="vx-fin-reverse-locked" title="Requer a permissão financeiro.reverse">Estornar recebimento indisponível — requer a permissão <b>financeiro.reverse</b></span>` : '')}
         </div>
         <button type="button" data-close>FECHAR</button>
       </div>
@@ -498,7 +549,7 @@
       $('#app').innerHTML = `<div class="card error-card"><h3>Acesso restrito</h3><p>Seu perfil não tem acesso ao Financeiro.</p></div>`;
       return;
     }
-    [ui.methods, ui.companyName, ui.users] = await Promise.all([loadPaymentMethods(), loadCompanyName(), loadUsers()]);
+    [ui.methods, ui.companyName, ui.users, ui.canReverse] = await Promise.all([loadPaymentMethods(), loadCompanyName(), loadUsers(), userCanReverse()]);
     $('#app').innerHTML = `<div class="vx-fin-wrap">
       <div class="vx-fin-head"><div><h2>RECEBIMENTOS · ${esc(ui.companyName)}</h2><span class="vx-fin-date">${new Date().toLocaleDateString('pt-BR')}</span></div>
         <button type="button" class="vx-fin-btn primary" id="vxFinNewAvulso">+ RECEBIMENTO AVULSO</button></div>
@@ -522,11 +573,12 @@
 
     $$('.vx-fin-chips [data-range]').forEach((b) => b.onclick = () => {
       ui.range = b.dataset.range;
+      saveLastRange(ui.range);
       $$('.vx-fin-chips [data-range]').forEach((x) => x.classList.toggle('active', x === b));
       $('#vxFinPeriodBox').classList.toggle('hidden', ui.range !== 'periodo');
       if (ui.range !== 'periodo') reload();
     });
-    $('#vxFinApplyPeriod').onclick = () => { ui.from = $('#vxFinFrom').value; ui.to = $('#vxFinTo').value; reload(); };
+    $('#vxFinApplyPeriod').onclick = () => { ui.from = $('#vxFinFrom').value; ui.to = $('#vxFinTo').value; saveLastRange('periodo'); reload(); };
     $('#vxFinSearch').oninput = (e) => { ui.q = e.target.value; repaint(); };
     $('#vxFinFilterUser').onchange = (e) => { ui.userId = e.target.value; repaint(); };
     $('#vxFinFilterMethod').onchange = (e) => { ui.method = e.target.value; repaint(); };
