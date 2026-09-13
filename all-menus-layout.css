@@ -1,6 +1,16 @@
 /* VoxAssist Web V0.8.12 — telas iniciais dos módulos no padrão Desktop aprovado */
 .module-home{padding:18px 20px 12px;background:#f4f6f8;min-height:calc(100vh - 150px);border:1px solid #c8ced6}
 .module-home-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:12px}.module-home-head h2{font-size:28px;margin:2px 0 6px;color:#101b2b;font-weight:650}.module-home-head p{margin:0;color:#60728a;font-size:12px;letter-spacing:.2px;text-transform:uppercase}.module-head-actions{display:flex;gap:8px;flex-wrap:wrap}.module-head-actions button{border:0;padding:10px 16px;color:#fff;font-size:12px;font-weight:700}.module-head-actions .blue{background:#1671d8}.module-head-actions .orange{background:#e87a00}.module-head-actions .green{background:#158549}.module-head-actions .purple{background:#7450d6}.module-head-actions .gray{background:#eef1f4;color:#23364e;border:1px solid #bac4cf}
+/* Achado do usuário em 2026-09-13: o "← Voltar" de todas as telas de
+   Configurações usa a classe .secondary (fundo branco, ver styles.css),
+   mas a regra acima (pensada só pros botões coloridos deste cabeçalho)
+   forçava color:#fff em QUALQUER button aqui dentro -- por especificidade
+   de seletor (.module-head-actions button vence .secondary sozinho),
+   ficando texto branco sobre fundo branco, ilegível. Restaura a cor do
+   .secondary sem mexer nos botões coloridos (blue/orange/green/purple/gray
+   continuam com texto branco, intocados).
+*/
+.module-head-actions button.secondary{color:#0d4b84}
 .module-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:8px 0 16px}.module-summary-card{background:#fff;border:1px solid #cfd7e1;border-top:3px solid var(--accent,#2674d9);padding:13px 14px;min-height:74px;text-align:left}.module-summary-card span{display:block;color:#58708d;font-size:11px;text-transform:uppercase}.module-summary-card b{display:block;font-size:24px;margin-top:7px;color:var(--accent,#2674d9)}
 /* Achado do usuário em 2026-09-02: cards de resumo viram <button> reais
    quando há lista de verdade por trás (ver all-menus-layout.js) --
