@@ -483,7 +483,22 @@
     // salvar com sucesso, reavalia o avanço automático (motor único em
     // os-status-engine-v0903.js). "client"/"equipment" não participam do
     // fluxo, não disparam a reavaliação.
-    document.querySelectorAll('.vx-control[data-entity]').forEach(el=>el.addEventListener('change',async()=>{try{let v=el.type==='number'?num(el.value):el.value;const entity=el.dataset.entity,name=el.dataset.name;if(entity==='client'){await patch('clients',ctx.c.id,{[name]:v});ctx.c[name]=v}else if(entity==='equipment'){await patch('equipments',ctx.e.id,{[name]:v});ctx.e[name]=v}else if(entity==='order'){await patch('service_orders',ctx.o.id,{[name]:v});ctx.o[name]=v;await window.vxAdvanceOsStatus?.(ctx.o.id)}else if(entity==='financial'){const fid=await ensureFinancial();await patch('os_financial',fid,{[name]:v});ctx.fin[name]=v;await window.vxAdvanceOsStatus?.(ctx.o.id)}toast('Salvo.')}catch(e){toast('Erro ao salvar: '+e.message,'err')}}));
+    // Achado do usuário (Financeiro "falhando" numa OS já finalizada):
+    // SALVAR/FINALIZAR (os-global-save-v0812.js, window.vxFinalizeOs) já
+    // checavam blockedFinalized() antes de gravar, mas QUALQUER campo
+    // solto de "order"/"financial" nas guias OS/Orçamento/Financeiro
+    // (ex.: ENTREGA/SAÍDA, TÉCNICO RESPONSÁVEL, valores do orçamento)
+    // salva sozinho ao perder o foco, direto por este listener genérico
+    // -- sem passar pelos botões acima. Numa OS FINALIZADA, um não-GESTOR
+    // batia direto na policy restritiva (migration 20260907060000) e via
+    // o erro cru do Postgres em vez do aviso amigável já usado em todo
+    // outro lugar. "client"/"equipment" continuam de fora -- não são
+    // travados por essa migration.
+    document.querySelectorAll('.vx-control[data-entity]').forEach(el=>el.addEventListener('change',async()=>{
+      const entity=el.dataset.entity,name=el.dataset.name;
+      if((entity==='order'||entity==='financial')&&blockedFinalized()){el.value=(entity==='order'?ctx.o[name]:ctx.fin[name])??'';return}
+      try{let v=el.type==='number'?num(el.value):el.value;if(entity==='client'){await patch('clients',ctx.c.id,{[name]:v});ctx.c[name]=v}else if(entity==='equipment'){await patch('equipments',ctx.e.id,{[name]:v});ctx.e[name]=v}else if(entity==='order'){await patch('service_orders',ctx.o.id,{[name]:v});ctx.o[name]=v;await window.vxAdvanceOsStatus?.(ctx.o.id)}else if(entity==='financial'){const fid=await ensureFinancial();await patch('os_financial',fid,{[name]:v});ctx.fin[name]=v;await window.vxAdvanceOsStatus?.(ctx.o.id)}toast('Salvo.')}catch(e){toast('Erro ao salvar: '+e.message,'err')}
+    }));
     const s=document.querySelector('#vxClientSearch');if(s){s.oninput=()=>{const q=String(s.value).toUpperCase().trim();const box=document.querySelector('#vxClientSearchResult');if(!q){box.innerHTML='';return}const rows=state.clients.filter(c=>[c.name,c.document,c.phone_primary,c.phone_secondary].join(' ').toUpperCase().includes(q)).slice(0,5);box.innerHTML=rows.map(c=>`<button onclick="renderClient360('${c.id}')">${val(c.name)} • ${val(c.document||c.phone_primary||'')}</button>`).join('')}}
   }
 
