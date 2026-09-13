@@ -264,7 +264,6 @@
       <td>${esc(p.profiles?.full_name || '—')}</td>
       <td class="vx-fin-situacao-cell"><span class="vx-fin-situacao vx-fin-situacao-${situacao.toLowerCase()}">${SITUACAO_LABEL[situacao]}</span></td>
       <td class="vx-fin-actions-cell" onclick="event.stopPropagation()">
-        ${canRev ? `<button type="button" class="vx-fin-reverse-btn" title="Estornar recebimento" onclick="vxFinQuickReverse('${p.id}')">↩ Estornar</button>` : ''}
         <button type="button" class="vx-fin-kebab" onclick="vxFinToggleMenu('${p.id}')" aria-label="Ações">⋮</button>
         <div class="vx-fin-menu" id="vxFinMenu-${p.id}" hidden>
           <button type="button" onclick="vxFinOpenDrawer('${p.id}')">Ver detalhes</button>
