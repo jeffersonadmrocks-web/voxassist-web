@@ -82,6 +82,17 @@
     return 'RECEBIDO';
   }
 
+  // Quanto ainda pode ser estornado de p (amount - soma dos estornos já
+  // ligados a ele). Único ponto de cálculo -- usado pela linha (menu ⋮),
+  // pelo drawer e pelo modal de estorno, pra nunca divergir entre eles.
+  function remainingFor(p) {
+    const already = ui.rows.filter((x) => x.reversal_of_payment_id === p.id).reduce((s, x) => s + Math.abs(Number(x.amount || 0)), 0);
+    return Number(p.amount || 0) - already;
+  }
+  function canReverseRow(p) {
+    return !p.reversal_of_payment_id && remainingFor(p) > 0.004;
+  }
+
   function rangeFor(preset) {
     const now = new Date();
     if (preset === 'hoje') return [startOfDay(now), endOfDay(now)];
@@ -146,7 +157,15 @@
     const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO';
     const isReversal = !!p.reversal_of_payment_id;
     const situacao = situacaoOf(p);
-    return `<tr class="${os ? '' : 'vx-fin-avulso-row'}" onclick="vxFinOpenDrawer('${p.id}')">
+    // Só a linha TOTALMENTE estornada fica riscada/atenuada por inteiro
+    // (ela deixou de existir financeiramente) -- uma PARCIAL_ESTORNADO
+    // ainda representa dinheiro de verdade (o restante não estornado) e
+    // continua contando nos totais por esse restante, então não é
+    // riscada. A célula de Situação nunca é riscada (precisa continuar
+    // legível pra dizer exatamente o que aconteceu).
+    const fullyReversed = situacao === 'ESTORNADO';
+    const canRev = canReverseRow(p);
+    return `<tr class="${os ? '' : 'vx-fin-avulso-row'}${fullyReversed ? ' vx-fin-row-reversed' : ''}" onclick="vxFinOpenDrawer('${p.id}')">
       <td>${hhmm(p.paid_at)}</td>
       <td>${os ? esc(os) : '—'}</td>
       <td>${esc(cliente)}</td>
@@ -154,7 +173,14 @@
       <td><span class="vx-fin-method-tag">${esc(p.method)}</span></td>
       <td class="vx-fin-amount ${isReversal ? 'vx-fin-reversal-tag' : ''}">${money(p.amount)}</td>
       <td>${esc(p.profiles?.full_name || '—')}</td>
-      <td><span class="vx-fin-situacao vx-fin-situacao-${situacao.toLowerCase()}">${SITUACAO_LABEL[situacao]}</span></td>
+      <td class="vx-fin-situacao-cell"><span class="vx-fin-situacao vx-fin-situacao-${situacao.toLowerCase()}">${SITUACAO_LABEL[situacao]}</span></td>
+      <td class="vx-fin-actions-cell" onclick="event.stopPropagation()">
+        <button type="button" class="vx-fin-kebab" onclick="vxFinToggleMenu('${p.id}')" aria-label="Ações">⋮</button>
+        <div class="vx-fin-menu" id="vxFinMenu-${p.id}" hidden>
+          <button type="button" onclick="vxFinOpenDrawer('${p.id}')">Ver detalhes</button>
+          ${canRev ? `<button type="button" class="vx-fin-menu-danger" onclick="vxFinQuickReverse('${p.id}')">Estornar recebimento</button>` : ''}
+        </div>
+      </td>
     </tr>`;
   }
 
@@ -176,7 +202,7 @@
     const rows = filteredRows();
     $('#vxFinRows').innerHTML = rows.length
       ? rows.map(rowHtml).join('')
-      : `<tr><td colspan="8" class="vx-empty">Nenhum recebimento encontrado neste período.</td></tr>`;
+      : `<tr><td colspan="9" class="vx-empty">Nenhum recebimento encontrado neste período.</td></tr>`;
     $('#vxFinTotals').innerHTML = totalsHtml(computeTotals(rows));
   }
 
@@ -270,32 +296,51 @@
 
   function closeDrawer() { document.querySelector('#vxFinDrawer')?.remove(); }
 
+  function closeAllMenus() { document.querySelectorAll('.vx-fin-menu').forEach((m) => { m.hidden = true; }); }
+  window.vxFinToggleMenu = function (id) {
+    const target = document.querySelector(`#vxFinMenu-${id}`);
+    const willOpen = !!(target && target.hidden);
+    closeAllMenus();
+    if (target) target.hidden = !willOpen;
+  };
+  window.vxFinQuickReverse = function (id) {
+    closeAllMenus();
+    const p = ui.rows.find((x) => x.id === id);
+    if (!p) return;
+    const remaining = remainingFor(p);
+    if (!canReverseRow(p)) return toast('Este lançamento não pode ser estornado.', 'err');
+    openReverseModal(p, remaining);
+  };
+
   window.vxFinOpenDrawer = async function (paymentId) {
     const p = ui.rows.find((x) => x.id === paymentId);
     if (!p) return;
     closeDrawer();
+    closeAllMenus();
     const os = p.service_orders?.os_number;
     const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO (sem OS)';
     const situacao = situacaoOf(p);
-    const already = ui.rows.filter((x) => x.reversal_of_payment_id === p.id).reduce((s, x) => s + Math.abs(Number(x.amount || 0)), 0);
-    const remaining = Number(p.amount || 0) - already;
-    // Estorno parcial é nativo: um lançamento já PARCIAL_ESTORNADO ainda
-    // pode receber outro estorno até zerar o restante -- só bloqueia um
-    // ESTORNO (linha negativa em si) ou algo já TOTALmente estornado.
-    const canReverse = !p.reversal_of_payment_id && remaining > 0.004;
+    const remaining = remainingFor(p);
+    const canReverse = canReverseRow(p);
+    // Estorno(s) já aplicados a ESTE lançamento (se for o original) --
+    // pra "Detalhes do estorno" (quem estornou, quando, motivo) sem
+    // precisar abrir a transação de estorno separadamente.
+    const reversalsOfThis = p.reversal_state
+      ? ui.rows.filter((x) => x.reversal_of_payment_id === p.id).sort((a, b) => new Date(a.paid_at) - new Date(b.paid_at))
+      : [];
 
     const bg = document.createElement('div');
     bg.id = 'vxFinDrawer';
     bg.className = 'vx-modal-bg';
     bg.innerHTML = `<div class="vx-modal vx-fin-drawer">
-      <h3>DETALHE DO LANÇAMENTO</h3>
+      <h3>${situacao === 'ESTORNADO' ? 'ESTORNADO — ' : ''}DETALHE DO LANÇAMENTO</h3>
       <div class="vx-fin-drawer-grid">
         <div><span>OS</span><b>${os ? esc(os) : 'SEM OS (AVULSO)'}</b></div>
         <div><span>CLIENTE</span><b>${esc(cliente)}</b></div>
-        <div><span>VALOR NESTA TRANSAÇÃO</span><b class="${Number(p.amount) < 0 ? 'vx-fin-reversal-tag' : ''}">${money(p.amount)}</b></div>
+        <div><span>VALOR ORIGINAL</span><b class="${Number(p.amount) < 0 ? 'vx-fin-reversal-tag' : ''}">${money(p.amount)}</b></div>
         <div><span>FORMA</span><b>${esc(p.method)}</b></div>
-        <div><span>DATA/HORA</span><b>${dtFull(p.paid_at)}</b></div>
-        <div><span>USUÁRIO</span><b>${esc(p.profiles?.full_name || '—')}</b></div>
+        <div><span>RECEBIDO EM</span><b>${dtFull(p.paid_at)}</b></div>
+        <div><span>RECEBIDO POR</span><b>${esc(p.profiles?.full_name || '—')}</b></div>
         <div><span>EMPRESA</span><b>${esc(ui.companyName)}</b></div>
         <div><span>OPERATION ID</span><b class="vx-fin-mono">${esc(p.operation_id || '—')}</b></div>
         <div><span>SITUAÇÃO</span><b>${SITUACAO_LABEL[situacao]}${p.reversal_state === 'PARCIAL' ? ` (restam ${money(remaining)} p/ estornar)` : ''}</b></div>
@@ -304,13 +349,20 @@
       </div>
       <div><span class="vx-fin-drawer-label">OBSERVAÇÃO</span><p class="vx-fin-drawer-notes">${esc(p.notes || '—')}</p></div>
       ${p.reversal_of_payment_id ? `<div class="vx-fin-drawer-note-box">Este lançamento é o ESTORNO de outra transação (id ${esc(p.reversal_of_payment_id)}).</div>` : ''}
+      ${reversalsOfThis.length ? `<div class="vx-fin-drawer-reversals"><h4>ESTORNO${reversalsOfThis.length > 1 ? 'S' : ''} DESTE LANÇAMENTO</h4>${reversalsOfThis.map((r) => `
+        <div class="vx-fin-reversal-item">
+          <div><span>VALOR ESTORNADO</span><b class="vx-fin-reversal-tag">${money(Math.abs(r.amount))}</b></div>
+          <div><span>ESTORNADO POR</span><b>${esc(r.profiles?.full_name || '—')}</b></div>
+          <div><span>ESTORNADO EM</span><b>${dtFull(r.paid_at)}</b></div>
+          <div><span>MOTIVO / OBSERVAÇÃO</span><b>${esc(r.notes || '—')}</b></div>
+        </div>`).join('')}</div>` : ''}
       <div id="vxFinDrawerAudit" class="vx-fin-drawer-audit"></div>
       <div class="vx-modal-actions" style="justify-content:space-between;flex-wrap:wrap">
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${os ? `<button type="button" id="vxFinDrawerOpenOs">ABRIR OS</button>` : ''}
           <button type="button" id="vxFinDrawerReceipt">COMPROVANTE</button>
           <button type="button" id="vxFinDrawerAuditBtn">AUDITORIA</button>
-          ${canReverse ? `<button type="button" class="vx-orange-btn" id="vxFinDrawerReverse">ESTORNAR</button>` : ''}
+          ${canReverse ? `<button type="button" class="vx-orange-btn" id="vxFinDrawerReverse">ESTORNAR RECEBIMENTO</button>` : ''}
         </div>
         <button type="button" data-close>FECHAR</button>
       </div>
@@ -376,37 +428,70 @@
   }
 
   // ---- Estorno (modal próprio, valor editável -- parcial nativo) ----
+  // Motivos fixos pedidos pelo usuário (2026-09-13, "Implementar estorno
+  // de recebimentos") -- concatenados com a observação livre num único
+  // texto (reverse_payment só tem UM parâmetro p_reason; reaproveitar
+  // esse contrato existente em vez de mudar a RPC pra separar os dois
+  // campos no banco).
+  const REVERSAL_REASONS = ['Lançamento duplicado', 'Forma de pagamento incorreta', 'Valor incorreto', 'Pagamento não realizado/confirmado', 'Outro'];
+
   function openReverseModal(p, remaining) {
     document.querySelector('#vxFinReverseModal')?.remove();
+    const os = p.service_orders?.os_number;
+    const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO';
     const bg = document.createElement('div');
     bg.id = 'vxFinReverseModal';
     bg.className = 'vx-modal-bg';
-    bg.innerHTML = `<div class="vx-modal vx-fin-avulso-modal">
-      <h3>ESTORNAR RECEBIMENTO</h3>
+    bg.innerHTML = `<div class="vx-modal vx-fin-avulso-modal vx-fin-reverse-modal">
+      <h3>Estornar recebimento</h3>
+      <div class="vx-fin-reverse-summary">
+        <div><span>OS</span><b>${os ? esc(os) : 'SEM OS (AVULSO)'}</b></div>
+        <div><span>Cliente</span><b>${esc(cliente)}</b></div>
+        <div><span>Valor</span><b>${money(p.amount)}</b></div>
+        <div><span>Forma</span><b>${esc(p.method)}</b></div>
+        <div><span>Data/hora</span><b>${dtFull(p.paid_at)}</b></div>
+      </div>
       <div class="vx-field"><label>VALOR A ESTORNAR (R$) — disponível: ${money(remaining)}</label><input class="vx-control" type="number" step=".01" min="0.01" max="${remaining}" id="vxFinRevAmount" value="${remaining.toFixed(2)}"></div>
-      <div class="vx-field"><label>MOTIVO</label><input class="vx-control" id="vxFinRevReason" placeholder="Obrigatório"></div>
-      <div class="vx-modal-actions"><button type="button" data-close>CANCELAR</button><button type="button" class="vx-orange-btn" id="vxFinRevConfirm">ESTORNAR</button></div>
+      <div class="vx-field"><label>MOTIVO *</label><select class="vx-control" id="vxFinRevReasonSelect"><option value="">Selecione...</option>${REVERSAL_REASONS.map((r) => `<option>${esc(r)}</option>`).join('')}</select></div>
+      <div class="vx-field"><label>OBSERVAÇÃO COMPLEMENTAR</label><textarea class="vx-control" id="vxFinRevNotes" rows="2" placeholder="Opcional"></textarea></div>
+      <p class="vx-fin-reverse-warning">Este recebimento deixará de compor os valores financeiros (totais, saldo da OS e relatórios). O lançamento original é preservado no histórico, marcado como estornado.</p>
+      <div class="vx-modal-actions"><button type="button" data-close>Cancelar</button><button type="button" class="vx-orange-btn" id="vxFinRevConfirm">Confirmar estorno</button></div>
     </div>`;
     document.body.appendChild(bg);
     const close = () => bg.remove();
     bg.querySelector('[data-close]').onclick = close;
     bg.addEventListener('click', (e) => { if (e.target === bg) close(); });
-    bg.querySelector('#vxFinRevConfirm').onclick = async () => {
+    const confirmBtn = bg.querySelector('#vxFinRevConfirm');
+    confirmBtn.onclick = async () => {
+      // Trava de duplo-clique: o backend (lock FOR UPDATE + soma dos
+      // estornos já ligados) já impede um estorno acima do disponível
+      // mesmo que duas chamadas cheguem quase juntas -- mas desabilitar
+      // aqui evita a segunda chamada de rede inútil/confusa.
+      if (confirmBtn.disabled) return;
       const amount = Number(String($('#vxFinRevAmount', bg).value || '0').replace(',', '.'));
-      const reason = up($('#vxFinRevReason', bg).value || '');
+      const reasonPick = $('#vxFinRevReasonSelect', bg).value;
+      const notes = ($('#vxFinRevNotes', bg).value || '').trim();
       if (!(amount > 0)) return toast('Informe um valor maior que zero.', 'err');
       if (amount > remaining + 0.004) return toast(`Valor não pode ultrapassar o disponível (${money(remaining)}).`, 'err');
-      if (!reason) return toast('Informe o motivo do estorno.', 'err');
-      if (!confirm(`Estornar ${money(amount)}?`)) return;
+      if (!reasonPick) return toast('Selecione o motivo do estorno.', 'err');
+      const fullReason = notes ? `${reasonPick} — ${notes}` : reasonPick;
+      if (!confirm(`Confirmar estorno de ${money(amount)}? O recebimento deixará de compor os valores financeiros.`)) return;
+      confirmBtn.disabled = true;
       try {
-        await api('rpc/reverse_payment', { method: 'POST', body: JSON.stringify({ p_payment_id: p.id, p_reason: reason, p_amount: amount }) });
+        await api('rpc/reverse_payment', { method: 'POST', body: JSON.stringify({ p_payment_id: p.id, p_reason: fullReason, p_amount: amount }) });
         toast('Estorno registrado.');
         close();
         closeDrawer();
         await reload();
-      } catch (e) { toast('Erro ao estornar: ' + e.message, 'err'); }
+      } catch (e) { toast('Erro ao estornar: ' + e.message, 'err'); confirmBtn.disabled = false; }
     };
   }
+
+  // Fecha qualquer menu ⋮ aberto ao clicar fora dele -- os próprios
+  // botões do menu chamam vxFinToggleMenu/vxFinQuickReverse a partir de
+  // uma célula com stopPropagation, então esse clique nunca chega aqui
+  // pra se fechar sozinho antes de agir.
+  document.addEventListener('click', closeAllMenus);
 
   window.renderFinance = async function () {
     if (typeof can === 'function' && !can('financeiro')) {
@@ -431,7 +516,7 @@
         <select class="vx-control" id="vxFinFilterMethod"><option value="">Forma (todas)</option>${ui.methods.filter((m) => up(m.name) !== 'DESCONTO').map((m) => `<option>${esc(m.name)}</option>`).join('')}</select>
         <select class="vx-control" id="vxFinFilterSituacao"><option value="">Situação (todas)</option><option value="RECEBIDO">Recebido</option><option value="PARCIAL_ESTORNADO">Parcial estornado</option><option value="ESTORNADO">Estornado</option><option value="ESTORNO">Estorno (lançamento)</option></select>
       </div>
-      <div class="vx-fin-table-wrap"><table class="vx-fin-table"><thead><tr><th>Hora</th><th>OS</th><th>Cliente</th><th>Descrição</th><th>Forma</th><th>Valor</th><th>Usuário</th><th>Situação</th></tr></thead><tbody id="vxFinRows"></tbody></table></div>
+      <div class="vx-fin-table-wrap"><table class="vx-fin-table"><thead><tr><th>Hora</th><th>OS</th><th>Cliente</th><th>Descrição</th><th>Forma</th><th>Valor</th><th>Usuário</th><th>Situação</th><th></th></tr></thead><tbody id="vxFinRows"></tbody></table></div>
       <div class="vx-fin-totals-box"><h3>RECEBIMENTOS DO PERÍODO</h3><div id="vxFinTotals"></div></div>
     </div>`;
 

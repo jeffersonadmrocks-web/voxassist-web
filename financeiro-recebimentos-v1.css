@@ -31,6 +31,38 @@
 .vx-fin-reverse-btn:hover{background:#fdf2f2}
 .vx-empty{text-align:center;color:#8494a6;padding:22px 0!important;white-space:normal!important}
 
+/* Linha totalmente estornada: risco + atenuação no dado em si, mas a
+   célula de Situação (badge "ESTORNADO") e a coluna de ações continuam
+   com contraste normal -- "isso existiu, mas foi invalidado", nunca
+   ilegível nem escondido. */
+.vx-fin-row-reversed{opacity:.55}
+.vx-fin-row-reversed td{text-decoration:line-through}
+.vx-fin-row-reversed td.vx-fin-situacao-cell,.vx-fin-row-reversed td.vx-fin-actions-cell{text-decoration:none;opacity:1}
+.vx-fin-row-reversed .vx-fin-amount{color:#8a8f96}
+
+.vx-fin-actions-cell{position:relative;text-align:right;white-space:nowrap}
+.vx-fin-kebab{border:1px solid #dfe6ee;background:#fff;color:#5c6e82;border-radius:7px;width:30px;height:30px;font-size:16px;font-weight:800;line-height:1}
+.vx-fin-kebab:hover{background:#f2f6fa}
+.vx-fin-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:20;background:#fff;border:1px solid #dfe6ee;border-radius:9px;box-shadow:0 10px 28px #0c234022;min-width:180px;overflow:hidden}
+.vx-fin-menu button{display:block;width:100%;text-align:left;padding:10px 14px;font-size:12.5px;font-weight:600;color:#172033;background:#fff;border:0;border-bottom:1px solid #f0f3f6}
+.vx-fin-menu button:last-child{border-bottom:0}
+.vx-fin-menu button:hover{background:#f6f8fb}
+.vx-fin-menu button.vx-fin-menu-danger{color:#a63131}
+
+.vx-fin-reverse-modal{width:min(460px,100%)}
+.vx-fin-reverse-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px 14px;background:#f6f8fb;border:1px solid #edf1f5;border-radius:9px;padding:11px 13px;margin-bottom:12px}
+.vx-fin-reverse-summary div{display:flex;flex-direction:column;gap:2px}
+.vx-fin-reverse-summary span{font-size:9.5px;font-weight:800;color:#8494a6;text-transform:uppercase;letter-spacing:.3px}
+.vx-fin-reverse-summary b{font-size:12.5px;color:#172033}
+.vx-fin-reverse-warning{background:#fdf3e3;color:#a35b00;border-radius:8px;padding:9px 12px;font-size:12px;font-weight:600;line-height:1.5;margin:4px 0 2px}
+
+.vx-fin-drawer-reversals{border-top:1px solid #edf1f5;margin-top:10px;padding-top:10px}
+.vx-fin-drawer-reversals h4{margin:0 0 8px;font-size:11px;color:#a63131;text-transform:uppercase;letter-spacing:.3px}
+.vx-fin-reversal-item{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px 14px;background:#fbeaea;border-radius:8px;padding:9px 12px;margin-bottom:8px}
+.vx-fin-reversal-item div{display:flex;flex-direction:column;gap:2px}
+.vx-fin-reversal-item span{font-size:9.5px;font-weight:800;color:#a35a5a;text-transform:uppercase;letter-spacing:.3px}
+.vx-fin-reversal-item b{font-size:12.5px;color:#5c2323}
+
 .vx-fin-situacao{display:inline-block;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:800}
 .vx-fin-situacao-recebido{background:#e7f6ee;color:#0b6f3c}
 .vx-fin-situacao-estorno{background:#fbeaea;color:#a63131}
