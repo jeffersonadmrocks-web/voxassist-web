@@ -4,8 +4,19 @@
  function apply(){
   if(document.getElementById(ID)) return;
   const s=document.createElement('style'); s.id=ID; s.textContent=`
-  /* A4 canônico — mesma geometria do parecer-fabrica */
-  #vxWpForm .wp-exact-doc{width:210mm!important;max-width:210mm!important;min-height:297mm!important;padding:8mm 10mm!important;box-sizing:border-box!important;overflow:visible!important}
+  /* Achado PWA-0 (2026-09-12): a linha .wp-exact-doc que existia aqui
+     (width/max-width/min-height/padding/box-sizing/overflow) tinha os
+     MESMOS 6 valores, idênticos, já definidos em
+     whirlpool-a4-fidelity-hotfix-v0813.js -- resultado de uma "correção
+     fina" que só restatava a geometria sem acrescentar nada. Inofensiva
+     em tela cheia (mesmos valores), mas como sua <style> é injetada
+     DEPOIS da de a4-fidelity-hotfix no DOM, ela GANHAVA o empate de
+     cascata e travava a media query responsiva de lá (@media(max-
+     width:900px)) -- .wp-exact-doc nunca encolhia em tela estreita por
+     causa desta linha duplicada aqui, não por falha na regra em si.
+     Removida (não é a fonte canônica dessas propriedades -- essa é
+     a4-fidelity-hotfix); as regras abaixo (OS/Técnico, #wpfLabor,
+     :has()), que são exclusivas deste arquivo, continuam intactas. */
 
   /* OS / Técnico: no original o rótulo fica acima e o valor abaixo; evita cortar nomes/números */
   #vxWpForm .wp-exact-doc>table:nth-of-type(2) td:nth-child(1) .wp-exact-field,

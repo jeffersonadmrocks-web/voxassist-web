@@ -1,4 +1,9 @@
-/* VoxAssist Web — editor amplo de Observações Internas / F11 */
+/* VoxAssist Web — editor amplo de Observações Internas / F11
+   PWA-0.1 (2026-09-12): usava `window.state` (sempre undefined, ver
+   app.js) em 3 pontos -- F11 nunca abria o modal (`o?.id` sempre falso)
+   e, quando abria por outro caminho, o cache em memória da OS nunca
+   era atualizado após salvar. Corrigido pra `state` puro, igual ao
+   resto do app. */
 (function(){
   function ensureStyle(){
     if(document.getElementById('vxNotesModalStyle')) return;
@@ -20,7 +25,7 @@
   function closeModal(){document.querySelector('.vx-notes-overlay')?.remove();}
 
   window.vxEditInternalNotes=function(){
-    const o=window.state?.activeOs;
+    const o=state?.activeOs;
     if(!o?.id){ if(window.toast) toast('Abra uma OS para acessar as Observações Internas.','err'); return; }
     ensureStyle();
     closeModal();
@@ -44,7 +49,7 @@
       try{
         await api(`service_orders?id=eq.${o.id}`,{method:'PATCH',body:JSON.stringify({internal_notes:text,updated_at:new Date().toISOString()})});
         o.internal_notes=text;
-        if(window.state?.activeOs) state.activeOs.internal_notes=text;
+        if(state?.activeOs) state.activeOs.internal_notes=text;
         closeModal();
         toast('Observações internas salvas.');
       }catch(e){toast('Erro ao salvar observações: '+e.message,'err')}
@@ -53,6 +58,6 @@
   };
 
   document.addEventListener('keydown',e=>{
-    if(e.key==='F11' && window.state?.activeOs){e.preventDefault();window.vxEditInternalNotes();}
+    if(e.key==='F11' && state?.activeOs){e.preventDefault();window.vxEditInternalNotes();}
   },true);
 })();
