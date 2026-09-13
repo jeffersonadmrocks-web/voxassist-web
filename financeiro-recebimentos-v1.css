@@ -1,0 +1,54 @@
+.vx-fin-wrap{max-width:1400px;margin:0 auto}
+.vx-fin-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.vx-fin-head h2{margin:0;color:#0c2340;font-size:22px;letter-spacing:.3px}
+.vx-fin-date{display:block;color:#6a7b90;font-size:12px;font-weight:700;margin-top:2px}
+.vx-fin-btn{border:1px solid #0b6f3c;background:#0b6f3c;color:#fff;border-radius:8px;padding:10px 14px;font-weight:800;font-size:12px;white-space:nowrap}
+.vx-fin-btn:hover{background:#095c31}
+
+.vx-fin-filters{background:#fff;border:1px solid #dfe6ee;border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.vx-fin-chips{display:flex;gap:6px;flex-wrap:wrap}
+.vx-fin-chips button{border:1px solid #cbd7e3;background:#f6f8fb;color:#3c4c5e;border-radius:999px;padding:7px 14px;font-size:12px;font-weight:700}
+.vx-fin-chips button.active{background:#0c2340;border-color:#0c2340;color:#fff}
+.vx-fin-period-inputs{display:flex;gap:6px;align-items:center}
+.vx-fin-period-inputs input{border:1px solid #cbd7e3;border-radius:7px;padding:8px 9px}
+.vx-fin-period-inputs button{border:1px solid #0d4b84;background:#0d4b84;color:#fff;border-radius:7px;padding:8px 12px;font-weight:800;font-size:11px}
+.vx-fin-search{flex:1;min-width:220px}
+.vx-fin-search input{width:100%;border:1px solid #cbd7e3;border-radius:8px;padding:9px 12px}
+
+.vx-fin-table-wrap{width:100%;overflow:auto;border-radius:12px;border:1px solid #e2e8ef;background:#fff;margin-bottom:14px}
+.vx-fin-table{border-collapse:collapse;width:100%}
+.vx-fin-table th,.vx-fin-table td{text-align:left;padding:11px 13px;border-bottom:1px solid #edf1f5;font-size:13px;white-space:nowrap}
+.vx-fin-table th{background:#f6f8fb;color:#5c6e82;font-size:11px;text-transform:uppercase;letter-spacing:.3px}
+.vx-fin-table tbody tr:hover{background:#f8fbff}
+.vx-fin-table tbody tr[onclick]{cursor:pointer}
+.vx-fin-avulso-row{background:#fbfcfe}
+.vx-fin-amount{font-weight:800;color:#0b6f3c;text-align:right}
+.vx-fin-method-tag{display:inline-block;background:#eaf2fb;color:#245984;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:800}
+.vx-empty{text-align:center;color:#8494a6;padding:22px 0!important;white-space:normal!important}
+
+.vx-fin-totals-box{background:#fff;border:1px solid #dfe6ee;border-radius:12px;padding:16px 18px}
+.vx-fin-totals-box h3{margin:0 0 12px;font-size:13px;color:#5c6e82;letter-spacing:.4px}
+.vx-fin-totals-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 18px;margin-bottom:12px}
+.vx-fin-total-row{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #edf1f5;font-size:13px}
+.vx-fin-total-row b{color:#172033}
+.vx-fin-total-line{display:flex;justify-content:space-between;font-size:18px;font-weight:900;color:#0b6f3c;border-top:2px solid #0c2340;padding-top:10px}
+.vx-fin-count{color:#8494a6;font-size:12px;margin-top:6px}
+
+.vx-modal-bg{position:fixed;inset:0;background:#0006;z-index:9999;display:grid;place-items:center;padding:16px}
+.vx-modal{width:min(480px,100%);background:#fff;border-radius:14px;padding:18px;box-shadow:0 20px 50px #0004}
+.vx-modal h3{margin-top:0}
+.vx-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.vx-fin-avulso-modal .vx-field{margin-bottom:11px}
+.vx-fin-avulso-modal label{display:block;font-size:10px;font-weight:800;color:#617287;margin-bottom:5px;text-transform:uppercase}
+.vx-fin-avulso-modal .vx-control{width:100%;border:1px solid #cbd7e3;border-radius:7px;padding:10px;background:#fff;color:#172033}
+.vx-fin-avulso-modal .vx-modal-actions button{border:1px solid #b9c5d1;background:#fff;padding:9px 14px;font-weight:800;border-radius:7px}
+.vx-fin-avulso-modal .vx-green-btn{background:#0b6f3c;border-color:#0b6f3c;color:#fff}
+
+@media(max-width:760px){
+  .vx-fin-head{flex-direction:column;align-items:flex-start}
+  .vx-fin-btn{width:100%}
+  .vx-fin-filters{flex-direction:column;align-items:stretch}
+  .vx-fin-period-inputs{flex-wrap:wrap}
+  .vx-fin-table-wrap{overflow-x:auto}
+  .vx-fin-totals-grid{grid-template-columns:1fr 1fr}
+}

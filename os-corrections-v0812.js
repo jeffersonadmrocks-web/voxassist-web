@@ -13,6 +13,12 @@
 
   async function patchOrderType(value){
     if(!state?.activeOs?.id)return;
+    // Achado do usuário ("falha ao acessar/usar o Financeiro após
+    // finalizar OS"): mesma trava de service_orders pra OS FINALIZADA
+    // (migration 20260907060000) -- faltava aqui, único ponto deste
+    // arquivo que grava em service_orders sem passar por
+    // blockedFinalized() (peças, logo abaixo, já checavam).
+    if(blockedFinalized())return;
     try{
       await api(`service_orders?id=eq.${state.activeOs.id}`,{method:'PATCH',body:JSON.stringify({order_type:value})});
       state.activeOs.order_type=value;
@@ -158,13 +164,10 @@
   // Achado do usuário em 2026-09-07: OS FINALIZADA só pode ser alterada
   // pelo GESTOR (segurança -- migration 20260907060000). Checagem aqui
   // evita erro cru de RLS ao tentar alterar/excluir peça de uma OS já
-  // finalizada sem ser gestor.
-  function blockedFinalized(){
-    if(String(state?.activeOs?.status||'').toUpperCase()!=='FINALIZADA')return false;
-    if(String(state?.profile?.role||'').toUpperCase()==='GESTOR')return false;
-    toast('OS finalizada só pode ser alterada pelo GESTOR.','err');
-    return true;
-  }
+  // finalizada sem ser gestor. Delega pra window.vxOsFinalizedLocked
+  // (app.js) -- mesma lógica que antes vivia solta, duplicada quase
+  // igual em vários arquivos.
+  function blockedFinalized(){return window.vxOsFinalizedLocked(state?.activeOs)}
 
   window.vxSaveOsPart=async function(id){
     if(blockedFinalized())return;

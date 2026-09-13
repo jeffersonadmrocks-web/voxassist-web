@@ -99,6 +99,21 @@ async function restoreSession(){
 }
 async function loadProfile(){if(!state.session?.user?.id)return;const p=await api(`profiles?id=eq.${state.session.user.id}&select=*`);state.profile=p?.[0]||null}
 function can(area){const r=state.profile?.role||'GESTOR';if(r==='GESTOR')return true;if(area==='usuarios')return false;if(r==='TECNICO' && ['financeiro','usuarios'].includes(area))return false;return true}
+// Achado do usuário ("falha ao acessar/usar o Financeiro após finalizar
+// OS"): a migration 20260907060000 trava service_orders/os_parts/
+// os_financial/payments pra edição só do GESTOR quando a OS já está
+// FINALIZADA. Essa checagem client-side (só pra mostrar um aviso claro
+// em vez de deixar vazar o erro cru de RLS) tinha sido criada solta,
+// duplicada quase igual em vários arquivos que gravam nessas mesmas
+// tabelas (os-detail-v0812.js, os-corrections-v0812.js). Extraída aqui
+// (primeiro script carregado) pra ser reaproveitada por todos, incluindo
+// os pontos que ainda não tinham essa checagem (Whirlpool, peça manual).
+function vxOsFinalizedLocked(os){
+  if(String(os?.status||'').toUpperCase()!=='FINALIZADA')return false;
+  if(String(state?.profile?.role||'').toUpperCase()==='GESTOR')return false;
+  toast('OS finalizada só pode ser alterada pelo GESTOR.','err');
+  return true;
+}
 
 function loginScreen(){
   document.body.innerHTML=`<div class="login-shell"><div class="login-card">
