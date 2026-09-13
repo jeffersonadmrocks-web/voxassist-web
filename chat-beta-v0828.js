@@ -45,6 +45,10 @@
   // chat_conversations já permite GESTOR e ATENDENTE por igual --
   // só faltava o menu não escondê-la.
   function canUseChat(){return isGestor()||role()==='ATENDENTE'}
+  // PWA-1: exportado só pra o menu inferior mobile (mobile-nav-v1.js)
+  // decidir se mostra o atalho de Chat sem duplicar esta regra em outro
+  // arquivo -- nenhuma mudança de comportamento aqui, mesma função.
+  window.vxCanUseChat=canUseChat;
 
   /* ---------- horário de atendimento ----------
      Mesma regra do backend (chat-inbound-webhook, via
