@@ -24,6 +24,10 @@
 .vx-fin-avulso-row{background:#fbfcfe}
 .vx-fin-amount{font-weight:800;color:#0b6f3c;text-align:right}
 .vx-fin-method-tag{display:inline-block;background:#eaf2fb;color:#245984;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:800}
+.vx-fin-reversal-tag{color:#a63131;font-weight:800}
+.vx-fin-amount.vx-fin-reversal-tag{color:#a63131}
+.vx-fin-reverse-btn{border:1px solid #a63131;background:#fff;color:#a63131;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:800;white-space:nowrap}
+.vx-fin-reverse-btn:hover{background:#fdf2f2}
 .vx-empty{text-align:center;color:#8494a6;padding:22px 0!important;white-space:normal!important}
 
 .vx-fin-totals-box{background:#fff;border:1px solid #dfe6ee;border-radius:12px;padding:16px 18px}

@@ -20,9 +20,18 @@
    payments.service_order_id passou a ser opcional (migration
    20260913080000) pra permitir "RECEBIMENTO AVULSO" (venda de balcão
    sem OS vinculada, ex.: peça avulsa) -- a mesma migration adicionou
-   payments.company_id (agora a base real do RLS de payments) e por
-   isso window.vxRegisterPayment (os-detail-v0812.js) também passou a
-   enviar esse campo. */
+   payments.company_id (agora a base real do RLS de payments).
+
+   Fase 2 (decisão do usuário): parar de gravar payments por INSERT
+   direto do frontend -- toda criação passa por rpc/register_payment
+   (valida empresa ativa, OS×empresa, forma de pagamento e permissão no
+   servidor) e todo estorno por rpc/reverse_payment (nunca DELETE/
+   UPDATE do valor original -- cria uma NOVA transação negativa
+   vinculada via reversal_of_payment_id). O status 'ESTORNO' do estorno
+   NÃO entra na lista de status excluídos do extrato/totais de
+   propósito -- é o valor negativo dele que zera o líquido
+   automaticamente nas somas abaixo, sem precisar de nenhum caso
+   especial. */
 (function () {
   const $ = (s, r = document) => r.querySelector(s);
   const CANCELLED = ['CANCELADO', 'CANCELADA', 'ESTORNADO', 'ESTORNADA'];
@@ -91,13 +100,17 @@
   function rowHtml(p) {
     const os = p.service_orders?.os_number;
     const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO';
-    return `<tr class="${os ? '' : 'vx-fin-avulso-row'}" ${os ? `onclick="render('os:${p.service_order_id}')"` : ''}>
-      <td>${hhmm(p.paid_at)}</td>
-      <td>${os ? esc(os) : '—'}</td>
+    const isReversal = !!p.reversal_of_payment_id;
+    const canReverse = !isReversal && up(p.status) === 'RECEBIDO' && p.reversal_state !== 'TOTAL';
+    const desc = isReversal ? `<span class="vx-fin-reversal-tag">ESTORNO</span> ${esc(p.notes || '—')}` : `${esc(p.notes || '—')}${p.reversal_state ? ` <small class="vx-fin-reversal-tag">(${p.reversal_state === 'TOTAL' ? 'estornado' : 'parc. estornado'})</small>` : ''}`;
+    return `<tr class="${os ? '' : 'vx-fin-avulso-row'}">
+      <td ${os ? `onclick="render('os:${p.service_order_id}')" style="cursor:pointer"` : ''}>${hhmm(p.paid_at)}</td>
+      <td ${os ? `onclick="render('os:${p.service_order_id}')" style="cursor:pointer"` : ''}>${os ? esc(os) : '—'}</td>
       <td>${esc(cliente)}</td>
-      <td>${esc(p.notes || '—')}</td>
+      <td>${desc}</td>
       <td><span class="vx-fin-method-tag">${esc(p.method)}</span></td>
-      <td class="vx-fin-amount">${money(p.amount)}</td>
+      <td class="vx-fin-amount ${isReversal ? 'vx-fin-reversal-tag' : ''}">${money(p.amount)}</td>
+      <td>${canReverse ? `<button type="button" class="vx-fin-reverse-btn" data-reverse="${p.id}" data-amount="${p.amount}" data-method="${esc(p.method)}">ESTORNAR</button>` : ''}</td>
     </tr>`;
   }
 
@@ -116,8 +129,25 @@
     const rows = filteredRows();
     $('#vxFinRows').innerHTML = rows.length
       ? rows.map(rowHtml).join('')
-      : `<tr><td colspan="6" class="vx-empty">Nenhum recebimento encontrado neste período.</td></tr>`;
+      : `<tr><td colspan="7" class="vx-empty">Nenhum recebimento encontrado neste período.</td></tr>`;
     $('#vxFinTotals').innerHTML = totalsHtml(computeTotals(rows));
+    $$('[data-reverse]').forEach((btn) => btn.onclick = (e) => {
+      e.stopPropagation();
+      reversePaymentPrompt(btn.dataset.reverse, Number(btn.dataset.amount), btn.dataset.method);
+    });
+  }
+
+  // Fase 2: estorno = nova transação vinculada (rpc/reverse_payment),
+  // nunca DELETE/UPDATE da linha original -- ver comentário do topo.
+  async function reversePaymentPrompt(paymentId, amount, method) {
+    const reason = up(prompt(`Motivo do estorno de ${money(amount)} (${method}):`) || '');
+    if (!reason) return toast('Informe o motivo do estorno.', 'err');
+    if (!confirm(`Estornar ${money(amount)} (${method})?`)) return;
+    try {
+      await api('rpc/reverse_payment', { method: 'POST', body: JSON.stringify({ p_payment_id: paymentId, p_reason: reason }) });
+      toast('Estorno registrado.');
+      await reload();
+    } catch (e) { toast('Erro ao estornar: ' + e.message, 'err'); }
   }
 
   async function reload() {
@@ -153,14 +183,13 @@
       const now = new Date();
       paidAt.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
       try {
-        await api('payments', {
+        await api('rpc/register_payment', {
           method: 'POST',
           body: JSON.stringify({
-            service_order_id: null,
-            company_id: state.profile?.active_company_id,
-            amount, method, status: 'RECEBIDO',
-            paid_at: paidAt.toISOString(),
-            notes, created_by: state.session?.user?.id,
+            p_service_order_id: null,
+            p_components: [{ method, amount }],
+            p_notes: notes || null,
+            p_paid_at: paidAt.toISOString(),
           }),
         });
         toast('Recebimento avulso registrado.');
@@ -188,7 +217,7 @@
         </div>
         <div class="vx-fin-search"><input class="vx-control" id="vxFinSearch" placeholder="🔎 Pesquisar OS, cliente, CPF/CNPJ..." value="${esc(ui.q)}"></div>
       </div>
-      <div class="vx-fin-table-wrap"><table class="vx-fin-table"><thead><tr><th>Hora</th><th>OS</th><th>Cliente</th><th>Descrição</th><th>Forma</th><th>Valor</th></tr></thead><tbody id="vxFinRows"></tbody></table></div>
+      <div class="vx-fin-table-wrap"><table class="vx-fin-table"><thead><tr><th>Hora</th><th>OS</th><th>Cliente</th><th>Descrição</th><th>Forma</th><th>Valor</th><th></th></tr></thead><tbody id="vxFinRows"></tbody></table></div>
       <div class="vx-fin-totals-box"><h3>RECEBIMENTOS DO PERÍODO</h3><div id="vxFinTotals"></div></div>
     </div>`;
 
