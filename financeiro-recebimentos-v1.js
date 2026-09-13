@@ -128,7 +128,7 @@
 
   // Estado só desta tela (filtro/busca) -- nunca em window.state, que é o
   // contrato global do app (ver PWA-0.1).
-  let ui = { range: loadLastRange(), from: null, to: null, q: '', userId: '', method: '', situacao: '', rows: [], methods: [], users: [], companyName: 'EMPRESA', canReverse: false };
+  let ui = { range: loadLastRange(), from: null, to: null, q: '', userId: '', method: '', situacao: '', sortBy: 'horario', rows: [], methods: [], users: [], companyName: 'EMPRESA', canReverse: false };
 
   async function loadPaymentMethods() {
     const rows = await api(`payment_methods?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=sort_order`).catch(() => []);
@@ -174,6 +174,67 @@
     let total = 0;
     rows.forEach((p) => { const b = bucketFor(p.method); totals[b] += Number(p.amount || 0); total += Number(p.amount || 0); });
     return { totals, total, count: rows.length };
+  }
+
+  // ---- Separação diária (achado do usuário: lista contínua misturava
+  // dias, dificultando conferência) ----
+  // Chave de dia SEMPRE pelo calendário LOCAL do navegador (mesmo critério
+  // já usado por hhmm/dtFull ao formatar) -- nunca a data UTC crua, que
+  // divergiria do horário mostrado em cada linha perto da virada do dia.
+  const byTimeAsc = (a, b) => new Date(a.paid_at) - new Date(b.paid_at);
+  function dayKey(v) {
+    const d = new Date(v);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  // Um único agrupamento por dia serve tanto pra período de vários dias
+  // quanto de um único dia (item 14 do pedido) -- sem caminho especial.
+  function buildDayGroups(rows) {
+    const map = new Map();
+    rows.forEach((p) => {
+      const key = dayKey(p.paid_at);
+      if (!map.has(key)) map.set(key, { key, rows: [] });
+      map.get(key).rows.push(p);
+    });
+    return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
+  }
+  // "Organizar por" reordena/subagrupa SÓ dentro do dia -- a data
+  // continua sendo sempre o 1º nível quando há mais de um dia. Nunca
+  // consolida linhas: cada pagamento individual continua com sua própria
+  // <tr> (e seu próprio menu ⋮), só muda a ordem/os cabeçalhos de
+  // subgrupo em volta delas.
+  function orderWithinDay(rows, sortBy) {
+    if (sortBy === 'forma') {
+      const groups = BUCKETS
+        .map((b) => ({ label: b, rows: rows.filter((p) => bucketFor(p.method) === b).sort(byTimeAsc) }))
+        .filter((g) => g.rows.length);
+      return { kind: 'grouped', groups };
+    }
+    if (sortBy === 'os') {
+      const order = []; const map = new Map();
+      rows.slice().sort(byTimeAsc).forEach((p) => {
+        const os = p.service_orders?.os_number;
+        const key = os || '__SEM_OS__';
+        if (!map.has(key)) { map.set(key, { label: os ? `OS ${os}` : 'SEM OS (AVULSO)', rows: [] }); order.push(key); }
+        map.get(key).rows.push(p);
+      });
+      return { kind: 'grouped', groups: order.map((k) => map.get(k)) };
+    }
+    // 'horario' (padrão): cronológico ascendente dentro do dia.
+    return { kind: 'flat', rows: rows.slice().sort(byTimeAsc) };
+  }
+  // Fechamento de CADA dia -- reaproveita a MESMA computeTotals() do
+  // bloco "Recebimentos do período", só que escopada às linhas daquele
+  // dia. Como cada linha pertence a exatamente um grupo de dia, a soma
+  // dos totais diários reconcilia matematicamente com o total do
+  // período por construção (mesma função, partição exaustiva).
+  function dayTotalHtml(rows, shortLabel) {
+    const t = computeTotals(rows);
+    const parts = BUCKETS.map((b) => `<span class="vx-fin-day-total-item">${b} <b>${money(t.totals[b])}</b></span>`).join('');
+    return `<tr class="vx-fin-day-total-row"><td colspan="9">
+      <span class="vx-fin-day-total-label">TOTAL DIA ${esc(shortLabel)}</span>
+      <span class="vx-fin-day-total-breakdown">${parts}</span>
+      <span class="vx-fin-day-total-final">TOTAL <b>${money(t.total)}</b></span>
+    </td></tr>`;
   }
 
   function rowHtml(p) {
@@ -236,11 +297,27 @@
       && (!ui.situacao || situacaoOf(p) === ui.situacao));
   }
 
+  // Monta o corpo da tabela: um bloco por DIA (cabeçalho + linhas + fechamento
+  // do dia), na ordem em que os dias aparecem (sempre crescente -- ver
+  // buildDayGroups). Dentro de cada dia, ui.sortBy decide se as linhas ficam
+  // num fluxo cronológico único ou subagrupadas por forma/OS -- em
+  // qualquer caso, rowHtml(p) é reaproveitada sem alteração (menu ⋮,
+  // permissão de estorno, riscado de estornado etc. continuam intactos).
+  function dayBlockHtml(day) {
+    const full = new Date(day.rows[0].paid_at).toLocaleDateString('pt-BR');
+    const short = full.slice(0, 5);
+    const ordered = orderWithinDay(day.rows, ui.sortBy);
+    const rowsHtml = ordered.kind === 'flat'
+      ? ordered.rows.map(rowHtml).join('')
+      : ordered.groups.map((g) => `<tr class="vx-fin-subgroup-row"><td colspan="9">${esc(g.label)}</td></tr>${g.rows.map(rowHtml).join('')}`).join('');
+    return `<tr class="vx-fin-day-header-row"><td colspan="9">${esc(full)}</td></tr>${rowsHtml}${dayTotalHtml(day.rows, short)}`;
+  }
+
   function repaint() {
     const rows = filteredRows();
     const showGoMonth = !rows.length && ui.range !== 'mes' && ui.range !== 'periodo';
     $('#vxFinRows').innerHTML = rows.length
-      ? rows.map(rowHtml).join('')
+      ? buildDayGroups(rows).map(dayBlockHtml).join('')
       : `<tr><td colspan="9" class="vx-empty">${esc(emptyMessage())}${showGoMonth ? ' <button type="button" class="vx-fin-link-btn" id="vxFinGoMonth">Ver mês</button>' : ''}</td></tr>`;
     $('#vxFinTotals').innerHTML = totalsHtml(computeTotals(rows));
     if (showGoMonth) {
@@ -566,6 +643,11 @@
         <select class="vx-control" id="vxFinFilterUser"><option value="">Usuário (todos)</option>${ui.users.map((u) => `<option value="${u.id}">${esc(u.full_name)}</option>`).join('')}</select>
         <select class="vx-control" id="vxFinFilterMethod"><option value="">Forma (todas)</option>${ui.methods.filter((m) => up(m.name) !== 'DESCONTO').map((m) => `<option>${esc(m.name)}</option>`).join('')}</select>
         <select class="vx-control" id="vxFinFilterSituacao"><option value="">Situação (todas)</option><option value="RECEBIDO">Recebido</option><option value="PARCIAL_ESTORNADO">Parcial estornado</option><option value="ESTORNADO">Estornado</option><option value="ESTORNO">Estorno (lançamento)</option></select>
+        <select class="vx-control" id="vxFinSortBy" title="Organiza os lançamentos dentro de cada dia">
+          <option value="horario" ${ui.sortBy === 'horario' ? 'selected' : ''}>Organizar por: Horário</option>
+          <option value="forma" ${ui.sortBy === 'forma' ? 'selected' : ''}>Organizar por: Forma de pagamento</option>
+          <option value="os" ${ui.sortBy === 'os' ? 'selected' : ''}>Organizar por: OS</option>
+        </select>
       </div>
       <div class="vx-fin-table-wrap"><table class="vx-fin-table"><thead><tr><th>Hora</th><th>OS</th><th>Cliente</th><th>Descrição</th><th>Forma</th><th>Valor</th><th>Usuário</th><th>Situação</th><th></th></tr></thead><tbody id="vxFinRows"></tbody></table></div>
       <div class="vx-fin-totals-box"><h3>RECEBIMENTOS DO PERÍODO</h3><div id="vxFinTotals"></div></div>
@@ -583,6 +665,7 @@
     $('#vxFinFilterUser').onchange = (e) => { ui.userId = e.target.value; repaint(); };
     $('#vxFinFilterMethod').onchange = (e) => { ui.method = e.target.value; repaint(); };
     $('#vxFinFilterSituacao').onchange = (e) => { ui.situacao = e.target.value; repaint(); };
+    $('#vxFinSortBy').onchange = (e) => { ui.sortBy = e.target.value; repaint(); };
     $('#vxFinNewAvulso').onclick = openAvulsoModal;
 
     await reload();
