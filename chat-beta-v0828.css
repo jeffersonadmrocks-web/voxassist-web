@@ -291,8 +291,28 @@ button[disabled].vx-import-start{opacity:.55;cursor:not-allowed}
    quebra de linha real, ex.: rascunho de NPS) -- min/max-height mantém
    a altura de uma linha no caso comum e cresce até um teto pra mensagem
    com parágrafos, sem tomar a tela toda. */
-.vx-cc-composer textarea{flex:1;border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink);border-radius:9px;padding:10px 12px;font-size:13px;font-family:inherit;resize:none;min-height:38px;max-height:140px;line-height:1.4;overflow-y:auto}
-.vx-cc-composer .vx-cc-send-btn{align-self:flex-end}
+/* Achado do usuário em 2026-09-13 (captura real de celular Android,
+   390px): 4 botões de ícone de largura fixa (36px cada) + gaps + padding
+   já consomem ~200px da linha do composer -- em telas estreitas (a
+   maioria dos celulares em retrato) sobra pouco espaço real pro textarea
+   dividir com o próprio botão Enviar (que também é de largura fixa),
+   e como ambos disputavam a MESMA linha que os 4 ícones, o textarea
+   chegava a ~26-80px de largura (medido via Playwright em vários
+   larguras) -- o texto do placeholder quebrava caractere a caractere,
+   e a altura crescia (min-height/max-height) tentando acomodar as
+   dezenas de linhas resultantes, gerando a caixa alta e estreitíssima
+   vista na captura. Corrigido isolando textarea+Enviar num wrapper
+   próprio (.vx-cc-composer-input) que, abaixo de 480px, vira uma
+   segunda linha inteira só dele -- os 4 ícones ficam na primeira linha,
+   sobrando a largura toda da segunda pro texto. Nada mudou acima de
+   480px (linha única, como sempre foi). */
+.vx-cc-composer-input{display:flex;gap:8px;flex:1;align-items:flex-end;min-width:0}
+.vx-cc-composer textarea{flex:1;min-width:0;border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink);border-radius:9px;padding:10px 12px;font-size:13px;font-family:inherit;resize:none;min-height:38px;max-height:140px;line-height:1.4;overflow-y:auto}
+.vx-cc-composer .vx-cc-send-btn{align-self:flex-end;flex:none}
+@media(max-width:480px){
+  .vx-cc-composer{flex-wrap:wrap}
+  .vx-cc-composer-input{flex-basis:100%}
+}
 .vx-cc-send-btn{border:0;background:var(--cc-accent);color:#fff;border-radius:9px;padding:0 18px;height:36px;font-size:13px;font-weight:700;cursor:pointer}
 .vx-cc-send-btn:hover{background:var(--cc-accent-hover)}
 .vx-cc-note-btn{border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink-dim);width:36px;height:36px;border-radius:9px;cursor:pointer;font-size:15px;flex:none;display:flex;align-items:center;justify-content:center}

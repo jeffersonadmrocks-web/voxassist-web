@@ -1091,8 +1091,10 @@
         <input type="file" id="vxAttachFileInput" accept="image/*,application/pdf,audio/*,video/mp4" hidden>
         <button type="button" id="vxAttachCameraBtn" class="vx-cc-note-btn" title="Tirar foto" aria-label="Tirar foto">📷</button>
         <input type="file" id="vxAttachCameraInput" accept="image/*" capture="environment" hidden>
-        <textarea name="body" placeholder="Escrever mensagem… (Shift+Enter para quebrar linha)" required maxlength="4000" rows="1"></textarea>
-        <button type="submit" class="vx-cc-send-btn">Enviar</button>
+        <div class="vx-cc-composer-input">
+          <textarea name="body" placeholder="Escrever mensagem… (Shift+Enter para quebrar linha)" required maxlength="4000" rows="1"></textarea>
+          <button type="submit" class="vx-cc-send-btn">Enviar</button>
+        </div>
       </form>`;
     document.getElementById('vxMsgForm').onsubmit=handleSendMensagem;
     // Achado do usuário 2026-09-03: campo virou textarea (precisa
