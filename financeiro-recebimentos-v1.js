@@ -35,7 +35,12 @@
 (function () {
   const $ = (s, r = document) => r.querySelector(s);
   const CANCELLED = ['CANCELADO', 'CANCELADA', 'ESTORNADO', 'ESTORNADA'];
-  const isDiscount = (m) => up(m) === 'DESCONTO';
+  // Achado (revisão independente do Financeiro fase 2): register_payment
+  // agora grava status='DESCONTO' pra pagamentos com payment_methods.
+  // is_discount (migration 20260913100000) -- sinal robusto que não
+  // depende do nome exato do método. Checado junto com o método por
+  // compatibilidade com linhas gravadas antes dessa migration.
+  const isDiscount = (p) => up(p?.method) === 'DESCONTO' || up(p?.status) === 'DESCONTO';
   const isCancelled = (s) => CANCELLED.includes(up(s));
   const hhmm = (v) => (v ? new Date(v).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—');
   const isoDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -80,7 +85,7 @@
       [from, to] = rangeFor(ui.range) || rangeFor('hoje');
     }
     const rows = await api(`payments?paid_at=gte.${encodeURIComponent(from.toISOString())}&paid_at=lte.${encodeURIComponent(to.toISOString())}&select=*,service_orders(os_number,clients(name,document))&order=paid_at.desc&limit=2000`).catch(() => []);
-    return (rows || []).filter((p) => !isCancelled(p.status) && !isDiscount(p.method));
+    return (rows || []).filter((p) => !isCancelled(p.status) && !isDiscount(p));
   }
 
   function matchesSearch(p, q) {

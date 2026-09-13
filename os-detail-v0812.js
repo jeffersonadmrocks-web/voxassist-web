@@ -5,7 +5,7 @@
   const val=v=>esc(v??'');
   const num=v=>Number(v||0);
   const dateOnly=v=>v?String(v).slice(0,10):'';
-  const payStatusClass=s=>{const n=String(s||'').toUpperCase();if(['RECEBIDO','PAGO','QUITADO'].includes(n))return 'ok';if(['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA','ESTORNO'].includes(n))return 'off';return 'pending'};
+  const payStatusClass=s=>{const n=String(s||'').toUpperCase();if(['RECEBIDO','PAGO','QUITADO'].includes(n))return 'ok';if(['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA','ESTORNO','DESCONTO'].includes(n))return 'off';return 'pending'};
   const dtLocal=v=>v?String(v).slice(0,16):'';
   // Achado do usuário em 2026-09-07: OS FINALIZADA só pode ser alterada
   // pelo GESTOR (segurança -- migration 20260907060000, policies
@@ -439,9 +439,16 @@
   // excluído de "RECEBIDO" (e dos relatórios, dashboard-canonical-v1.js)
   // por não ser receita de verdade.
   function financePanel(){
+    // Achado (revisão independente do Financeiro fase 2): register_payment
+    // agora grava status='DESCONTO' pra essas linhas (payment_methods.
+    // is_discount, migration 20260913100000) -- sinal robusto que não
+    // depende do nome exato do método. Checado junto com o antigo
+    // método==='DESCONTO' (compatibilidade com qualquer linha anterior a
+    // essa migration).
+    const isDiscountRow=p=>String(p.status||'').toUpperCase()==='DESCONTO'||String(p.method||'').toUpperCase()==='DESCONTO';
     const nonCancelled=ctx.payments.filter(p=>!['CANCELADO','CANCELADA','ESTORNADO','ESTORNADA'].includes(String(p.status).toUpperCase()));
-    const received=nonCancelled.filter(p=>String(p.method||'').toUpperCase()!=='DESCONTO').reduce((s,p)=>s+num(p.amount),0);
-    const discountGranted=nonCancelled.filter(p=>String(p.method||'').toUpperCase()==='DESCONTO').reduce((s,p)=>s+num(p.amount),0);
+    const received=nonCancelled.filter(p=>!isDiscountRow(p)).reduce((s,p)=>s+num(p.amount),0);
+    const discountGranted=nonCancelled.filter(isDiscountRow).reduce((s,p)=>s+num(p.amount),0);
     const allocated=received+discountGranted;
     const partsTotal=ctx.parts.reduce((s,x)=>s+num(x.quantity)*num(x.unit_value),0);
     const budget=partsTotal+num(ctx.fin.labor_value)+num(ctx.fin.freight_value)+num(ctx.fin.auxiliary_material_value)+num(ctx.fin.technical_report_value)-num(ctx.fin.discount_value);
