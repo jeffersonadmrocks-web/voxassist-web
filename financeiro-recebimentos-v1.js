@@ -53,6 +53,30 @@
   // compatibilidade com linhas gravadas antes dessa migration.
   const isDiscount = (p) => up(p?.method) === 'DESCONTO' || up(p?.status) === 'DESCONTO';
   const isCancelled = (s) => CANCELLED.includes(up(s));
+
+  // Achado do usuário (2026-09-13): o estorno já existia e funcionava,
+  // mas ficava pouco perceptível -- tela abria em "Hoje" (sem
+  // lançamentos), a ação só existia dentro do menu ⋮, e não havia
+  // nenhum sinal de PERMISSÃO na UI (só o backend barrava). Mesmo padrão
+  // de gate client-side já usado em os-cancel-v0812.js (isManager +
+  // consulta a user_permissions) -- nunca criou tabela/RPC nova, só lê o
+  // que já existe. É só conveniência de UX: quem tenta burlar via
+  // DOM/console ainda esbarra em reverse_payment/RLS no servidor.
+  const norm = (s) => String(s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replaceAll('_', ' ').trim();
+  const isManager = () => ['GESTOR', 'ADMIN', 'ADMINISTRADOR'].includes(norm(state?.profile?.role));
+  async function userCanReverse() {
+    if (isManager()) return true;
+    try {
+      const uid = state?.session?.user?.id;
+      if (!uid) return false;
+      const r = await api(`user_permissions?user_id=eq.${encodeURIComponent(uid)}&permission_key=eq.financeiro.reverse&allowed=eq.true&select=id&limit=1`);
+      return !!r?.length;
+    } catch (e) { return false; }
+  }
+
+  const RANGE_KEY = 'vx_fin_last_range';
+  function loadLastRange() { try { return localStorage.getItem(RANGE_KEY) || 'mes'; } catch (e) { return 'mes'; } }
+  function saveLastRange(r) { try { localStorage.setItem(RANGE_KEY, r); } catch (e) { /* per-viewer conveniência apenas */ } }
   const hhmm = (v) => (v ? new Date(v).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—');
   const dtFull = (v) => (v ? new Date(v).toLocaleString('pt-BR') : '—');
   const isoDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -104,7 +128,7 @@
 
   // Estado só desta tela (filtro/busca) -- nunca em window.state, que é o
   // contrato global do app (ver PWA-0.1).
-  let ui = { range: 'hoje', from: null, to: null, q: '', userId: '', method: '', situacao: '', rows: [], methods: [], users: [], companyName: 'EMPRESA' };
+  let ui = { range: loadLastRange(), from: null, to: null, q: '', userId: '', method: '', situacao: '', sortBy: 'horario', rows: [], methods: [], users: [], companyName: 'EMPRESA', canReverse: false };
 
   async function loadPaymentMethods() {
     const rows = await api(`payment_methods?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=sort_order`).catch(() => []);
@@ -152,6 +176,67 @@
     return { totals, total, count: rows.length };
   }
 
+  // ---- Separação diária (achado do usuário: lista contínua misturava
+  // dias, dificultando conferência) ----
+  // Chave de dia SEMPRE pelo calendário LOCAL do navegador (mesmo critério
+  // já usado por hhmm/dtFull ao formatar) -- nunca a data UTC crua, que
+  // divergiria do horário mostrado em cada linha perto da virada do dia.
+  const byTimeAsc = (a, b) => new Date(a.paid_at) - new Date(b.paid_at);
+  function dayKey(v) {
+    const d = new Date(v);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  // Um único agrupamento por dia serve tanto pra período de vários dias
+  // quanto de um único dia (item 14 do pedido) -- sem caminho especial.
+  function buildDayGroups(rows) {
+    const map = new Map();
+    rows.forEach((p) => {
+      const key = dayKey(p.paid_at);
+      if (!map.has(key)) map.set(key, { key, rows: [] });
+      map.get(key).rows.push(p);
+    });
+    return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
+  }
+  // "Organizar por" reordena/subagrupa SÓ dentro do dia -- a data
+  // continua sendo sempre o 1º nível quando há mais de um dia. Nunca
+  // consolida linhas: cada pagamento individual continua com sua própria
+  // <tr> (e seu próprio menu ⋮), só muda a ordem/os cabeçalhos de
+  // subgrupo em volta delas.
+  function orderWithinDay(rows, sortBy) {
+    if (sortBy === 'forma') {
+      const groups = BUCKETS
+        .map((b) => ({ label: b, rows: rows.filter((p) => bucketFor(p.method) === b).sort(byTimeAsc) }))
+        .filter((g) => g.rows.length);
+      return { kind: 'grouped', groups };
+    }
+    if (sortBy === 'os') {
+      const order = []; const map = new Map();
+      rows.slice().sort(byTimeAsc).forEach((p) => {
+        const os = p.service_orders?.os_number;
+        const key = os || '__SEM_OS__';
+        if (!map.has(key)) { map.set(key, { label: os ? `OS ${os}` : 'SEM OS (AVULSO)', rows: [] }); order.push(key); }
+        map.get(key).rows.push(p);
+      });
+      return { kind: 'grouped', groups: order.map((k) => map.get(k)) };
+    }
+    // 'horario' (padrão): cronológico ascendente dentro do dia.
+    return { kind: 'flat', rows: rows.slice().sort(byTimeAsc) };
+  }
+  // Fechamento de CADA dia -- reaproveita a MESMA computeTotals() do
+  // bloco "Recebimentos do período", só que escopada às linhas daquele
+  // dia. Como cada linha pertence a exatamente um grupo de dia, a soma
+  // dos totais diários reconcilia matematicamente com o total do
+  // período por construção (mesma função, partição exaustiva).
+  function dayTotalHtml(rows, shortLabel) {
+    const t = computeTotals(rows);
+    const parts = BUCKETS.map((b) => `<span class="vx-fin-day-total-item">${b} <b>${money(t.totals[b])}</b></span>`).join('');
+    return `<tr class="vx-fin-day-total-row"><td colspan="9">
+      <span class="vx-fin-day-total-label">TOTAL DIA ${esc(shortLabel)}</span>
+      <span class="vx-fin-day-total-breakdown">${parts}</span>
+      <span class="vx-fin-day-total-final">TOTAL <b>${money(t.total)}</b></span>
+    </td></tr>`;
+  }
+
   function rowHtml(p) {
     const os = p.service_orders?.os_number;
     const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO';
@@ -164,7 +249,11 @@
     // riscada. A célula de Situação nunca é riscada (precisa continuar
     // legível pra dizer exatamente o que aconteceu).
     const fullyReversed = situacao === 'ESTORNADO';
-    const canRev = canReverseRow(p);
+    // canRev = pode ser estornado ESTRUTURALMENTE (canReverseRow) E o
+    // usuário logado TEM a permissão (ui.canReverse) -- sem a segunda
+    // parte, um usuário sem financeiro.reverse via a ação normalmente e
+    // só descobria que não podia ao clicar (erro do servidor).
+    const canRev = canReverseRow(p) && ui.canReverse;
     return `<tr class="${os ? '' : 'vx-fin-avulso-row'}${fullyReversed ? ' vx-fin-row-reversed' : ''}" onclick="vxFinOpenDrawer('${p.id}')">
       <td>${hhmm(p.paid_at)}</td>
       <td>${os ? esc(os) : '—'}</td>
@@ -175,6 +264,7 @@
       <td>${esc(p.profiles?.full_name || '—')}</td>
       <td class="vx-fin-situacao-cell"><span class="vx-fin-situacao vx-fin-situacao-${situacao.toLowerCase()}">${SITUACAO_LABEL[situacao]}</span></td>
       <td class="vx-fin-actions-cell" onclick="event.stopPropagation()">
+        ${canRev ? `<button type="button" class="vx-fin-reverse-btn" title="Estornar recebimento" onclick="vxFinQuickReverse('${p.id}')">↩ Estornar</button>` : ''}
         <button type="button" class="vx-fin-kebab" onclick="vxFinToggleMenu('${p.id}')" aria-label="Ações">⋮</button>
         <div class="vx-fin-menu" id="vxFinMenu-${p.id}" hidden>
           <button type="button" onclick="vxFinOpenDrawer('${p.id}')">Ver detalhes</button>
@@ -182,6 +272,15 @@
         </div>
       </td>
     </tr>`;
+  }
+
+  const RANGE_LABEL = { hoje: 'Hoje', ontem: 'Ontem', semana: 'Semana', mes: 'Mês', periodo: 'no período selecionado' };
+  function emptyMessage() {
+    const label = RANGE_LABEL[ui.range] || 'no período selecionado';
+    const hasOtherFilters = !!(ui.q || ui.userId || ui.method || ui.situacao);
+    if (hasOtherFilters) return `Nenhum recebimento encontrado com os filtros aplicados em "${label}". Tente limpar os filtros ou ampliar o período.`;
+    if (ui.range === 'hoje' || ui.range === 'ontem' || ui.range === 'semana') return `Nenhum recebimento encontrado em "${label}". Experimente o filtro "Mês" para ver o histórico recente.`;
+    return `Nenhum recebimento encontrado em "${label}".`;
   }
 
   function totalsHtml(t) {
@@ -198,12 +297,38 @@
       && (!ui.situacao || situacaoOf(p) === ui.situacao));
   }
 
+  // Monta o corpo da tabela: um bloco por DIA (cabeçalho + linhas + fechamento
+  // do dia), na ordem em que os dias aparecem (sempre crescente -- ver
+  // buildDayGroups). Dentro de cada dia, ui.sortBy decide se as linhas ficam
+  // num fluxo cronológico único ou subagrupadas por forma/OS -- em
+  // qualquer caso, rowHtml(p) é reaproveitada sem alteração (menu ⋮,
+  // permissão de estorno, riscado de estornado etc. continuam intactos).
+  function dayBlockHtml(day) {
+    const full = new Date(day.rows[0].paid_at).toLocaleDateString('pt-BR');
+    const short = full.slice(0, 5);
+    const ordered = orderWithinDay(day.rows, ui.sortBy);
+    const rowsHtml = ordered.kind === 'flat'
+      ? ordered.rows.map(rowHtml).join('')
+      : ordered.groups.map((g) => `<tr class="vx-fin-subgroup-row"><td colspan="9">${esc(g.label)}</td></tr>${g.rows.map(rowHtml).join('')}`).join('');
+    return `<tr class="vx-fin-day-header-row"><td colspan="9">${esc(full)}</td></tr>${rowsHtml}${dayTotalHtml(day.rows, short)}`;
+  }
+
   function repaint() {
     const rows = filteredRows();
+    const showGoMonth = !rows.length && ui.range !== 'mes' && ui.range !== 'periodo';
     $('#vxFinRows').innerHTML = rows.length
-      ? rows.map(rowHtml).join('')
-      : `<tr><td colspan="9" class="vx-empty">Nenhum recebimento encontrado neste período.</td></tr>`;
+      ? buildDayGroups(rows).map(dayBlockHtml).join('')
+      : `<tr><td colspan="9" class="vx-empty">${esc(emptyMessage())}${showGoMonth ? ' <button type="button" class="vx-fin-link-btn" id="vxFinGoMonth">Ver mês</button>' : ''}</td></tr>`;
     $('#vxFinTotals').innerHTML = totalsHtml(computeTotals(rows));
+    if (showGoMonth) {
+      $('#vxFinGoMonth').onclick = () => {
+        ui.range = 'mes';
+        saveLastRange('mes');
+        $$('.vx-fin-chips [data-range]').forEach((x) => x.classList.toggle('active', x.dataset.range === 'mes'));
+        $('#vxFinPeriodBox').classList.add('hidden');
+        reload();
+      };
+    }
   }
 
   async function reload() {
@@ -307,6 +432,7 @@
     closeAllMenus();
     const p = ui.rows.find((x) => x.id === id);
     if (!p) return;
+    if (!ui.canReverse) return toast('Você não tem a permissão financeiro.reverse para estornar recebimentos.', 'err');
     const remaining = remainingFor(p);
     if (!canReverseRow(p)) return toast('Este lançamento não pode ser estornado.', 'err');
     openReverseModal(p, remaining);
@@ -321,7 +447,8 @@
     const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO (sem OS)';
     const situacao = situacaoOf(p);
     const remaining = remainingFor(p);
-    const canReverse = canReverseRow(p);
+    const reversibleHere = canReverseRow(p);
+    const canReverse = reversibleHere && ui.canReverse;
     // Estorno(s) já aplicados a ESTE lançamento (se for o original) --
     // pra "Detalhes do estorno" (quem estornou, quando, motivo) sem
     // precisar abrir a transação de estorno separadamente.
@@ -362,7 +489,8 @@
           ${os ? `<button type="button" id="vxFinDrawerOpenOs">ABRIR OS</button>` : ''}
           <button type="button" id="vxFinDrawerReceipt">COMPROVANTE</button>
           <button type="button" id="vxFinDrawerAuditBtn">AUDITORIA</button>
-          ${canReverse ? `<button type="button" class="vx-orange-btn" id="vxFinDrawerReverse">ESTORNAR RECEBIMENTO</button>` : ''}
+          ${canReverse ? `<button type="button" class="vx-orange-btn" id="vxFinDrawerReverse">ESTORNAR RECEBIMENTO</button>`
+            : (reversibleHere && !ui.canReverse ? `<span class="vx-fin-reverse-locked" title="Requer a permissão financeiro.reverse">Estornar recebimento indisponível — requer a permissão <b>financeiro.reverse</b></span>` : '')}
         </div>
         <button type="button" data-close>FECHAR</button>
       </div>
@@ -498,7 +626,7 @@
       $('#app').innerHTML = `<div class="card error-card"><h3>Acesso restrito</h3><p>Seu perfil não tem acesso ao Financeiro.</p></div>`;
       return;
     }
-    [ui.methods, ui.companyName, ui.users] = await Promise.all([loadPaymentMethods(), loadCompanyName(), loadUsers()]);
+    [ui.methods, ui.companyName, ui.users, ui.canReverse] = await Promise.all([loadPaymentMethods(), loadCompanyName(), loadUsers(), userCanReverse()]);
     $('#app').innerHTML = `<div class="vx-fin-wrap">
       <div class="vx-fin-head"><div><h2>RECEBIMENTOS · ${esc(ui.companyName)}</h2><span class="vx-fin-date">${new Date().toLocaleDateString('pt-BR')}</span></div>
         <button type="button" class="vx-fin-btn primary" id="vxFinNewAvulso">+ RECEBIMENTO AVULSO</button></div>
@@ -515,6 +643,11 @@
         <select class="vx-control" id="vxFinFilterUser"><option value="">Usuário (todos)</option>${ui.users.map((u) => `<option value="${u.id}">${esc(u.full_name)}</option>`).join('')}</select>
         <select class="vx-control" id="vxFinFilterMethod"><option value="">Forma (todas)</option>${ui.methods.filter((m) => up(m.name) !== 'DESCONTO').map((m) => `<option>${esc(m.name)}</option>`).join('')}</select>
         <select class="vx-control" id="vxFinFilterSituacao"><option value="">Situação (todas)</option><option value="RECEBIDO">Recebido</option><option value="PARCIAL_ESTORNADO">Parcial estornado</option><option value="ESTORNADO">Estornado</option><option value="ESTORNO">Estorno (lançamento)</option></select>
+        <select class="vx-control" id="vxFinSortBy" title="Organiza os lançamentos dentro de cada dia">
+          <option value="horario" ${ui.sortBy === 'horario' ? 'selected' : ''}>Organizar por: Horário</option>
+          <option value="forma" ${ui.sortBy === 'forma' ? 'selected' : ''}>Organizar por: Forma de pagamento</option>
+          <option value="os" ${ui.sortBy === 'os' ? 'selected' : ''}>Organizar por: OS</option>
+        </select>
       </div>
       <div class="vx-fin-table-wrap"><table class="vx-fin-table"><thead><tr><th>Hora</th><th>OS</th><th>Cliente</th><th>Descrição</th><th>Forma</th><th>Valor</th><th>Usuário</th><th>Situação</th><th></th></tr></thead><tbody id="vxFinRows"></tbody></table></div>
       <div class="vx-fin-totals-box"><h3>RECEBIMENTOS DO PERÍODO</h3><div id="vxFinTotals"></div></div>
@@ -522,15 +655,17 @@
 
     $$('.vx-fin-chips [data-range]').forEach((b) => b.onclick = () => {
       ui.range = b.dataset.range;
+      saveLastRange(ui.range);
       $$('.vx-fin-chips [data-range]').forEach((x) => x.classList.toggle('active', x === b));
       $('#vxFinPeriodBox').classList.toggle('hidden', ui.range !== 'periodo');
       if (ui.range !== 'periodo') reload();
     });
-    $('#vxFinApplyPeriod').onclick = () => { ui.from = $('#vxFinFrom').value; ui.to = $('#vxFinTo').value; reload(); };
+    $('#vxFinApplyPeriod').onclick = () => { ui.from = $('#vxFinFrom').value; ui.to = $('#vxFinTo').value; saveLastRange('periodo'); reload(); };
     $('#vxFinSearch').oninput = (e) => { ui.q = e.target.value; repaint(); };
     $('#vxFinFilterUser').onchange = (e) => { ui.userId = e.target.value; repaint(); };
     $('#vxFinFilterMethod').onchange = (e) => { ui.method = e.target.value; repaint(); };
     $('#vxFinFilterSituacao').onchange = (e) => { ui.situacao = e.target.value; repaint(); };
+    $('#vxFinSortBy').onchange = (e) => { ui.sortBy = e.target.value; repaint(); };
     $('#vxFinNewAvulso').onclick = openAvulsoModal;
 
     await reload();

@@ -27,9 +27,12 @@
 .vx-fin-method-tag{display:inline-block;background:#eaf2fb;color:#245984;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:800}
 .vx-fin-reversal-tag{color:#a63131;font-weight:800}
 .vx-fin-amount.vx-fin-reversal-tag{color:#a63131}
-.vx-fin-reverse-btn{border:1px solid #a63131;background:#fff;color:#a63131;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:800;white-space:nowrap}
+.vx-fin-reverse-btn{border:1px solid #a63131;background:#fff;color:#a63131;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:800;white-space:nowrap;margin-right:6px}
 .vx-fin-reverse-btn:hover{background:#fdf2f2}
 .vx-empty{text-align:center;color:#8494a6;padding:22px 0!important;white-space:normal!important}
+.vx-fin-link-btn{border:0;background:none;color:#0d4b84;font-weight:800;font-size:12.5px;text-decoration:underline;padding:0;margin-left:4px}
+.vx-fin-link-btn:hover{color:#093a68}
+.vx-fin-reverse-locked{font-size:11.5px;font-weight:700;color:#8494a6;align-self:center}
 
 /* Linha totalmente estornada: risco + atenuação no dado em si, mas a
    célula de Situação (badge "ESTORNADO") e a coluna de ações continuam
@@ -40,6 +43,19 @@
 .vx-fin-row-reversed td.vx-fin-situacao-cell,.vx-fin-row-reversed td.vx-fin-actions-cell{text-decoration:none;opacity:1}
 .vx-fin-row-reversed .vx-fin-amount{color:#8a8f96}
 
+/* Separação diária (achado do usuário: lista contínua misturava dias) --
+   cabeçalho de dia discreto, fechamento diário compacto numa única linha
+   sempre nitidamente mais discreto que o card "RECEBIMENTOS DO PERÍODO"
+   abaixo da tabela (menor, sem borda grossa, dentro da própria tabela). */
+.vx-fin-day-header-row td{background:#eef2f7;color:#0c2340;font-size:12.5px;font-weight:800;padding:9px 13px;letter-spacing:.2px;white-space:nowrap;border-bottom:1px solid #dfe6ee}
+.vx-fin-day-total-row td{background:#f9fafc;padding:8px 13px;border-bottom:1px solid #e2e8ef;white-space:normal}
+.vx-fin-day-total-row{font-size:11.5px}
+.vx-fin-day-total-label{font-weight:800;color:#5c6e82;margin-right:10px;text-transform:uppercase;letter-spacing:.2px}
+.vx-fin-day-total-breakdown{display:inline-flex;flex-wrap:wrap;gap:4px 12px;color:#5c6e82}
+.vx-fin-day-total-item b{color:#374b60;font-weight:800}
+.vx-fin-day-total-final{margin-left:12px;color:#0b6f3c;font-weight:800}
+.vx-fin-day-total-final b{font-weight:900}
+.vx-fin-subgroup-row td{background:#fbfcfe;color:#8494a6;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:6px 13px 6px 20px}
 .vx-fin-actions-cell{position:relative;text-align:right;white-space:nowrap}
 .vx-fin-kebab{border:1px solid #dfe6ee;background:#fff;color:#5c6e82;border-radius:7px;width:30px;height:30px;font-size:16px;font-weight:800;line-height:1}
 .vx-fin-kebab:hover{background:#f2f6fa}

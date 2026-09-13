@@ -223,9 +223,19 @@
 .vx-fin-os-summary b.orange{color:var(--os-orange)}
 .vx-fin-divider{border:0;border-top:1px solid var(--os-line);margin:18px 0}
 .vx-pay-modal{width:min(560px,100%)}
+.vx-pay-balance-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px 14px;background:#f6f8fb;border:1px solid #edf1f5;border-radius:9px;padding:11px 13px;margin-bottom:14px}
+.vx-pay-balance-info div{display:flex;flex-direction:column;gap:2px}
+.vx-pay-balance-info span{font-size:9.5px;font-weight:800;color:#8494a6;text-transform:uppercase;letter-spacing:.3px}
+.vx-pay-balance-info b{font-size:14px;color:#172033}
+.vx-pay-balance-info b.vx-pay-balance-due{color:var(--os-orange)}
+.vx-pay-balance-info b.vx-pay-balance-zero{color:var(--os-green)}
 .vx-pay-comp-row{display:grid;grid-template-columns:1fr 140px 32px;gap:8px;margin-bottom:8px;align-items:center}
 .vx-pay-comp-row [data-remove-comp]{padding:6px;line-height:1}
 .vx-pay-comp-total{text-align:right;font-size:13px;color:#374b60;margin:4px 0 12px}
+.vx-pay-comp-total #vxPayCompRemaining{font-weight:700}
+.vx-pay-rest-ok{color:var(--os-green)}
+.vx-pay-rest-due{color:var(--os-orange)}
+.vx-pay-rest-over{color:#a63131}
 @media(max-width:600px){.vx-pay-comp-row{grid-template-columns:1fr}}
 
 /* botões genéricos (SALVAR global, ALTERAR, MAPA, ações da OS) --
