@@ -3,6 +3,15 @@
   const baseRender=window.render;
   const colorMap={blue:'#1671d8',orange:'#f07d00',purple:'#7650d6',green:'#13904b',cyan:'#2389b9',red:'#cf3542',gray:'#60758d',brown:'#b7681d',teal:'#148c7a'};
   const card=(icon,title,sub,target,color='blue')=>`<button class="module-action-card ${color}" data-target="${target}"><span class="icon">${icon}</span><span><strong>${title}</strong><small>${sub}</small></span></button>`;
+  // Card "reservado" (achado do usuário, consolidação Oficina 2026-09-13):
+  // a Oficina deve sempre manter 9 posições visuais no grid, mesmo quando
+  // menos de 9 funções reais existem -- nunca inventar função fictícia
+  // pra preencher vaga, nunca deixar buraco vazio. É um <div>, nunca
+  // <button>: sem data-target (bindTargets só liga clique em
+  // [data-target]), sem onclick, sem modal -- zero funcionalidade, nem
+  // fictícia. Visual deliberadamente mais discreto que card('...') normal
+  // (ver .module-action-card-placeholder em all-menus-layout.css).
+  const placeholderCard=(icon,title,sub)=>`<div class="module-action-card module-action-card-placeholder" aria-disabled="true"><span class="icon">${icon}</span><span><strong>${title}</strong><small>${sub}</small></span></div>`;
   // Achado do usuário em 2026-09-02: os cards de resumo (topo de cada
   // hub -- Atendimento/Oficina/Atividades/Financeiro/Loja) eram <div>
   // estáticos, sem data-target nem handler nenhum -- mostravam o
@@ -107,16 +116,24 @@
     summary('EM CONSERTO',ordersByStatus('AGUARDANDO CONSERTO'),'blue')+
     summary('PRONTA',ordersByStatus('PRONTO PARA ENTREGA'),'green')
   )}
+  // Achado do usuário (auditoria EST-0B, 2026-09-13): "PEÇAS DA O.S." e
+  // "ESTOQUE DO TÉCNICO" já roteavam pro MESMO destino (estoque-operacional
+  // / renderStockWorkbench) -- dois cards pra uma única tela. Consolidados
+  // num só "ESTOQUE / PEÇAS" (mesmo ícone/cor já usados por esse destino
+  // em loja(), por consistência entre módulos). A vaga liberada vira o
+  // card reservado "EM CONSTRUÇÃO" -- a Oficina mantém sempre 9 posições
+  // visuais (8 funcionais + 1 reservada nesta configuração); os outros 7
+  // cards e a ordem entre eles não mudam.
   function oficina(){home('Oficina','Fila técnica • Diagnóstico • Documentação • Peças',
     card('⚒','FILA TÉCNICA','Visualize aparelhos aguardando análise, conserto e finalização.','oficina-operacional','orange')+
     card('✓','ANÁLISE / DIAGNÓSTICO','Registre defeito constatado, serviço e parecer técnico.','oficina-operacional','blue')+
     card('▤','DOCUMENTAÇÃO TÉCNICA','Manuais, boletins, firmwares e materiais por marca/modelo.','docs-tecnicos','purple')+
-    card('▦','PEÇAS DA O.S.','Inclua peças manuais, consulte saldo e vincule ao reparo.','estoque-operacional','green')+
-    card('▣','ESTOQUE DO TÉCNICO','Itens em poder do técnico sem ruído fiscal.','estoque-operacional','cyan')+
+    card('▦','ESTOQUE / PEÇAS','Consulte peças, saldos, entradas e movimentações de estoque.','estoque-operacional','green')+
     card('↻','REINGRESSOS / RETORNOS','Acompanhe retornos e reincidências de equipamento.','pesquisa-os','red')+
     card('⌑','PARECERES TÉCNICOS','Gere pareceres e documentos de fabricante/seguradora.','pareceres','gray')+
     card('▧','FOTOS / ANEXOS','Consulte fotos obrigatórias, PDFs e documentos da OS.','anexos','teal')+
-    card('☑','CHECKLISTS','Acompanhe checklists técnicos e pendências de homologação.','testes-operacional','brown'),
+    card('☑','CHECKLISTS','Acompanhe checklists técnicos e pendências de homologação.','testes-operacional','brown')+
+    placeholderCard('⚙','EM CONSTRUÇÃO','Espaço reservado para nova funcionalidade da Oficina.'),
     summary('AGUARDANDO ANÁLISE',ordersByStatus('AGUARDANDO ANALISE'),'orange')+summary('EM CONSERTO',ordersByStatus('AGUARDANDO CONSERTO'),'blue')+summary('PRONTO',ordersByStatus('PRONTO PARA ENTREGA'),'green')+summary('TAREFAS',state.tasks,'purple','task')
   )}
   function atividades(){home('Atividades','Tarefas • Agenda • Casos • Compromissos',
