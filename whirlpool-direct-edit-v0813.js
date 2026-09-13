@@ -23,6 +23,22 @@
   .vx-wp-modebar{display:flex;gap:7px;align-items:center;margin-left:auto}.vx-wp-modebar button{border:1px solid #b9c5d1;background:#fff;padding:7px 11px;font-weight:700;cursor:pointer}.vx-wp-modebar button.active{background:#0c2340;color:#fff}.vx-wp-modebar button:disabled{opacity:.45;cursor:not-allowed}.vx-wp-mode-status{font-size:11px;color:#526579;margin-right:6px}
   #vxWpSave:disabled{opacity:.45;cursor:not-allowed}
   @media(max-width:900px){.vx-wp-modebar{flex-wrap:wrap}}
+  /* PWA-1 (2026-09-13) -- achado do usuário: no celular, achou que
+     "anexar arquivo/câmera não funciona" -- na verdade estava em modo
+     Visualização protegida (bloqueio correto, igual ao desktop) e nunca
+     tinha visto o botão EDITAR, porque .vx-wp-head (onde a barra de
+     modo mora) rola junto com o resto do documento -- num formulário
+     tão longo quanto o Whirlpool, ao rolar até anexos/assinatura pra
+     testar, a barra de modo já tinha saído da tela há muito tempo, sem
+     nada persistente lembrando que ela existe. Fixado só em mobile:
+     barra de cabeçalho (título + VISUALIZAR/EDITAR/EDIÇÃO AVANÇADA +
+     IMPRIMIR) grudada logo abaixo da faixa de abas (que já é sticky,
+     .tabs{position:sticky;top:0} em telas estreitas -- 39px é a altura
+     dela, desktop-tabs{height:39px}), sempre alcançável sem rolar de
+     volta ao topo. */
+  @media(max-width:900px){
+    #vx-whirlpool .vx-wp-head{position:sticky!important;top:39px!important;z-index:40!important;background:#fff!important;padding:8px 6px!important;margin:0 0 12px!important;box-shadow:0 2px 6px rgba(15,42,68,.08)!important}
+  }
   `;document.head.appendChild(s)}
   function ensureModeBar(){
     const form=$('#vxWpForm'); if(!form||form.dataset.wpModeBarInstalled==='1')return;
