@@ -25,19 +25,22 @@
     return grid;
   }
 
-  async function enhance(){
-   try{
-    if(state?.view!=='usuarios'||!isGestor())return;
-    const page=document.querySelector('.vx-admin-page');
-    if(!page||page.dataset.vxIntegrations==='1')return;
+  async function renderIntegrationsPage(){
+    const app=document.querySelector('#app');if(!app)return;
+    if(!isGestor()){
+      app.innerHTML='<div class="card error-card"><h3>Acesso restrito</h3><p>Integrações disponíveis somente para gestores.</p></div>';
+      return;
+    }
     const cid=companyId();if(!cid)return;
-    page.dataset.vxIntegrations='1';
+    window.state.view='config-integracoes';
+    app.innerHTML='<div class="vx-admin-page"><div class="module-home-head"><div><h2>Integrações</h2><p>Conexões e serviços externos desta empresa.</p></div><div class="module-head-actions"><button type="button" class="secondary" id="vxIntegrationsBack">← Voltar</button></div></div><div id="vxAdminExtrasGrid" class="vx-config-extras-grid"></div></div>';
+    document.getElementById('vxIntegrationsBack').onclick=()=>{window.__vxConfigSection=null;window.render('usuarios');};
     const card=document.createElement('section');
     card.className='vx-admin-card';
     card.id='vxIntegrationsCard';
-    extrasGrid(page).appendChild(card);
+    app.querySelector('#vxAdminExtrasGrid').appendChild(card);
     await renderCard(card,cid);
-   }catch(err){console.error('[integrations] falha ao injetar card:',err);}
+    window.dispatchEvent(new CustomEvent('vx:integrations-ready'));
   }
 
   async function renderCard(card,cid){
@@ -67,16 +70,11 @@
     card.querySelector('#vxIntElx').onclick=()=>window.render?.('electrolux');
   }
 
-  let enhanceDebounce=null;
-  function scheduleEnhance(){
-    if(enhanceDebounce)clearTimeout(enhanceDebounce);
-    enhanceDebounce=setTimeout(enhance,120);
-  }
   const baseRender=window.render;
-  window.render=async function(view){const r=await baseRender(view);if(view==='usuarios')scheduleEnhance();return r};
-
-  const appRoot=document.querySelector('#app')||document.body;
-  new MutationObserver(()=>{if(state?.view==='usuarios')scheduleEnhance();}).observe(appRoot,{childList:true,subtree:true});
+  window.render=async function(view){
+    if(view==='config-integracoes')return renderIntegrationsPage();
+    return baseRender(view);
+  };
 
   const style=document.createElement('style');
   style.textContent=`.vx-int-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid #edf2f6}.vx-int-row:first-of-type{border-top:0}.vx-int-label{flex:1;display:flex;flex-direction:column;gap:2px}.vx-int-label b{font-size:11.5px}.vx-int-label small{font-size:9.5px;color:#8a96a3}.vx-int-badge{font-size:9px;font-weight:800;border-radius:4px;padding:3px 8px;white-space:nowrap}.vx-int-badge.ok{background:#e6f4ea;color:#1f7a3d}.vx-int-badge.off{background:#eef1f4;color:#8291a0}`;
