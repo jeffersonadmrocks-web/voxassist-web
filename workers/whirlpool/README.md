@@ -122,6 +122,14 @@ O status externo nunca altera silenciosamente o status interno da OS.
 
 A Whirlpool não possui fila de novas OS. O worker abre a visualização de todas as OS, percorre a paginação e compara os números com o catálogo local. Número desconhecido é candidato a nova OS; número ausente segue a regra de reconfirmação de exclusão.
 
+O campo SAP `Nº máximo resultados` vem preenchido com 100 e aceita pelo menos 1.000.
+
+- **Carga inicial:** usar 1.000 resultados para formar o catálogo externo mais amplo possível. Com 10 linhas por página, isso pode gerar 100 páginas.
+- **Consulta incremental:** quantidade configurável, inicialmente 100, desde que a ordenação/filtro garanta que as OS mais recentes estejam incluídas.
+- **Reconciliação completa:** executar periodicamente com 1.000 resultados para conferir mudanças de status e suspeitas de exclusão. A consulta incremental de 100 não pode confirmar que uma OS antiga desapareceu.
+- Se a carga atingir exatamente o limite solicitado, registrar `LIMITE_ATINGIDO`; isso significa que podem existir resultados adicionais e exige ampliação do limite ou divisão da busca por período.
+- Alterar esse campo é somente um parâmetro de pesquisa e não constitui escrita nos dados de uma OS.
+
 ### Agendamento VoxAssist → Whirlpool
 
 O agendamento é iniciado no item `VISITA NORMAL`; após salvar, o SAP também pode propagar o status `Agendado` para a OS principal (confirmado na homologação da OS 7015717404). O worker deve reler e registrar ambos os níveis.
