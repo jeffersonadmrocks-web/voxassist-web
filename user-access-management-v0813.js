@@ -94,6 +94,19 @@
   async function openUser(id,cache){
     const u=cache.find(x=>String(x.user_id)===String(id));if(!u)return;
     const [stores,groups,managed]=await Promise.all([storesForCompany(),groupsForCompany(),managedCompanies()]);
+    // Achado do usuário em 2026-09-14 (regressão "Loja obrigatória"):
+    // admin_update_user_access (RPC real, migration
+    // 20260908200000_harden_permission_key_catalog.sql) exige
+    // array_length(p_store_ids,1)>0 -- uma empresa sem NENHUMA loja
+    // cadastrada (stores.length===0) nunca conseguia salvar usuário
+    // nenhum, sempre travado em "Selecione ao menos uma loja". O
+    // próprio backend já tem a variante certa pra isso --
+    // admin_update_user_access_company_only ("empresa-only, sem loja",
+    // já documentada/em produção desde 2026-09-08) -- só nunca tinha
+    // sido conectada a NENHUMA tela. Aqui: usa a variante certa
+    // conforme a empresa tem ou não loja cadastrada, em vez de inventar
+    // uma quarta estrutura de empresa/loja/usuário.
+    const hasStores=stores.length>0;
     const current=new Set((u.store_ids||[]).map(String));
     const currentGroups=new Set((u.service_group_ids||[]).map(String));
     const currentCompanies=new Set((u.company_ids||[]).map(String));
@@ -105,7 +118,7 @@
       <div class="vx-access-head"><div><b>SEGURANÇA</b><small>Redefinição de senha e encerramento de sessão -- o gestor nunca vê nem define a senha do usuário.</small></div></div>
       <div class="vx-security-actions"><button type="button" class="secondary" id="vxResetPassword">REDEFINIR SENHA</button><button type="button" class="secondary" id="vxTerminateSessions">ENCERRAR SESSÕES REMOTAS</button></div>
       ${managed.length>1?`<label>EMPRESAS LIBERADAS *</label><div class="vx-store-checks">${managed.map(c=>`<label><input type="checkbox" data-company value="${E(c.id)}" ${currentCompanies.has(String(c.id))||String(c.id)===String(companyId())?'checked':''}> <b>${E(c.trade_name||c.legal_name)}</b></label>`).join('')}</div>`:''}
-      <label>LOJAS LIBERADAS *</label><div class="vx-store-checks">${stores.map(s=>`<label><input type="checkbox" data-store value="${E(s.id)}" ${current.has(String(s.id))?'checked':''}> <b>${E(s.code||s.name)}</b><span>${E(s.name)}</span></label>`).join('')}</div>
+      ${hasStores?`<label>LOJAS LIBERADAS *</label><div class="vx-store-checks">${stores.map(s=>`<label><input type="checkbox" data-store value="${E(s.id)}" ${current.has(String(s.id))?'checked':''}> <b>${E(s.code||s.name)}</b><span>${E(s.name)}</span></label>`).join('')}</div>`:'<p class="vx-no-stores-note">Esta empresa não tem lojas cadastradas -- o acesso deste usuário é gerenciado por empresa, sem seleção de loja.</p>'}
       <div id="vxUserGroupsBlock" style="display:${u.role==='TECNICO'?'':'none'}"><label>GRUPOS DE ATENDIMENTO</label><div class="vx-store-checks">${groups.length?groups.map(g=>`<label><input type="checkbox" data-group value="${E(g.id)}" ${currentGroups.has(String(g.id))?'checked':''}> <b>${E(g.name)}</b></label>`).join(''):'<span class="vx-sg-empty">Nenhum grupo cadastrado -- crie em "Grupos de Atendimento" nesta mesma tela.</span>'}</div></div>
       <div class="vx-access-head"><div><b>CONTEÚDOS DE ACESSO</b><small>O tipo de acesso aplica um padrão; você pode personalizar abaixo.</small></div><button type="button" class="secondary" id="vxApplyPreset">APLICAR PADRÃO</button></div>
       ${permissionsHtml(u.permissions||{})}
@@ -136,7 +149,7 @@
       if(!confirm('Excluir este usuário do uso do VoxAssist? O histórico será preservado e o acesso será inativado.'))return;
       try{await api('rpc/admin_soft_delete_user',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:companyId()})});m.remove();toast('Usuário inativado/excluído do acesso. O histórico foi preservado.');await refreshUsers()}catch(e){toast('Falha ao excluir usuário: '+e.message,'err')}
     };
-    f.onsubmit=async e=>{e.preventDefault();const ss=[...f.querySelectorAll('[data-store]:checked')].map(x=>x.value);if(!ss.length)return toast('Selecione ao menos uma loja para o usuário.','err');const btn=e.submitter;btn.disabled=true;
+    f.onsubmit=async e=>{e.preventDefault();const ss=[...f.querySelectorAll('[data-store]:checked')].map(x=>x.value);if(hasStores&&!ss.length)return toast('Selecione ao menos uma loja para o usuário.','err');const btn=e.submitter;btn.disabled=true;
       // Achado do usuário em 2026-09-04: só manda grupo quando o papel
       // é TECNICO (bloco visível) -- p_service_group_ids=null significa
       // "não mexer", evita apagar vínculo de grupo por engano se o
@@ -157,7 +170,17 @@
         const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Falha ao alterar empresas liberadas');
         if(!companyIds.includes(String(companyId()))){m.remove();toast('Usuário atualizado. Acesso à empresa ativa removido.');await refreshUsers();return;}
       }
-      await api('rpc/admin_update_user_access',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:companyId(),p_full_name:f.name.value,p_role:f.role.value,p_active:f.active.checked,p_store_ids:ss,p_access_type:f.access.value,p_permissions:readPerms(f),p_service_group_ids:groupIds})});
+      // hasStores decide a RPC certa -- admin_update_user_access exige
+      // p_store_ids não-vazio no próprio servidor (raise exception
+      // "Selecione ao menos uma loja"); admin_update_user_access_company_only
+      // é a variante já existente em produção pra empresa sem loja
+      // nenhuma cadastrada (sem p_store_ids/p_service_group_ids, que
+      // ela não tem como parâmetro).
+      if(hasStores){
+        await api('rpc/admin_update_user_access',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:companyId(),p_full_name:f.name.value,p_role:f.role.value,p_active:f.active.checked,p_store_ids:ss,p_access_type:f.access.value,p_permissions:readPerms(f),p_service_group_ids:groupIds})});
+      }else{
+        await api('rpc/admin_update_user_access_company_only',{method:'POST',body:JSON.stringify({p_user_id:u.user_id,p_company_id:companyId(),p_full_name:f.name.value,p_role:f.role.value,p_active:f.active.checked,p_access_type:f.access.value,p_permissions:readPerms(f)})});
+      }
       m.remove();toast('Usuário e permissões atualizados.');await refreshUsers();
     }catch(err){toast('Falha ao atualizar usuário: '+err.message,'err');btn.disabled=false;}};
   }
@@ -168,7 +191,21 @@
     const block=document.createElement('div');block.className='vx-new-access-block';block.innerHTML=`<label>TIPO DE ACESSO *</label><select name="vx_access_type">${types.map(t=>`<option>${t}</option>`).join('')}</select><div class="vx-access-head"><div><b>CONTEÚDOS DE ACESSO</b><small>Podem ser ajustados antes ou depois do cadastro.</small></div><button type="button" class="secondary" id="vxNewApplyPreset">APLICAR PADRÃO</button></div>${permissionsHtml(presetMap('GESTOR COMPLETO'))}`;f.insertBefore(block,actions);
     const access=f.querySelector('[name=vx_access_type]');const role=f.querySelector('[name=role]');
     const suggest=()=>{const map={GESTOR:'GESTOR COMPLETO',ATENDENTE:'ATENDENTE PADRÃO',TECNICO:'TÉCNICO EXTERNO',ESTOQUE:'ESTOQUE',FINANCEIRO:'FINANCEIRO'};access.value=map[role.value]||'PERSONALIZADO';setPerms(block,access.value)};role.addEventListener('change',suggest);f.querySelector('#vxNewApplyPreset').onclick=()=>setPerms(block,access.value);suggest();
-    const original=f.onsubmit;f.onsubmit=async function(e){const email=String(f.querySelector('[name=email]')?.value||'').trim();const type=access.value;const pm=readPerms(block);const checked=[...f.querySelectorAll('[name=vx_store_access]:checked')].map(x=>x.value);if(original)await original.call(f,e);setTimeout(async()=>{try{const p=await api(`profiles?email=eq.${encodeURIComponent(email)}&select=id,full_name,role`);const x=p?.[0];if(!x)return;const ss=checked.length?checked:(f.querySelector('[name=store]')?.value?[f.querySelector('[name=store]').value]:[]);if(!ss.length)return;await api('rpc/admin_update_user_access',{method:'POST',body:JSON.stringify({p_user_id:x.id,p_company_id:companyId(),p_full_name:x.full_name,p_role:x.role,p_active:true,p_store_ids:ss,p_access_type:type,p_permissions:pm})});await refreshUsers()}catch(err){console.error('Permissões do novo usuário:',err)}},1200)};
+    const original=f.onsubmit;f.onsubmit=async function(e){const email=String(f.querySelector('[name=email]')?.value||'').trim();const type=access.value;const pm=readPerms(block);const checked=[...f.querySelectorAll('[name=vx_store_access]:checked')].map(x=>x.value);if(original)await original.call(f,e);setTimeout(async()=>{try{const p=await api(`profiles?email=eq.${encodeURIComponent(email)}&select=id,full_name,role`);const x=p?.[0];if(!x)return;const ss=checked.length?checked:(f.querySelector('[name=store]')?.value?[f.querySelector('[name=store]').value]:[]);
+      // Achado do usuário em 2026-09-14 (regressão "Loja obrigatória"):
+      // antes, ss.length===0 abortava aqui em silêncio -- um usuário
+      // novo numa empresa sem lojas nunca recebia papel/permissões
+      // nenhuma (só o profile básico do cadastro). Empresa sem lojas
+      // (nenhum checkbox pra marcar, ver enhanceUserModal em
+      // company-management-final-v0813.js) usa
+      // admin_update_user_access_company_only -- mesma RPC já real em
+      // produção, só nunca tinha sido conectada a nenhuma tela.
+      if(ss.length){
+        await api('rpc/admin_update_user_access',{method:'POST',body:JSON.stringify({p_user_id:x.id,p_company_id:companyId(),p_full_name:x.full_name,p_role:x.role,p_active:true,p_store_ids:ss,p_access_type:type,p_permissions:pm})});
+      }else{
+        await api('rpc/admin_update_user_access_company_only',{method:'POST',body:JSON.stringify({p_user_id:x.id,p_company_id:companyId(),p_full_name:x.full_name,p_role:x.role,p_active:true,p_access_type:type,p_permissions:pm})});
+      }
+      await refreshUsers()}catch(err){console.error('Permissões do novo usuário:',err)}},1200)};
   }
 
   document.addEventListener('click',e=>{if(e.target.closest('#vxNewUser'))setTimeout(enhanceNewUser,180)});
@@ -182,6 +219,6 @@
   const prior=window.render;window.render=async function(view){const r=await prior(view);if(view==='usuarios')setTimeout(refreshUsers,350);return r};
   // Trocar Loja Ativa jamais muda a lista da configuração: reconstituímos pelos vínculos da EMPRESA.
   document.addEventListener('change',e=>{if(e.target?.id==='activeStore'&&state?.view==='usuarios')setTimeout(refreshUsers,700)});
-  const st=document.createElement('style');st.textContent=`.vx-user-manage-btn{border:1px solid #b8c9db;background:#fff;color:#164f83;padding:6px 10px;font-size:9px;cursor:pointer}.vx-user-manage-modal{width:min(820px,96vw)}.vx-toggle{display:flex!important;align-items:center;gap:7px}.vx-store-checks label span{margin-left:auto;color:#718397;font-size:9px}.vx-access-head{display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px}.vx-access-head small{display:block;color:#718397;margin-top:2px}.vx-permissions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 16px;border:1px solid #dbe5ee;border-radius:8px;padding:10px;background:#f8fafc}.vx-permissions label{display:flex;align-items:center;gap:7px;font-size:10px}.vx-perm-group{grid-column:1/-1;font-size:9px;font-weight:800;color:#164f83;border-bottom:1px solid #dce6ef;padding:7px 0 3px}.vx-admin-form-actions .grow{flex:1}.vx-admin-form-actions .danger{border:1px solid #d33;background:#fff;color:#b32121;padding:9px 12px}.vx-new-access-block{display:grid;gap:7px}.vx-security-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}@media(max-width:760px){.vx-permissions{grid-template-columns:1fr}}`;document.head.appendChild(st);
+  const st=document.createElement('style');st.textContent=`.vx-user-manage-btn{border:1px solid #b8c9db;background:#fff;color:#164f83;padding:6px 10px;font-size:9px;cursor:pointer}.vx-user-manage-modal{width:min(820px,96vw)}.vx-toggle{display:flex!important;align-items:center;gap:7px}.vx-store-checks label span{margin-left:auto;color:#718397;font-size:9px}.vx-access-head{display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px}.vx-access-head small{display:block;color:#718397;margin-top:2px}.vx-permissions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 16px;border:1px solid #dbe5ee;border-radius:8px;padding:10px;background:#f8fafc}.vx-permissions label{display:flex;align-items:center;gap:7px;font-size:10px}.vx-perm-group{grid-column:1/-1;font-size:9px;font-weight:800;color:#164f83;border-bottom:1px solid #dce6ef;padding:7px 0 3px}.vx-admin-form-actions .grow{flex:1}.vx-admin-form-actions .danger{border:1px solid #d33;background:#fff;color:#b32121;padding:9px 12px}.vx-new-access-block{display:grid;gap:7px}.vx-security-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}.vx-no-stores-note{background:#f8fafc;border:1px solid #dbe5ee;border-radius:8px;padding:9px 12px;font-size:11px;color:#718397}@media(max-width:760px){.vx-permissions{grid-template-columns:1fr}}`;document.head.appendChild(st);
   setTimeout(refreshUsers,700);
 })();
