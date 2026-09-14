@@ -14,7 +14,15 @@
 .vx-fin-period-inputs button{border:1px solid #0d4b84;background:#0d4b84;color:#fff;border-radius:7px;padding:8px 12px;font-weight:800;font-size:11px}
 .vx-fin-search{flex:1;min-width:220px}
 .vx-fin-search input{width:100%;border:1px solid #cbd7e3;border-radius:8px;padding:9px 12px}
-.vx-fin-filters select.vx-control{border:1px solid #cbd7e3;border-radius:8px;padding:9px 12px;background:#fff;color:#172033;min-width:170px}
+/* Achado do usuário (2026-09-14): existe uma regra GLOBAL
+   .vx-control{width:100%} (os-detail-v0812.css, carregada em toda a
+   aplicação) que nunca tinha sido neutralizada aqui -- cada select
+   esticava pra 100% do container e, dentro do flex-wrap da linha de
+   filtros, isso forçava quebra de linha a cada item (achatava numa
+   coluna) mesmo em telas largas, não só no mobile. width:auto some
+   com o herdado; flex:0 1 auto deixa encolher quando precisa sem
+   nunca voltar a ocupar a linha inteira sozinho. */
+.vx-fin-filters select.vx-control{width:auto;flex:0 1 auto;border:1px solid #cbd7e3;border-radius:8px;padding:9px 12px;background:#fff;color:#172033;min-width:170px}
 
 .vx-fin-table-wrap{width:100%;overflow:auto;border-radius:12px;border:1px solid #e2e8ef;background:#fff;margin-bottom:14px}
 .vx-fin-table{border-collapse:collapse;width:100%}
@@ -141,7 +149,7 @@
      pra caber e, se ainda não couber, essa linha rola na horizontal em
      vez de empilhar (nunca quebra pra baixo). */
   .vx-fin-filters.vx-fin-filters-selects{flex-direction:row;flex-wrap:nowrap;align-items:stretch;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .vx-fin-filters-selects select.vx-control{flex:1 1 0;min-width:118px}
+  .vx-fin-filters-selects select.vx-control{width:auto;flex:1 1 0;min-width:118px}
   .vx-fin-period-inputs{flex-wrap:wrap}
   .vx-fin-table-wrap{overflow-x:auto}
   .vx-fin-totals-grid{grid-template-columns:1fr 1fr}
