@@ -1,9 +1,12 @@
 import { chromium } from "playwright";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { PORTAL_URL, PROFILE_DIR, assertWhirlpoolUrl } from "./config.mjs";
+import { ARTIFACT_DIR, PORTAL_URL, PROFILE_DIR, assertWhirlpoolUrl } from "./config.mjs";
 
 assertWhirlpoolUrl(PORTAL_URL);
+await mkdir(ARTIFACT_DIR, { recursive: true });
 
 const context = await chromium.launchPersistentContext(PROFILE_DIR, {
   channel: "chromium",
@@ -163,9 +166,23 @@ try {
     orders,
   };
 
-  console.log("\nRESULTADO SANITIZADO:");
-  console.log(JSON.stringify(summary));
-  console.log("\nCopie somente a linha JSON acima e envie aqui.");
+  const fileName = `resultado-os-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  const outputPath = path.join(ARTIFACT_DIR, fileName);
+  await writeFile(outputPath, JSON.stringify(summary, null, 2), "utf8");
+
+  const compactSummary = {
+    mode: summary.mode,
+    scannedPages: summary.scannedPages,
+    ignoredAutEspecial: summary.ignoredAutEspecial,
+    unclassifiedRows: summary.unclassifiedRows,
+    observedTypes: summary.observedTypes,
+    count: summary.count,
+  };
+
+  console.log("\nRESUMO SANITIZADO:");
+  console.log(JSON.stringify(compactSummary));
+  console.log(`\nResultado completo salvo em: ${outputPath}`);
+  console.log("Anexe esse arquivo aqui; não é necessário copiar a lista inteira.");
   await rl.question("\nPressione somente ENTER para fechar o navegador... ");
 } finally {
   rl.close();
