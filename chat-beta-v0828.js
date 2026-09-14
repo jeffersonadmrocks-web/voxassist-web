@@ -941,8 +941,13 @@
         <div class="vx-cc-title-block"><h1>Central de Conversas</h1><p>Chat VoxAssist · desktop, 3 colunas</p></div>
         ${businessHoursBadge()}
         <div class="vx-cc-top-actions">
-          ${isGestor()?`<button id="chatHubMonitor" class="vx-cc-settings-btn" type="button"><span class="vx-cc-settings-btn-ic">📊</span><span class="vx-cc-settings-btn-txt"><b>Monitor</b><small>Atendimento e métricas</small></span></button><button id="chatHubUsers" class="vx-cc-settings-btn" type="button"><span class="vx-cc-settings-btn-ic">👤</span><span class="vx-cc-settings-btn-txt"><b>Usuários</b><small>Atendentes e permissões</small></span></button>`:''}
-          <button id="chatHubSettings" class="vx-cc-settings-btn" type="button"><span class="vx-cc-settings-btn-ic">⚙</span><span class="vx-cc-settings-btn-txt"><b>Configurações</b><small>Regras e preferências</small></span></button>
+          <!-- Achado do usuário em 2026-09-14: "Configurações" (Conexões
+               WhatsApp) não checava isGestor() na tela -- ATENDENTE/
+               TECNICO conseguiam abrir a tela de Conexões mesmo a ação
+               real (conectar/QR) sendo bloqueada só no servidor
+               (chat-gateway-proxy). Agora entra no mesmo grupo GESTOR-only
+               que Monitor/Usuários, em vez de ficar fora dele sozinho. -->
+          ${isGestor()?`<button id="chatHubMonitor" class="vx-cc-settings-btn" type="button"><span class="vx-cc-settings-btn-ic">📊</span><span class="vx-cc-settings-btn-txt"><b>Monitor</b><small>Atendimento e métricas</small></span></button><button id="chatHubUsers" class="vx-cc-settings-btn" type="button"><span class="vx-cc-settings-btn-ic">👤</span><span class="vx-cc-settings-btn-txt"><b>Usuários</b><small>Atendentes e permissões</small></span></button><button id="chatHubSettings" class="vx-cc-settings-btn" type="button"><span class="vx-cc-settings-btn-ic">⚙</span><span class="vx-cc-settings-btn-txt"><b>Configurações</b><small>Regras e preferências</small></span></button>`:''}
         </div>
       </div>
       <div class="vx-cc-board">
@@ -978,7 +983,7 @@
     </div>`;
     renderStatusBar();
     document.getElementById('chatHubBack').onclick=()=>{stopConversaPoll();stopListPoll();goBack()};
-    document.getElementById('chatHubSettings').onclick=()=>{stopConversaPoll();stopListPoll();openConexoesScreen()};
+    document.getElementById('chatHubSettings')?.addEventListener('click',()=>{stopConversaPoll();stopListPoll();openConexoesScreen()});
     document.getElementById('chatHubMonitor')?.addEventListener('click',()=>{stopConversaPoll();stopListPoll();if(typeof window.render==='function')window.render('chat-monitor')});
     document.getElementById('chatHubUsers')?.addEventListener('click',()=>{stopConversaPoll();stopListPoll();if(typeof window.render==='function')window.render('chat-internal-whatsapp')});
     wireChatTabBar();
