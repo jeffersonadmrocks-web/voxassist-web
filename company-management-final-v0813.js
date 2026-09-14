@@ -61,8 +61,19 @@
     if(!isGestor())return;
     const form=document.querySelector('#vxAdminModal #vxUserForm');if(!form||form.dataset.vxStores==='1')return;
     const old=form.querySelector('select[name=store]');if(!old)return;
-    form.dataset.vxStores='1';
     const stores=await allowedStores();
+    // Achado do usuário em 2026-09-14 (regressão "Loja obrigatória"):
+    // esta função bloqueava a criação de QUALQUER usuário novo quando
+    // allowedStores() vinha vazia (empresa sem nenhuma loja cadastrada)
+    // -- "Selecione no mínimo uma loja de acesso" travava o cadastro
+    // por completo, sem saída. Sem loja nenhuma pra marcar, esta
+    // camada de reforço (checkbox + validação) não faz sentido --
+    // sai do caminho e deixa o formulário base seguir como já seguia
+    // antes desta camada existir (admin_update_user_access_company_only
+    // é quem assume o cadastro sem loja, ver enhanceNewUser em
+    // user-access-management-v0813.js).
+    if(!stores.length)return;
+    form.dataset.vxStores='1';
     const wrap=document.createElement('div');wrap.className='vx-user-store-access';
     wrap.innerHTML=`<label>LOJAS DE ACESSO *</label><div class="vx-store-checks">${stores.map(s=>`<label><input type="checkbox" name="vx_store_access" value="${E(s.id)}"> <b>${E(s.code||s.name)}</b></label>`).join('')}</div><small>O usuário verá no cabeçalho somente as lojas marcadas aqui.</small>`;
     old.parentElement?.insertBefore(wrap,old);old.style.display='none';
