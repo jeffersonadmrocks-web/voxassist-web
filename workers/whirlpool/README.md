@@ -91,6 +91,14 @@ A integração do agendamento é não bloqueante:
 
 Chave única: fabricante + conexão/filial + número externo Whirlpool.
 
+### Classificação do número externo
+
+- Todo registro cujo número externo começa com `7015` é uma ordem de serviço Whirlpool e deve entrar no catálogo/importação do VoxAssist.
+- A regra vale independentemente do subtipo mostrado pelo SAP, incluindo `BR Ordem de Servico`, `BR OS Split` e `BR OS KAID`.
+- `BR Aut.Especial` e demais registros que não começam com `7015` não são importados como OS.
+- Salvar/importar no VoxAssist não autoriza alterar os dados correspondentes no portal Whirlpool; a única escrita automática permitida no portal continua sendo o agendamento.
+
+
 ### Endereço
 
 - Nova OS: comparar o endereço recebido com os endereços do cliente.
