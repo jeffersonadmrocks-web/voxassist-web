@@ -125,10 +125,10 @@
   // visuais (8 funcionais + 1 reservada nesta configuração); os outros 7
   // cards e a ordem entre eles não mudam.
   function oficina(){home('Oficina','Fila técnica • Diagnóstico • Documentação • Peças',
-    card('⚒','FILA TÉCNICA','Visualize aparelhos aguardando análise, conserto e finalização.','oficina-operacional','orange')+
+    card('▦','ESTOQUE / PEÇAS','Consulte peças, saldos, entradas e movimentações de estoque.','estoque-operacional','green')+
     card('✓','ANÁLISE / DIAGNÓSTICO','Registre defeito constatado, serviço e parecer técnico.','oficina-operacional','blue')+
     card('▤','DOCUMENTAÇÃO TÉCNICA','Manuais, boletins, firmwares e materiais por marca/modelo.','docs-tecnicos','purple')+
-    card('▦','ESTOQUE / PEÇAS','Consulte peças, saldos, entradas e movimentações de estoque.','estoque-operacional','green')+
+    card('⚒','FILA TÉCNICA','Visualize aparelhos aguardando análise, conserto e finalização.','oficina-operacional','orange')+
     card('↻','REINGRESSOS / RETORNOS','Acompanhe retornos e reincidências de equipamento.','pesquisa-os','red')+
     card('⌑','PARECERES TÉCNICOS','Gere pareceres e documentos de fabricante/seguradora.','pareceres','gray')+
     card('▧','FOTOS / ANEXOS','Consulte fotos obrigatórias, PDFs e documentos da OS.','anexos','teal')+
