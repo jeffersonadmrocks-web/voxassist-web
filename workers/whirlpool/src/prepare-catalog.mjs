@@ -68,6 +68,10 @@ const payload = {
   sourceFile: files[0],
   preparedAt: new Date().toISOString(),
   fullScan: true,
+  sourceResultCount:
+    items.length + Number(scan.ignoredAutEspecial || 0) + Number(scan.unclassifiedRows || 0),
+  limitReached:
+    items.length + Number(scan.ignoredAutEspecial || 0) + Number(scan.unclassifiedRows || 0) >= 1000,
   cancellationCutoff: cutoff,
   counts,
   total: items.length,
