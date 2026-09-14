@@ -20,4 +20,15 @@
 .vx-mini-btn{border:1px solid #146fd1;background:#fff;color:#146fd1;border-radius:7px;padding:6px 11px;font-size:11px;font-weight:700;white-space:nowrap}
 .vx-mini-btn:hover{background:#eaf2fd}
 .vx-op-hint{background:#eaf2fd;color:#0d4b84;border-radius:8px;padding:9px 12px;font-size:12px;font-weight:600;margin:0 0 4px}
-@media(max-width:800px){.vx-form-grid,.vx-kpis{grid-template-columns:1fr}.vx-tr{grid-template-columns:1fr 1fr}.vx-tr span:nth-child(n+3){font-size:11px}.vx-op-head{align-items:flex-start;flex-direction:column}.vx-tr-stock{grid-template-columns:1fr 1fr}}
+/* Estoque -- pacote de conclusão (retirar/entregar/aplicar/devolver): cadastro
+   simplificado com campos avançados recolhidos, ações do modal e as 2-3
+   ações por linha da lista de peças (Entrada/Retirar/⋮). */
+.vx-op-details{margin:4px 0 10px;border:1px solid #e3e9f0;border-radius:8px;padding:2px 12px}
+.vx-op-details summary{cursor:pointer;padding:9px 0;font-size:12px;font-weight:700;color:#146fd1;list-style:none}
+.vx-op-details summary::-webkit-details-marker{display:none}
+.vx-op-details[open] summary{border-bottom:1px solid #edf1f5}
+.vx-op-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:6px}
+.vx-secondary-btn{border:1px solid #cfd8e4;background:#fff;color:#53677d;padding:11px 16px;border-radius:8px;font-weight:700;cursor:pointer}
+.vx-secondary-btn:hover{background:#f0f4f8}
+.vx-stock-row-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+@media(max-width:800px){.vx-form-grid,.vx-kpis{grid-template-columns:1fr}.vx-tr{grid-template-columns:1fr 1fr}.vx-tr span:nth-child(n+3){font-size:11px}.vx-op-head{align-items:flex-start;flex-direction:column}.vx-tr-stock{grid-template-columns:1fr 1fr}.vx-stock-row-actions{justify-content:flex-start}}
