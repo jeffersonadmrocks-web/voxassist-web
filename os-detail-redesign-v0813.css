@@ -222,6 +222,15 @@
 .vx-fin-os-summary b.green{color:var(--os-green)}
 .vx-fin-os-summary b.orange{color:var(--os-orange)}
 .vx-fin-divider{border:0;border-top:1px solid var(--os-line);margin:18px 0}
+/* Classificação de exceção pra Bonificação (excluded_from_time_metric /
+   reincidence_attributable) -- discreta, só aparece pro GESTOR no
+   contexto certo (Entrega/Finalização e cabeçalho de REINGRESSO). */
+.vx-time-exception-toggle{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#617287;font-weight:600;margin:2px 0 12px;cursor:pointer}
+.vx-time-exception-toggle input{width:15px;height:15px;cursor:pointer}
+.vx-reinc-badge{border:1px solid #d5dde5;background:#fff;border-radius:999px;padding:3px 10px;font-size:10px;font-weight:800;cursor:pointer;margin-left:8px}
+.vx-reinc-badge.unclassified{color:#8494a6;border-color:#d5dde5}
+.vx-reinc-badge.attributable{color:#a63131;border-color:#e7b8b8;background:#fdf2f2}
+.vx-reinc-badge.not-attributable{color:#0b6f3c;border-color:#bfe0cc;background:#f0f9f4}
 .vx-pay-modal{width:min(560px,100%)}
 .vx-pay-balance-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px 14px;background:#f6f8fb;border:1px solid #edf1f5;border-radius:9px;padding:11px 13px;margin-bottom:14px}
 .vx-pay-balance-info div{display:flex;flex-direction:column;gap:2px}
