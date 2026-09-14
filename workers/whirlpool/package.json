@@ -1,0 +1,33 @@
+{
+  "name": "voxassist-whirlpool-worker",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Worker online para sincronizar o portal Whirlpool com o VoxAssist",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "install-browser": "playwright install chromium",
+    "login": "node src/login.mjs",
+    "map-page": "node src/map-page.mjs",
+    "capture-network": "node src/capture-network.mjs",
+    "inspect-results": "node src/inspect-results.mjs",
+    "inspect-grid": "node src/inspect-grid-structure.mjs",
+    "prepare-catalog": "node src/prepare-catalog.mjs",
+    "upload-catalog": "node src/upload-catalog.mjs",
+    "capture-pdf-sample": "node src/capture-pdf-sample.mjs",
+    "parse-pdf-sample": "node src/parse-pdf-sample.mjs",
+    "simulate-pdf-import": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/run-secure-simulation.ps1",
+    "import-pdf-sample": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/run-secure-import.ps1",
+    "run-import-batch": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/run-secure-batch.ps1",
+    "install-automation": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/install-windows-automation.ps1",
+    "run-automation-now": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/scheduled-runner.ps1",
+    "uninstall-automation": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/uninstall-windows-automation.ps1",
+    "run-online": "node src/run-import-batch.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.55.0",
+    "pdfjs-dist": "4.8.69"
+  }
+}
