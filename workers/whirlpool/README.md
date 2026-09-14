@@ -112,7 +112,7 @@ Chave única: fabricante + conexão/filial + número externo Whirlpool.
 
 O status externo nunca altera silenciosamente o status interno da OS.
 
-- `CANCELADA`: cancelamento possivelmente realizado pelo robô da Whirlpool. Criar caso de atenção obrigatório, manter a OS preservada e aguardar revisão humana. A revisão deve registrar responsável, conclusão e tratativa: confirmar cancelamento, contestar/solicitar reativação ou manter acompanhamento.
+- `CANCELADA`: cancelamento possivelmente realizado pelo robô da Whirlpool. Na carga inicial, importar para revisão somente canceladas cuja `Data de entrada` esteja nos últimos 30 dias, inclusive. Canceladas mais antigas permanecem apenas no catálogo externo/histórico e não criam OS nem alerta retroativo. Depois da ativação, um novo cancelamento detectado em OS acompanhada cria caso de atenção obrigatório, mantém a OS preservada e aguarda revisão humana. A revisão deve registrar responsável, conclusão e tratativa: confirmar cancelamento, contestar/solicitar reativação ou manter acompanhamento.
 - `LIQUIDADA`: atendimento encerrado pela própria Vox. Tratar como estado terminal externo; não gerar novas tarefas nem tentar atualizar agendamento. Manter apenas histórico e auditoria.
 - Uma OS `CANCELADA` não deve ser confundida com ausência/exclusão da listagem.
 - Uma OS desconhecida já `CANCELADA` entra no catálogo externo e na fila de revisão, sem abertura automática de atendimento ativo.
