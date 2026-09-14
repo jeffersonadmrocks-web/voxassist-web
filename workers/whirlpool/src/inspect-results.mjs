@@ -20,6 +20,16 @@ async function readFrame(frame) {
       clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const directCells = (tr) =>
       [...tr.children].filter((element) => element.tagName === "TH" || element.tagName === "TD");
+    const cellValue = (cell) => {
+      const visible = clean(cell.innerText);
+      if (visible) return visible;
+      const text = clean(cell.textContent);
+      if (text) return text;
+      const control = cell.querySelector("input:not([type=hidden]), select, textarea");
+      if (control && clean(control.value)) return clean(control.value);
+      const titled = cell.querySelector("[title]");
+      return titled ? clean(titled.getAttribute("title")) : "";
+    };
 
     for (const table of document.querySelectorAll('table[id$="_ResultTable_TableHeader"]')) {
       const headerRow = table.tHead?.rows?.[0];
@@ -38,13 +48,13 @@ async function readFrame(frame) {
         [...tbody.rows].flatMap((tr) => {
           const cells = directCells(tr);
           if (cells.length !== headers.length) return [];
-          const externalOrderId = clean(cells[osIndex].innerText);
+          const externalOrderId = cellValue(cells[osIndex]);
           if (!/^\d{10}$/.test(externalOrderId)) return [];
           return [{
             externalOrderId,
-            processType: clean(cells[typeIndex].innerText),
-            processTypeNormalized: norm(cells[typeIndex].innerText),
-            serviceStatus: clean(cells[statusIndex].innerText),
+            processType: cellValue(cells[typeIndex]),
+            processTypeNormalized: norm(cellValue(cells[typeIndex])),
+            serviceStatus: cellValue(cells[statusIndex]),
           }];
         }),
       );
