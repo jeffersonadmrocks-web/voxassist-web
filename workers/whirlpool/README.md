@@ -46,8 +46,11 @@ Telas necessárias:
 1. `busca-os`
 2. `resultado-busca`
 3. `detalhe-os`
-4. `editar-agendamento`
-5. `confirmacao-agendamento`
+4. `todas-as-os`
+5. `paginacao-os`
+6. `incluir-agendamento`
+7. `alterar-agendamento`
+8. `confirmacao-agendamento`
 
 Os arquivos são gravados em `.artifacts/` e permanecem somente na máquina local.
 
@@ -75,6 +78,20 @@ Chave única: fabricante + conexão/filial + número externo Whirlpool.
 - Uma OS futura do mesmo cliente processa novamente o endereço e pode criar outro.
 - A OS preserva uma cópia histórica do endereço usado no atendimento.
 
+### Situações externas Whirlpool
+
+O status externo nunca altera silenciosamente o status interno da OS.
+
+- `CANCELADA`: cancelamento possivelmente realizado pelo robô da Whirlpool. Criar caso de atenção obrigatório, manter a OS preservada e aguardar revisão humana. A revisão deve registrar responsável, conclusão e tratativa: confirmar cancelamento, contestar/solicitar reativação ou manter acompanhamento.
+- `LIQUIDADA`: atendimento encerrado pela própria Vox. Tratar como estado terminal externo; não gerar novas tarefas nem tentar atualizar agendamento. Manter apenas histórico e auditoria.
+- Uma OS `CANCELADA` não deve ser confundida com ausência/exclusão da listagem.
+- Uma OS desconhecida já `CANCELADA` entra no catálogo externo e na fila de revisão, sem abertura automática de atendimento ativo.
+- Uma OS desconhecida já `LIQUIDADA` entra somente no catálogo/histórico, salvo decisão manual de importação.
+
+### Descoberta automática
+
+A Whirlpool não possui fila de novas OS. O worker abre a visualização de todas as OS, percorre a paginação e compara os números com o catálogo local. Número desconhecido é candidato a nova OS; número ausente segue a regra de reconfirmação de exclusão.
+
 ### Agendamento VoxAssist → Whirlpool
 
 - Inclusão e alteração de agendamento de OS Whirlpool geram item em fila.
@@ -95,4 +112,4 @@ Uma ausência na busca não significa exclusão confirmada.
 
 ## Próxima etapa
 
-Após obter os cinco mapas sanitizados, implementar seletores estáveis, parser de detalhes, fila Supabase, escrita de agendamento e testes automatizados. O worker só poderá operar em modo de escrita depois da homologação explícita.
+Após obter os mapas sanitizados, implementar seletores estáveis, parser de detalhes, fila Supabase, escrita de agendamento e testes automatizados. O worker só poderá operar em modo de escrita depois da homologação explícita.
