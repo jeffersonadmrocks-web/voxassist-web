@@ -126,15 +126,20 @@ try {
     for (const row of result.rows) {
       const observedType = row.processType || "(vazio)";
       observedTypes.set(observedType, (observedTypes.get(observedType) || 0) + 1);
-      if (row.processTypeNormalized.includes("aut especial")) {
-        ignoredAutEspecial += 1;
-        continue;
-      }
-      if (row.processTypeNormalized.includes("br ordem de s")) {
+      // Regra operacional aprovada: todo número 7015 é uma OS Whirlpool,
+      // independentemente do subtipo exibido pelo SAP (normal, Split ou KAID).
+      if (row.externalOrderId.startsWith("7015")) {
         collected.push({
           externalOrderId: row.externalOrderId,
           serviceStatus: row.serviceStatus,
         });
+        continue;
+      }
+      if (
+        row.processTypeNormalized.includes("aut especial") ||
+        row.processTypeNormalized.includes("aut.especial")
+      ) {
+        ignoredAutEspecial += 1;
         continue;
       }
       unclassifiedRows += 1;
