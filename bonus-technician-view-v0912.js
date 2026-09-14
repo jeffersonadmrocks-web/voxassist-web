@@ -12,6 +12,10 @@
   const myId=()=>state?.profile?.id||state?.session?.user?.id;
   const dateOnly=v=>v?String(v).slice(0,10).split('-').reverse().join('/'):'—';
 
+  const style=document.createElement('style');
+  style.textContent=`.vx-bonus-no-sample-row td{color:#8b5200}.vx-bonus-no-sample-note{background:#fdf3e3;color:#8b5200;border-radius:8px;padding:9px 12px;font-size:12px;font-weight:600;margin:8px 0 0}`;
+  document.head.appendChild(style);
+
   // Achado do usuário (2026-09-14): .catch(()=>[]) escondia qualquer
   // falha real (tabela ausente, RLS, rede, RPC quebrada) atrás do
   // mesmo card "Não configurado" -- nunca dava pra saber se era um
@@ -82,11 +86,24 @@
     }
   },true);
 
+  // Achado do usuário em 2026-09-14: técnico sem amostra válida de NPS
+  // no período (ver migration 20260914040000) vem com achieved_percent
+  // NULL e status='SEM_AMOSTRA' -- nunca 0%. Sem este tratamento a
+  // célula ATINGIDO mostraria literalmente "null%". Peso mostrado como
+  // "20% → 28,6%" quando a redistribuição mudou o peso efetivo deste
+  // critério (nunca pro próprio critério sem amostra, que fica em 0%).
   function breakdownTable(criteriaResults){
     const arr=Array.isArray(criteriaResults)?criteriaResults:[];
+    const hasNoSample=arr.some(c=>c.status==='SEM_AMOSTRA');
     return `<table class="vx-grid-table"><thead><tr><th>CRITÉRIO</th><th>PESO</th><th>ATINGIDO</th><th>POTENCIAL</th><th>CONQUISTADO</th></tr></thead><tbody>
-      ${arr.map(c=>`<tr><td>${E(c.label)}</td><td>${c.weight_percent}%</td><td>${c.achieved_percent}%</td><td>${money(c.potential_share)}</td><td><b>${money(c.amount)}</b></td></tr>`).join('')}
-    </tbody></table>`;
+      ${arr.map(c=>{
+        const noSample=c.status==='SEM_AMOSTRA';
+        const eff=c.effective_weight_percent;
+        const pesoLabel=(!noSample&&eff!=null&&Math.abs(eff-c.weight_percent)>=0.05)?`${c.weight_percent}% → ${(Math.round(eff*10)/10)}%`:`${c.weight_percent}%`;
+        const atingidoLabel=noSample?'<span title="Sem amostra suficiente neste período -- peso redistribuído entre os demais critérios, sem penalizar o técnico">N/A — sem amostra</span>':`${c.achieved_percent}%`;
+        return `<tr${noSample?' class="vx-bonus-no-sample-row"':''}><td>${E(c.label)}</td><td>${pesoLabel}</td><td>${atingidoLabel}</td><td>${money(c.potential_share)}</td><td><b>${money(c.amount)}</b></td></tr>`;
+      }).join('')}
+    </tbody></table>${hasNoSample?'<p class="vx-bonus-no-sample-note">Um ou mais critérios ficaram sem amostra suficiente neste período — o peso deles foi redistribuído entre os demais, sem penalizar o técnico.</p>':''}`;
   }
 
   window.renderBonusTechnicianView=async function(){
