@@ -44,8 +44,9 @@ async function readFrame(frame) {
       };
       const osIndex = headers.findIndex((cell) => fieldName(cell) === "OBJECT_ID");
       const typeIndex = headers.findIndex((cell) => fieldName(cell) === "PROCESS_TYPE_TXT");
+      const entryDateIndex = headers.findIndex((cell) => fieldName(cell) === "POSTING_DATE");
       const statusIndex = headers.findIndex((cell) => fieldName(cell) === "ZZSTATUS_ITEM_SERV");
-      if (osIndex < 0 || typeIndex < 0 || statusIndex < 0) continue;
+      if (osIndex < 0 || typeIndex < 0 || entryDateIndex < 0 || statusIndex < 0) continue;
 
       const rows = [...table.tBodies].flatMap((tbody) =>
         [...tbody.rows].flatMap((tr) => {
@@ -57,6 +58,7 @@ async function readFrame(frame) {
             externalOrderId,
             processType: cellValue(cells[typeIndex]),
             processTypeNormalized: norm(cellValue(cells[typeIndex])),
+            entryDate: cellValue(cells[entryDateIndex]),
             serviceStatus: cellValue(cells[statusIndex]),
           }];
         }),
@@ -103,6 +105,22 @@ function fingerprint(rows) {
   return rows.map((row) => row.externalOrderId).join("|");
 }
 
+function parseBrazilianDate(value) {
+  const match = String(value || "").match(/^(\d{2})[./-](\d{2})[./-](\d{4})$/);
+  if (!match) return null;
+  const [, day, month, year] = match;
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isCancelled(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase() === "cancelado";
+}
+
 try {
   let page = context.pages()[0] || (await context.newPage());
   if (!page.url() || page.url() === "about:blank") await page.goto(PORTAL_URL);
@@ -131,6 +149,7 @@ try {
       if (row.externalOrderId.startsWith("7015")) {
         collected.push({
           externalOrderId: row.externalOrderId,
+          entryDate: row.entryDate,
           serviceStatus: row.serviceStatus,
         });
         continue;
@@ -161,12 +180,32 @@ try {
   }
 
   const orders = [...new Map(collected.map((row) => [row.externalOrderId, row])).values()];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cancellationCutoff = new Date(today);
+  cancellationCutoff.setDate(cancellationCutoff.getDate() - 30);
+  const cancelledLast30Days = orders.filter((row) => {
+    const entryDate = parseBrazilianDate(row.entryDate);
+    return isCancelled(row.serviceStatus) && entryDate && entryDate >= cancellationCutoff && entryDate <= today;
+  }).length;
+  const cancelledOlderThan30Days = orders.filter((row) => {
+    const entryDate = parseBrazilianDate(row.entryDate);
+    return isCancelled(row.serviceStatus) && entryDate && entryDate < cancellationCutoff;
+  }).length;
+  const cancelledWithoutValidEntryDate = orders.filter(
+    (row) => isCancelled(row.serviceStatus) && !parseBrazilianDate(row.entryDate),
+  ).length;
+
   const summary = {
     mode: "READ_ONLY",
     scannedPages,
     ignoredAutEspecial,
     unclassifiedRows,
     observedTypes: Object.fromEntries(observedTypes),
+    cancellationCutoff: cancellationCutoff.toISOString().slice(0, 10),
+    cancelledLast30Days,
+    cancelledOlderThan30Days,
+    cancelledWithoutValidEntryDate,
     count: orders.length,
     orders,
   };
@@ -181,6 +220,10 @@ try {
     ignoredAutEspecial: summary.ignoredAutEspecial,
     unclassifiedRows: summary.unclassifiedRows,
     observedTypes: summary.observedTypes,
+    cancellationCutoff: summary.cancellationCutoff,
+    cancelledLast30Days: summary.cancelledLast30Days,
+    cancelledOlderThan30Days: summary.cancelledOlderThan30Days,
+    cancelledWithoutValidEntryDate: summary.cancelledWithoutValidEntryDate,
     count: summary.count,
   };
 
