@@ -521,7 +521,7 @@
 
   function financePanel(){
     const {received,discountGranted,budget,bal}=budgetSummary();
-    const paymentRow=p=>`<tr onclick="vxSelectPayment('${p.id}',this)"><td>${dt(p.paid_at)||dateOnly(p.due_date)}</td><td><span class="vx-pay-method">${val(p.method)}</span></td><td><b>${p.reversal_of_payment_id?'<span class="vx-pay-reversal">ESTORNO </span>':''}${money(p.amount)}</b></td><td><span class="vx-pay-status ${payStatusClass(p.status)}">${val(p.status)}</span>${p.reversal_state?`<small class="vx-pay-reversal"> (${p.reversal_state==='TOTAL'?'estornado':'parc. estornado'})</small>`:''}</td><td>${val(p.profiles?.full_name||'—')}</td></tr>`;
+    const paymentRow=p=>`<tr onclick="vxSelectPayment('${p.id}',this)"><td>${dt(p.paid_at)||dateOnly(p.due_date)}</td><td><span class="vx-pay-method">${val(p.method)}${p.correction_of_payment_id?' <span title="Pagamento com informações corrigidas" style="color:#245984;font-weight:900;cursor:help">*</span>':''}</span></td><td><b>${p.reversal_of_payment_id?'<span class="vx-pay-reversal">ESTORNO </span>':''}${money(p.amount)}</b></td><td><span class="vx-pay-status ${payStatusClass(p.status)}">${val(p.status)}</span>${p.reversal_state?`<small class="vx-pay-reversal"> (${p.reversal_state==='TOTAL'?'estornado':'parc. estornado'})</small>`:''}</td><td>${val(p.profiles?.full_name||'—')}</td></tr>`;
     return `<section id="vx-financeiro" class="vx-os-panel ${ctx.activeTab==='financeiro'?'':'hidden'}"><div class="vx-screen-box">
       <h3 class="vx-title green">FINANCEIRO DA OS</h3>
       <div class="vx-fin-os-summary">
@@ -532,7 +532,7 @@
       </div>
       <div class="vx-bottom-buttons"><button type="button" class="vx-green-btn" onclick="vxOpenRegisterPayment()">+ REGISTRAR RECEBIMENTO</button></div>
       <table class="vx-grid-table vx-payment-table"><thead><tr><th>DATA/HORA</th><th>FORMA</th><th>VALOR</th><th>SITUAÇÃO</th><th>USUÁRIO</th></tr></thead><tbody>${ctx.payments.length?ctx.payments.map(paymentRow).join(''):tableEmpty(5)}</tbody></table>
-      <div class="vx-bottom-buttons" style="justify-content:flex-end"><button class="vx-orange-btn" onclick="vxDeletePendingPayment()">EXCLUIR PENDENTE</button><button class="vx-action" onclick="vxEditPendingPayment()">EDITAR PENDENTE</button><button class="vx-action" onclick="vxOpenReversePayment()">ESTORNAR</button></div>
+      <div class="vx-bottom-buttons" style="justify-content:flex-end"><button class="vx-orange-btn" onclick="vxDeletePendingPayment()">EXCLUIR PENDENTE</button><button class="vx-action" onclick="vxEditPendingPayment()">EDITAR PENDENTE</button><button class="vx-action" onclick="vxOpenReversePayment()">ESTORNAR</button>${isGestorLocal()?'<button class="vx-action" onclick="vxOpenCorrectPaymentMethod()">CORRIGIR FORMA</button>':''}</div>
       <hr class="vx-fin-divider">
       <h3 class="vx-title blue">ENTREGA / FINALIZAÇÃO DA OS</h3>
       <div class="vx-form-2"><div class="vx-field"><label>ENTREGA / SAÍDA</label><input class="vx-control" type="datetime-local" data-entity="order" data-name="delivery_at" value="${dtLocal(ctx.o.delivery_at)}"></div></div>
@@ -556,7 +556,7 @@
     // e loja são embeds NOVOS e aditivos, com alias pra não colidir.
     const arr=await api(`service_orders?id=eq.${id}&select=*,clients(*),equipments(*),profiles!service_orders_technician_id_fkey(full_name),attendant:profiles!service_orders_attendant_id_fkey(full_name),stores(name)`);const o=arr?.[0];if(!o){document.querySelector('#app').innerHTML='<div class="card">OS não encontrada.</div>';return}
     state.activeOs=o;const [hist,parts,finRows,atts,payments,techs,phones,addresses,docs,stores,clientOrders,clientEquipments,serviceGroups,partRequests,paymentMethods,productConditions]=await Promise.all([
-      api(`os_status_history?service_order_id=eq.${id}&select=*,profiles(full_name)&order=changed_at.desc`).catch(()=>[]),api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`).catch(()=>[]),api(`os_financial?service_order_id=eq.${id}&select=*`).catch(()=>[]),api(`attachments?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`payments?service_order_id=eq.${id}&select=*,profiles(full_name)&order=created_at.desc`).catch(()=>[]),api(`profiles?role=eq.TECNICO&active=eq.true&select=id,full_name`).catch(()=>[]),api(`client_phones?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`client_addresses?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`technical_documents?select=*&order=created_at.desc`).catch(()=>[]),api('stores?active=eq.true&select=id,name,code').catch(()=>[]),api(`service_orders?client_id=eq.${o.client_id}&select=*,equipments(product_type,brand,model,serial_number),stores(name)&order=opened_at.desc`).catch(()=>[]),api(`equipments?current_client_id=eq.${o.client_id}&select=*&order=created_at.desc`).catch(()=>[]),api(`service_groups?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=name`).catch(()=>[]),api(`parts_requests?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`payment_methods?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=sort_order`).catch(()=>[]),api(`product_conditions?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=name&order=sort_order`).catch(()=>[])
+      api(`os_status_history?service_order_id=eq.${id}&select=*,profiles(full_name)&order=changed_at.desc`).catch(()=>[]),api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`).catch(()=>[]),api(`os_financial?service_order_id=eq.${id}&select=*`).catch(()=>[]),api(`attachments?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`payments_operational?service_order_id=eq.${id}&select=*,profiles(full_name)&order=created_at.desc`).catch(()=>[]),api(`profiles?role=eq.TECNICO&active=eq.true&select=id,full_name`).catch(()=>[]),api(`client_phones?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`client_addresses?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`technical_documents?select=*&order=created_at.desc`).catch(()=>[]),api('stores?active=eq.true&select=id,name,code').catch(()=>[]),api(`service_orders?client_id=eq.${o.client_id}&select=*,equipments(product_type,brand,model,serial_number),stores(name)&order=opened_at.desc`).catch(()=>[]),api(`equipments?current_client_id=eq.${o.client_id}&select=*&order=created_at.desc`).catch(()=>[]),api(`service_groups?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=name`).catch(()=>[]),api(`parts_requests?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`payment_methods?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=sort_order`).catch(()=>[]),api(`product_conditions?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=name&order=sort_order`).catch(()=>[])
     ]);
     const filteredDocs=(docs||[]).filter(d=>(!d.model||d.model===o.equipments?.model)&&(!d.product_type||d.product_type===o.equipments?.product_type));
     ctx={o,c:o.clients||{},e:o.equipments||{},hist,parts,fin:finRows?.[0]||{},atts,payments,techs,phones,addresses,docs:filteredDocs,stores,clientOrders,clientEquipments,serviceGroups,partRequests,paymentMethods,productConditions,activeTab:tab,selectedPayment:null};
@@ -734,6 +734,53 @@
         await api('rpc/reverse_payment',{method:'POST',body:JSON.stringify({p_payment_id:p.id,p_reason:reason,p_amount:amount})});
         toast('Estorno registrado.');close();reload();
       }catch(e){toast(e.message,'err')}
+    };
+  };
+
+  // ---- Corrigir forma de pagamento (GESTOR estrito, migration
+  // 20260914050000) -- mesma RPC/mecânica de
+  // financeiro-recebimentos-v1.js (openCorrectMethodModal), reaproveitada
+  // aqui pro financeiro interno da OS nunca ficar inconsistente com a
+  // tela geral de Recebimentos. Nunca UPDATE de method -- por baixo dos
+  // panos é estorno interno + novo recebimento, mas aparece como um
+  // pagamento só (com "*") na lista acima (ctx.payments já vem de
+  // payments_operational).
+  window.vxOpenCorrectPaymentMethod=function(){
+    if(!isGestorLocal())return toast('Somente o GESTOR pode corrigir a forma de um recebimento.','err');
+    if(blockedFinalized())return;
+    const p=ctx.payments.find(x=>x.id===ctx.selectedPayment);
+    if(!p)return toast('Selecione um pagamento.','err');
+    if(String(p.status).toUpperCase()!=='RECEBIDO'||p.reversal_of_payment_id||p.reversal_state)return toast('Somente um recebimento confirmado (e nunca estornado) pode ter a forma corrigida.','err');
+    closeVxModal('vxCorrectPayModal');
+    const otherMethods=(ctx.paymentMethods||[]).filter(m=>String(m.name||'').toUpperCase()!=='DESCONTO'&&String(m.name||'').toUpperCase()!==String(p.method||'').toUpperCase());
+    const bg=document.createElement('div');bg.id='vxCorrectPayModal';bg.className='vx-modal-bg';
+    bg.innerHTML=`<div class="vx-modal vx-pay-modal">
+      <h3>CORRIGIR FORMA DE PAGAMENTO</h3>
+      <p style="font-size:12px;color:#617287">Forma atual: ${val(p.method)} • ${money(p.amount)} • ${dt(p.paid_at)}</p>
+      <div class="vx-field"><label>NOVA FORMA *</label><select class="vx-control" id="vxCorrMethod"><option value="">Selecione...</option>${otherMethods.map(m=>`<option>${val(m.name)}</option>`).join('')}</select></div>
+      <div class="vx-field"><label>MOTIVO DA CORREÇÃO *</label><input class="vx-control" id="vxCorrReason" placeholder="Ex.: cliente informou que pagou via PIX, não em dinheiro"></div>
+      <p style="font-size:11.5px;color:#a35b00;background:#fdf3e3;border-radius:8px;padding:8px 10px">O lançamento atual será estornado e um novo recebimento será criado com a forma corrigida -- mesma OS, empresa e valor. Continua aparecendo como um pagamento só (com um * ao lado da forma).</p>
+      <div class="vx-modal-actions"><button type="button" data-close>CANCELAR</button><button type="button" class="vx-green-btn" id="vxCorrConfirm">CONFIRMAR CORREÇÃO</button></div>
+    </div>`;
+    document.body.appendChild(bg);
+    const close=()=>bg.remove();
+    bg.querySelector('[data-close]').onclick=close;
+    bg.addEventListener('click',e=>{if(e.target===bg)close()});
+    const idempotencyKey=(crypto.randomUUID?crypto.randomUUID():'idem-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+    const confirmBtn=bg.querySelector('#vxCorrConfirm');
+    confirmBtn.onclick=async()=>{
+      if(confirmBtn.disabled)return;
+      const newMethod=bg.querySelector('#vxCorrMethod').value;
+      const reason=up(bg.querySelector('#vxCorrReason').value||'');
+      if(!newMethod)return toast('Selecione a nova forma de pagamento.','err');
+      if(newMethod.toUpperCase()===String(p.method||'').toUpperCase())return toast('A nova forma precisa ser diferente da forma atual.','err');
+      if(!reason)return toast('Informe o motivo da correção.','err');
+      if(!confirm(`Confirmar correção: ${p.method} → ${newMethod} (${money(p.amount)})?`))return;
+      confirmBtn.disabled=true;
+      try{
+        await api('rpc/correct_payment_method',{method:'POST',body:JSON.stringify({p_payment_id:p.id,p_new_method:newMethod,p_reason:reason,p_idempotency_key:idempotencyKey})});
+        toast('Forma de pagamento corrigida.');close();reload();
+      }catch(e){toast(e.message,'err');confirmBtn.disabled=false}
     };
   };
 })();

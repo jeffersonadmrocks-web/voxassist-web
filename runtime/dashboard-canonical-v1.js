@@ -426,7 +426,11 @@
       // valor de orçamento, por isso ninguém tinha notado que faltava
       // buscar os_parts aqui.
       source('Peças do Orçamento','os_parts?select=service_order_id,quantity,unit_value',[]),
-      source('Pagamentos','payments?select=*&order=paid_at.desc.nullslast&limit=1500',[]),
+      // payments_operational (migration 20260914050000) -- exclui as
+      // linhas internas de uma correção de forma de pagamento (estorno
+      // interno + original superada), pra não duplicar valor nos
+      // totais do Resumo Financeiro.
+      source('Pagamentos','payments_operational?select=*&order=paid_at.desc.nullslast&limit=1500',[]),
       source('Técnicos','profiles?select=id,full_name,role,store_id,external_schedule_enabled&active=eq.true&order=full_name',[]),
       source('Histórico de status',`os_status_history?select=*,service_orders(os_number,store_id,technician_id)&changed_at=gte.${isoDate(prevMonth0)}&order=changed_at.desc&limit=400`,[]),
       // Achado do usuário em 2026-09-02 (matriz oficial de visibilidade):
