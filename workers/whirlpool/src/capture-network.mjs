@@ -99,6 +99,14 @@ function bodyShape(request) {
   };
 }
 
+function isBackgroundNoise(value) {
+  const path = sanitizeUrl(value).pathname;
+  return (
+    path.includes("/webcuif/notify/polling/") ||
+    path.includes("/eumcollector/")
+  );
+}
+
 function push(event) {
   if (!recording) return;
   events.push({
@@ -110,6 +118,7 @@ function push(event) {
 
 function attachPage(page) {
   page.on("request", (request) => {
+    if (isBackgroundNoise(request.url())) return;
     const type = request.resourceType();
     if (!["document", "xhr", "fetch", "other"].includes(type)) return;
     push({
@@ -123,6 +132,7 @@ function attachPage(page) {
 
   page.on("response", (response) => {
     const request = response.request();
+    if (isBackgroundNoise(response.url())) return;
     const type = request.resourceType();
     if (!["document", "xhr", "fetch", "other"].includes(type)) return;
     const headers = response.headers();
@@ -144,6 +154,7 @@ function attachPage(page) {
   });
 
   page.on("requestfailed", (request) => {
+    if (isBackgroundNoise(request.url())) return;
     push({
       event: "requestfailed",
       method: request.method(),
