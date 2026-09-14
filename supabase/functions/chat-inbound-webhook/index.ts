@@ -222,6 +222,15 @@ Deno.serve(async (req) => {
     const mediaBase64 = typeof body?.mediaBase64 === "string" && body.mediaBase64 ? body.mediaBase64 : null;
     const mediaMimeType = typeof body?.mediaMimeType === "string" && body.mediaMimeType ? body.mediaMimeType : null;
     const mediaFileName = typeof body?.mediaFileName === "string" && body.mediaFileName ? body.mediaFileName : null;
+    // P0 2026-09-14: gateway agora encaminha TODA mensagem fromMe (antes
+    // descartava na origem) -- pode ser eco do próprio envio já gravado
+    // por chat-send-message (mesmo external_message_id) OU mensagem
+    // mandada por outro dispositivo vinculado (celular principal,
+    // WhatsApp Web), que até aqui nunca tinha nenhum caminho pro
+    // VoxAssist. O dedup existente (company_id, external_message_id, ver
+    // abaixo) resolve o eco sozinho -- nenhuma lógica nova de
+    // deduplicação foi criada.
+    const fromMe = body?.fromMe === true;
     if (!connectionId) {
       // Achado do usuário em 2026-09-02 (pacote P0): nenhum dos dois
       // 400 abaixo logava nada, então uma rejeição real nunca deixava
@@ -281,7 +290,13 @@ Deno.serve(async (req) => {
       conversationId = target.conversationId;
       const current = (existingRows ?? []).find((c) => c.id === conversationId);
       lastAwaySentAt = current?.last_away_sent_at ?? null;
-      const nextStatus = current ? nextStatusOnInboundMessage(current.status) : "ABERTA";
+      // fromMe (P0 2026-09-14): mensagem mandada por outro dispositivo
+      // vinculado (celular principal, WhatsApp Web) é operacionalmente
+      // igual a uma resposta enviada pelo próprio VoxAssist -- mesma
+      // atualização que chat-send-message já faz quando o atendente
+      // responde por aqui (status intocado, unread_count zera), nunca a
+      // progressão de status/unread pensada pra mensagem do CLIENTE.
+      const nextStatus = fromMe ? current?.status ?? "ABERTA" : (current ? nextStatusOnInboundMessage(current.status) : "ABERTA");
       await admin
         .from("chat_conversations")
         .update({
@@ -305,8 +320,10 @@ Deno.serve(async (req) => {
           // frontend nunca mostrava nada de verdade. Incrementa aqui
           // (lido em existingRows, não via SQL bruto); reseta em
           // chat-send-message (resposta) e ao abrir a conversa no
-          // frontend (leitura).
-          unread_count: Number(current?.unread_count ?? 0) + 1,
+          // frontend (leitura). fromMe reseta pro mesmo 0 que
+          // chat-send-message grava -- não é mensagem do cliente esperando
+          // resposta.
+          unread_count: fromMe ? 0 : Number(current?.unread_count ?? 0) + 1,
         })
         .eq("id", conversationId);
     } else if (target.action === "REOPEN") {
@@ -320,23 +337,29 @@ Deno.serve(async (req) => {
       conversationId = target.conversationId;
       const current = (existingRows ?? []).find((c) => c.id === conversationId);
       lastAwaySentAt = null; // período fechado anterior não é mais relevante -- conversa está reabrindo agora
+      // fromMe (P0 2026-09-14): reabertura por mensagem mandada de outro
+      // dispositivo é o atendente já reengajando o cliente por fora --
+      // nunca nula assigned_user_id (não há "re-roteamento" nenhum
+      // acontecendo, seria uma regressão real desatribuir uma conversa
+      // que alguém está ativamente atendendo) nem grava um evento que
+      // afirma que foi o CLIENTE quem reabriu.
       await admin
         .from("chat_conversations")
         .update({
           status: "ABERTA",
-          assigned_user_id: null,
+          ...(fromMe ? {} : { assigned_user_id: null }),
           last_message_at: new Date().toISOString(),
           last_message_preview: buildMessagePreview(text),
           remote_jid: identity.remoteJid,
           customer_phone: identity.customerPhone,
           sender_lid: identity.senderLid,
-          unread_count: 1,
+          unread_count: fromMe ? 0 : 1,
         })
         .eq("id", conversationId);
       await admin.from("chat_conversation_events").insert({
         company_id: connection.company_id,
         conversation_id: conversationId,
-        action: "REABERTA_POR_MENSAGEM_CLIENTE",
+        action: fromMe ? "REABERTA_POR_MENSAGEM_EXTERNA" : "REABERTA_POR_MENSAGEM_CLIENTE",
         previous_data: { status: current?.status ?? "FINALIZADA" },
         new_data: { status: "ABERTA" },
         changed_by: null,
@@ -353,7 +376,10 @@ Deno.serve(async (req) => {
           status: "ABERTA",
           last_message_at: new Date().toISOString(),
           last_message_preview: buildMessagePreview(text),
-          unread_count: 1,
+          // fromMe (P0 2026-09-14): 1ª mensagem já sendo o atendente
+          // falando por fora (ex.: iniciou pelo celular antes de o
+          // cliente escrever) -- nada do cliente esperando resposta ainda.
+          unread_count: fromMe ? 0 : 1,
         })
         .select("id")
         .single();
@@ -364,10 +390,20 @@ Deno.serve(async (req) => {
       conversationId = created.id;
     }
 
+    // fromMe (P0 2026-09-14): grava como OUTBOUND/from_me=true, origin
+    // REALTIME (chegou em tempo real, não é importação) -- sender_user_id
+    // fica de fora de propósito (não veio de nenhuma sessão VoxAssist, é
+    // um dispositivo externo). external_message_id continua sendo
+    // gravado igual sempre (dois parágrafos acima) -- é ele que faz o
+    // dedup existente (idx_chat_messages_dedup, company_id+
+    // external_message_id) descartar sozinho o eco de um envio que
+    // chat-send-message já tinha gravado com o mesmo id.
     let messageInsert: Record<string, unknown> = {
       company_id: connection.company_id,
       conversation_id: conversationId,
-      direction: "INBOUND",
+      direction: fromMe ? "OUTBOUND" : "INBOUND",
+      from_me: fromMe,
+      origin: "REALTIME",
       body: text || null,
       external_message_id: externalMessageId,
       status: "ENVIADA",
@@ -421,7 +457,12 @@ Deno.serve(async (req) => {
     // como antes desta fase). Nunca bloqueia nem falha a resposta
     // principal (a mensagem do cliente já foi gravada com sucesso
     // acima) -- best effort, mesmo espírito de sempre.
-    try {
+    //
+    // fromMe (P0 2026-09-14): mensagem de outro dispositivo vinculado é
+    // o atendente falando com o cliente, nunca o cliente pedindo
+    // atendimento -- ausência/robô nunca fazem sentido pra ela (não
+    // existe "fora do horário" nem triagem pra responder a si mesmo).
+    if (!fromMe) try {
       const canSend = connection.status === "CONECTADO" && !!GATEWAY_URL && !!GATEWAY_SERVICE_TOKEN;
       const { data: publishedFlow } = await admin
         .from("chat_bot_flow_versions")
