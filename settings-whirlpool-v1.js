@@ -22,7 +22,7 @@
   function fmt(v){return v?new Date(v).toLocaleString('pt-BR'):'Nunca';}
 
   async function inject(){
-    if(window.state?.view!=='usuarios'||!isGestor())return;
+    if(window.state?.view!=='config-integracoes'||!isGestor())return;
     const card=document.querySelector('#vxIntegrationsCard');
     if(!card||card.querySelector('#vxIntWhirlpool'))return;
     const row=document.createElement('div');
@@ -75,6 +75,7 @@
     };
   }
   function refresh(){document.querySelector('#vxIntWhirlpool')?.remove();setTimeout(inject,50)}
+  window.addEventListener('vx:integrations-ready',inject);
   let timer;
   new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(inject,120)}).observe(document.querySelector('#app')||document.body,{childList:true,subtree:true});
   const style=document.createElement('style');

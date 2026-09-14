@@ -35,7 +35,7 @@
     ['▦','ESTOQUE & PEÇAS','Depósitos, movimentações, estoque técnico, devoluções e parâmetros de peças.','cyan','estoque'],
     ['$','FINANCEIRO','Formas de pagamento, categorias, caixas, recebimentos e parâmetros financeiros.','green','financeiro'],
     ['✉','COMUNICAÇÃO & AUTOMAÇÃO','WhatsApp, Chat, mensagens, notificações, horários, NPS e automações.','brown','comunicacao'],
-    ['⌁','INTEGRAÇÕES','Electrolux, Whirlpool, GestãoClick, Pulse IA, APIs e webhooks.','red','admin'],
+    ['⌁','INTEGRAÇÕES','Electrolux, Whirlpool, GestãoClick, Pulse IA, APIs e webhooks.','red','integracoes'],
     ['⚙','SISTEMA & SEGURANÇA','Auditoria, logs, sessões, segurança, importação/exportação e parâmetros gerais.','gray','seguranca'],
   ];
 
@@ -48,8 +48,9 @@
     if(!isGestor()){app.innerHTML='<div class="card error-card"><h3>Acesso restrito</h3><p>Configurações disponíveis somente para gestores.</p></div>';return;}
     app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>Configurações</h2><p>9 grupos principais -- conteúdo de cada um em definição/evolução contínua</p></div></div><div class="module-action-grid">${CARDS.map(card).join('')}</div></div>`;
     app.querySelectorAll('[data-config-target]').forEach(b=>b.onclick=()=>{
-      window.__vxConfigSection=b.dataset.configTarget;
-      window.render('usuarios');
+      const target=b.dataset.configTarget;
+      window.__vxConfigSection=target;
+      window.render(target==='integracoes'?'config-integracoes':'usuarios');
     });
   };
 
