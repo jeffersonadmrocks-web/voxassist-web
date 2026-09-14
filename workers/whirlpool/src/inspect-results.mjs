@@ -34,43 +34,41 @@ async function readFrame(frame) {
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase();
 
+    const directCells = (tr) =>
+      [...tr.children].filter((element) => element.tagName === "TH" || element.tagName === "TD");
+
     const rows = [];
     for (const table of document.querySelectorAll("table")) {
       const trs = [...table.querySelectorAll("tr")];
-      const headerRow = trs.find((tr) => norm(tr.innerText).includes("status do servico"));
+      const headerRow = trs.find((tr) => {
+        const headers = directCells(tr).map((cell) => norm(cell.innerText));
+        return (
+          headers.some((text) => text.includes("id ordem de servico")) &&
+          headers.some((text) => text === "status do servico" || text.startsWith("status do servico"))
+        );
+      });
       if (!headerRow) continue;
 
-      const headers = [...headerRow.querySelectorAll("th,td")].map((cell) => norm(cell.innerText));
+      const headers = directCells(headerRow).map((cell) => norm(cell.innerText));
       const osIndex = headers.findIndex((text) => text.includes("id ordem de servico"));
-      const statusIndex = headers.findIndex((text) => text.includes("status do servico"));
+      const statusIndex = headers.findIndex(
+        (text) => text === "status do servico" || text.startsWith("status do servico"),
+      );
       if (osIndex < 0 || statusIndex < 0) continue;
 
-      for (const tr of trs.slice(trs.indexOf(headerRow) + 1)) {
-        const cells = [...tr.querySelectorAll(":scope > th, :scope > td")];
-        if (cells.length <= Math.max(osIndex, statusIndex)) continue;
-        const osMatch = clean(cells[osIndex].innerText).match(/\b\d{10}\b/);
+      const group = headerRow.parentElement;
+      const candidateRows = group ? [...group.children].filter((element) => element.tagName === "TR") : trs;
+      for (const tr of candidateRows.slice(candidateRows.indexOf(headerRow) + 1)) {
+        const cells = directCells(tr);
+        if (cells.length !== headers.length) continue;
+        const osText = clean(cells[osIndex].innerText);
+        const osMatch = osText.match(/^\D*(\d{10})\D*$/);
         if (!osMatch) continue;
         rows.push({
-          externalOrderId: osMatch[0],
-          serviceStatus: clean(cells[statusIndex].innerText) || "ABERTO",
+          externalOrderId: osMatch[1],
+          serviceStatus: clean(cells[statusIndex].innerText),
         });
       }
-    }
-
-    if (rows.length) return rows;
-
-    // Fallback para tabelas SAP sem cabeçalho semântico no mesmo elemento.
-    for (const link of document.querySelectorAll("a")) {
-      const externalOrderId = clean(link.textContent);
-      if (!/^\d{10}$/.test(externalOrderId)) continue;
-      const tr = link.closest("tr");
-      if (!tr) continue;
-      const text = clean(tr.innerText);
-      const match = text.match(/\b(Cancelado|Liquidado)\b/i);
-      rows.push({
-        externalOrderId,
-        serviceStatus: match ? match[1] : "ABERTO",
-      });
     }
     return rows;
   });
