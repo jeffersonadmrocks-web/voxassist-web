@@ -81,13 +81,9 @@ async function clickNext(frame) {
     const clean = (value = "") => value.replace(/\s+/g, " ").trim();
     const norm = (value = "") =>
       clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    const candidates = [...document.querySelectorAll("a,button")].filter((element) => {
-      const ownText = [...element.childNodes]
-        .filter((node) => node.nodeType === Node.TEXT_NODE)
-        .map((node) => node.textContent)
-        .join(" ");
-      return norm(ownText) === "avancar";
-    });
+    const candidates = [...document.querySelectorAll("a,button")].filter(
+      (element) => norm(element.innerText || element.textContent) === "avancar",
+    );
     const target = candidates.find((element) => {
       const style = getComputedStyle(element);
       return style.display !== "none" && style.visibility !== "hidden" &&
@@ -114,7 +110,9 @@ try {
 
   page = context.pages().at(-1) || page;
   const collected = [];
+  const observedTypes = new Map();
   let ignoredAutEspecial = 0;
+  let unclassifiedRows = 0;
   let scannedPages = 0;
 
   for (let pageNumber = 1; pageNumber <= 100; pageNumber += 1) {
@@ -123,6 +121,8 @@ try {
     scannedPages += 1;
 
     for (const row of result.rows) {
+      const observedType = row.processType || "(vazio)";
+      observedTypes.set(observedType, (observedTypes.get(observedType) || 0) + 1);
       if (row.processTypeNormalized.includes("aut especial")) {
         ignoredAutEspecial += 1;
         continue;
@@ -132,7 +132,9 @@ try {
           externalOrderId: row.externalOrderId,
           serviceStatus: row.serviceStatus,
         });
+        continue;
       }
+      unclassifiedRows += 1;
     }
 
     const before = fingerprint(result.rows);
@@ -155,6 +157,8 @@ try {
     mode: "READ_ONLY",
     scannedPages,
     ignoredAutEspecial,
+    unclassifiedRows,
+    observedTypes: Object.fromEntries(observedTypes),
     count: orders.length,
     orders,
   };
