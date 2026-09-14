@@ -101,6 +101,8 @@ Sequência obrigatória no portal:
 1. No item, alterar o status de `Agendar` para `Agendado`.
 2. Alterar o motivo de status para `AGENDAMENTO`.
 3. Em Datas, preencher `Data início anterior` com a data da visita e o horário inicial definido pelo período.
+   - Enviar `08:00` para manhã e `13:00` para tarde.
+   - O SAP pode normalizar a hora exibida (homologação da OS 7015717404: 08:00 retornou como 07:00). A confirmação usa data + período + técnico + status; não exige igualdade literal da hora exibida.
 4. Não preencher `Última data de início`: o SAP atualiza esse campo automaticamente.
 5. Clicar em `Voltar` no item para retornar à OS.
 6. Preencher `Parceiro Técnico` no item `VISITA NORMAL`, usando o mapeamento do técnico do VoxAssist.
