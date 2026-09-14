@@ -138,7 +138,8 @@
 .vx-fin-avulso-modal label{display:block;font-size:10px;font-weight:800;color:#617287;margin-bottom:5px;text-transform:uppercase}
 .vx-fin-avulso-modal .vx-control{width:100%;border:1px solid #cbd7e3;border-radius:7px;padding:10px;background:#fff;color:#172033}
 .vx-fin-avulso-modal .vx-modal-actions button{border:1px solid #b9c5d1;background:#fff;padding:9px 14px;font-weight:800;border-radius:7px}
-.vx-fin-avulso-modal .vx-green-btn{background:#0b6f3c;border-color:#0b6f3c;color:#fff}
+.vx-fin-avulso-modal .vx-modal-actions .vx-green-btn{background:#0b6f3c;border-color:#0b6f3c;color:#fff}
+.vx-fin-avulso-modal .vx-modal-actions .vx-orange-btn{background:#a35b00;border-color:#a35b00;color:#fff}
 
 @media(max-width:760px){
   .vx-fin-head{flex-direction:column;align-items:flex-start}
