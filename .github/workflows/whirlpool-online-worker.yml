@@ -4,9 +4,16 @@ on:
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "workers/whirlpool/**"
+      - "supabase/functions/whirlpool-worker-api/**"
+      - ".github/workflows/whirlpool-online-worker.yml"
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: whirlpool-online-worker-serra
@@ -20,8 +27,7 @@ jobs:
       run:
         working-directory: workers/whirlpool
     env:
-      VOXASSIST_SUPABASE_URL: https://dgasmtvpgifceyqufcfg.supabase.co
-      VOXASSIST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.VOXASSIST_SUPABASE_SERVICE_ROLE_KEY }}
+      WHIRLPOOL_WORKER_API_URL: https://dgasmtvpgifceyqufcfg.supabase.co/functions/v1/whirlpool-worker-api
       WHIRLPOOL_BATCH_LIMIT: "3"
       CI: "true"
     steps:
@@ -35,12 +41,5 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Validate secret
-        shell: bash
-        run: |
-          if [ -z "$VOXASSIST_SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "::error::Secret VOXASSIST_SUPABASE_SERVICE_ROLE_KEY não configurado."
-            exit 1
-          fi
       - name: Run guarded Whirlpool batch
         run: npm run run-online
