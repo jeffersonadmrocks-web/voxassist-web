@@ -12,7 +12,8 @@
    gate, senão um TECNICO abriria financeiro/usuarios só de tocar no item
    errado no menu mobile. Todo item aqui (barra e "Mais") passa por
    can(view) antes de navegar; o atalho de Chat usa window.vxCanUseChat()
-   (chat-beta-v0828.js), a mesma regra do menu desktop (GESTOR/ATENDENTE).
+   (chat-beta-v0828.js), a mesma regra do menu desktop (GESTOR/ATENDENTE/
+   TECNICO desde 2026-09-14).
 
    `shell()` substitui document.body.innerHTML por completo e roda mais de
    uma vez por sessão (troca de loja, salvar perfil, primeiro acesso --
