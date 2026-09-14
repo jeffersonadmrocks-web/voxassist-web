@@ -94,7 +94,7 @@ A Whirlpool não possui fila de novas OS. O worker abre a visualização de toda
 
 ### Agendamento VoxAssist → Whirlpool
 
-O agendamento altera o item `VISITA NORMAL`; a OS principal permanece com status `ABERTO`.
+O agendamento é iniciado no item `VISITA NORMAL`; após salvar, o SAP também pode propagar o status `Agendado` para a OS principal (confirmado na homologação da OS 7015717404). O worker deve reler e registrar ambos os níveis.
 
 Sequência obrigatória no portal:
 
