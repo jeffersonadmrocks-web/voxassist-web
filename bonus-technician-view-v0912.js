@@ -12,12 +12,24 @@
   const myId=()=>state?.profile?.id||state?.session?.user?.id;
   const dateOnly=v=>v?String(v).slice(0,10).split('-').reverse().join('/'):'—';
 
+  // Achado do usuário (2026-09-14): .catch(()=>[]) escondia qualquer
+  // falha real (tabela ausente, RLS, rede, RPC quebrada) atrás do
+  // mesmo card "Não configurado" -- nunca dava pra saber se era um
+  // backend nunca configurado ou um erro de verdade. fetchOrError()
+  // loga o erro técnico real no console (nunca pro usuário comum) e
+  // devolve {ok:false} pra quem chamou decidir a mensagem certa.
+  async function fetchOrError(path, label){
+    try{ return {ok:true, rows:await api(path)}; }
+    catch(err){ console.error('[Bonificação] falha ao carregar '+label+':', err); return {ok:false, error:err}; }
+  }
   async function fetchActiveProgram(cid){
-    const rows=await api(`bonus_programs?company_id=eq.${cid}&status=eq.ATIVO&valid_to=is.null&select=id,name,period_start,period_end&order=created_at.desc&limit=1`).catch(()=>[]);
-    return rows?.[0]||null;
+    const r=await fetchOrError(`bonus_programs?company_id=eq.${cid}&status=eq.ATIVO&valid_to=is.null&select=id,name,period_start,period_end&order=created_at.desc&limit=1`, 'programa ativo');
+    if(!r.ok)return {error:true};
+    return r.rows?.[0]||null;
   }
   async function fetchMyResults(techId){
-    return await api(`bonus_results?technician_id=eq.${techId}&order=period_start.desc&select=*`).catch(()=>[]);
+    const r=await fetchOrError(`bonus_results?technician_id=eq.${techId}&order=period_start.desc&select=*`, 'meus resultados');
+    return r.ok?r.rows:{error:true};
   }
 
   // ---------- Card real no Dashboard ("Metas e Bonificação") ----------
@@ -27,9 +39,19 @@
     const cid=companyId();
     if(!cid)return;
     const program=await fetchActiveProgram(cid);
+    if(program?.error){
+      // Erro real de verdade (não "sem programa") -- nunca mostrar o
+      // "Não configurado" padrão como se nada tivesse dado errado.
+      card.querySelector('.vx-c-goals-empty p').textContent='Não foi possível carregar a Bonificação no momento.';
+      return;
+    }
     if(!program)return; // mantém o "Não configurado" já renderizado -- nunca inventa dado
     if(isTecnico()){
       const results=await fetchMyResults(myId());
+      if(results.error){
+        card.querySelector('.vx-c-goals-empty p').textContent='Não foi possível carregar seu resultado de Bonificação no momento.';
+        return;
+      }
       const current=results.find(r=>r.period_start<=program.period_end&&r.period_end>=program.period_start)||results[0];
       if(!current){
         card.querySelector('.vx-c-goals-empty p').textContent=`Programa "${program.name}" ativo (${dateOnly(program.period_start)} a ${dateOnly(program.period_end)}), mas ainda sem resultado calculado pra você neste período.`;
@@ -81,10 +103,14 @@
     }else{
       const cid=companyId();
       const [program,results]=await Promise.all([cid?fetchActiveProgram(cid):null,fetchMyResults(myId())]);
+      const loadFailed=program?.error||results?.error;
+      const safeResults=Array.isArray(results)?results:[];
       app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>Produtividade / Bonificação</h2><p>Seus resultados -- só consulta, os parâmetros são definidos pelo gestor</p></div><div class="module-head-actions">${back}</div></div>
-        ${!program?'<div class="card"><p>Nenhum programa de bonificação ativo no momento.</p></div>':!results.length?`<div class="card"><p>Programa "${E(program.name)}" ativo, mas ainda não há resultado calculado pra você.</p></div>`:''}
-        ${results.length?`<div class="vx-admin-card"><div class="vx-admin-title"><h3>EVOLUÇÃO</h3></div>
-          <div class="vx-sg-list" id="vxBonusEvolutionList">${results.map((r,i)=>`<div class="vx-sg-row" data-result-toggle="${i}" style="cursor:pointer"><b>${dateOnly(r.period_start)} a ${dateOnly(r.period_end)}</b><span>${r.status} · ${money(r.final_bonus)} de ${money(r.potential_bonus)} potencial</span></div><div class="vx-bonus-detail" id="vxBonusDetail${i}" hidden></div>`).join('')}</div>
+        ${loadFailed?'<div class="card"><p>Não foi possível carregar sua Bonificação no momento. Tente novamente em instantes.</p></div>'
+          :!program?'<div class="card"><p>Nenhum programa de bonificação ativo no momento.</p></div>'
+          :!safeResults.length?`<div class="card"><p>Programa "${E(program.name)}" ativo, mas ainda não há resultado calculado pra você.</p></div>`:''}
+        ${!loadFailed&&safeResults.length?`<div class="vx-admin-card"><div class="vx-admin-title"><h3>EVOLUÇÃO</h3></div>
+          <div class="vx-sg-list" id="vxBonusEvolutionList">${safeResults.map((r,i)=>`<div class="vx-sg-row" data-result-toggle="${i}" style="cursor:pointer"><b>${dateOnly(r.period_start)} a ${dateOnly(r.period_end)}</b><span>${r.status} · ${money(r.final_bonus)} de ${money(r.potential_bonus)} potencial</span></div><div class="vx-bonus-detail" id="vxBonusDetail${i}" hidden></div>`).join('')}</div>
         </div>`:''}
       </div>`;
       app.querySelectorAll('[data-result-toggle]').forEach(row=>{
@@ -93,7 +119,7 @@
           const box=document.getElementById('vxBonusDetail'+i);
           if(!box)return;
           box.hidden=!box.hidden;
-          if(!box.hidden&&!box.dataset.rendered){box.dataset.rendered='1';box.innerHTML=breakdownTable(results[i].criteria_results);}
+          if(!box.hidden&&!box.dataset.rendered){box.dataset.rendered='1';box.innerHTML=breakdownTable(safeResults[i].criteria_results);}
         };
       });
     }

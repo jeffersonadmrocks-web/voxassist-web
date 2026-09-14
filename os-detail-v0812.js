@@ -358,6 +358,57 @@
     if(!list.length)return '';
     return `<button type="button" class="vx-peca-req-badge" onclick="${list.length===1?`window.vxOpenPartRequestModal?.(window.__vxPartReqList[0],window.__vxPartReqOsMap)`:`window.vxOpenPartsListModal?.('Pedidos de peça desta OS',window.__vxPartReqList,window.__vxPartReqOsMap)`}" title="${list.length===1?'1 pedido de peça — clique para ver a situação':`${list.length} pedidos de peça — clique para ver a situação`}">🔧 ${val(list.length)}</button>`;
   }
+  // Achado do usuário (pacote de conclusão da Bonificação, 2026-09-14):
+  // service_orders.reincidence_attributable existe desde a migration
+  // 20260912030000 mas nunca teve interface nenhuma -- sem isso, TODO
+  // REINGRESSO fica com o campo null pra sempre (nem entra nem deixa
+  // de entrar no critério Qualidade/Reincidência de ninguém, ver
+  // calculate_bonus_result). Aparece só no contexto de REINGRESSO,
+  // discreto, só pro GESTOR (a RPC também garante isso no servidor).
+  function isGestorLocal(){return String(state?.profile?.role||'').toUpperCase()==='GESTOR';}
+  function reincidenceBadgeHtml(o){
+    if(o.order_type!=='REINGRESSO'||!isGestorLocal())return '';
+    const v=o.reincidence_attributable;
+    const label=v===true?'Reincidência: ATRIBUÍVEL':v===false?'Reincidência: NÃO ATRIBUÍVEL':'Reincidência: NÃO CLASSIFICADA';
+    const cls=v===true?'vx-reinc-badge attributable':v===false?'vx-reinc-badge not-attributable':'vx-reinc-badge unclassified';
+    return `<button type="button" class="${cls}" onclick="vxClassifyReincidence('${val(o.id)}')" title="Classificar se esta reincidência é atribuível ao reparo anterior (afeta a Bonificação do técnico responsável)">${label} ✎</button>`;
+  }
+  // excluded_from_time_metric: mesmo achado -- existe desde
+  // 20260912030000, nunca teve interface. Aparece discreto, só pro
+  // GESTOR, junto de Entrega/Finalização (é aqui que se percebe um
+  // atraso) -- nunca no formulário principal da OS, pra não poluir o
+  // cadastro cotidiano de quem não vai usar isso quase nunca.
+  function timeExceptionHtml(o){
+    if(!isGestorLocal())return '';
+    const on=!!o.excluded_from_time_metric;
+    return `<label class="vx-time-exception-toggle" title="Marca esta OS como atraso comprovadamente externo (ex.: cliente não autorizou/retirou a tempo) -- ela deixa de contar na média de dias do critério Tempo/Eficiência da Bonificação do técnico.">
+      <input type="checkbox" ${on?'checked':''} onchange="vxToggleTimeException('${val(o.id)}', this.checked)">
+      Atraso comprovadamente externo (exclui da métrica de Tempo/Eficiência da Bonificação)
+    </label>`;
+  }
+  window.vxToggleTimeException=async function(osId,checked){
+    try{
+      await api('rpc/classify_service_order_bonus_flags',{method:'POST',body:JSON.stringify({p_service_order_id:osId,p_excluded_from_time_metric:checked})});
+      toast(checked?'Marcada como atraso externo.':'Desmarcada -- volta a contar na métrica.');
+      reload();
+    }catch(err){toast('Não foi possível classificar: '+err.message,'err');}
+  };
+  window.vxClassifyReincidence=async function(osId){
+    // A RPC usa coalesce (p_reincidence_attributable=null = "não
+    // alterar", não "limpar pra não classificado") -- por isso aqui só
+    // SIM/NAO são oferecidos; reverter pra "não classificado" exigiria
+    // um parâmetro à parte na RPC, fora do escopo desta rodada.
+    const choice=prompt('Esta reincidência é atribuível ao reparo anterior?\n\nDigite: SIM ou NAO');
+    if(choice===null)return;
+    const norm=String(choice).trim().toUpperCase();
+    if(!['SIM','NAO','NÃO'].includes(norm))return toast('Digite SIM ou NAO.','err');
+    const value=norm==='SIM';
+    try{
+      await api('rpc/classify_service_order_bonus_flags',{method:'POST',body:JSON.stringify({p_service_order_id:osId,p_reincidence_attributable:value})});
+      toast('Classificação registrada.');
+      reload();
+    }catch(err){toast('Não foi possível classificar: '+err.message,'err');}
+  };
   function header(o){
     // Achado do usuário em 2026-09-05: guarda numa global só no
     // momento do clique (não como atributo inline, que exigiria
@@ -378,6 +429,7 @@
               <span class="vx-os-head-divider"></span>
               <button class="vx-status-btn" onclick="manualStatus()" style="display:none">${val(fmtStatus(o.status))} ▼</button>
             </div>
+            ${reincidenceBadgeHtml(o)}
           </div>
         </div>
         <div class="vx-os-head-actions">
@@ -485,6 +537,7 @@
       <h3 class="vx-title blue">ENTREGA / FINALIZAÇÃO DA OS</h3>
       <div class="vx-form-2"><div class="vx-field"><label>ENTREGA / SAÍDA</label><input class="vx-control" type="datetime-local" data-entity="order" data-name="delivery_at" value="${dtLocal(ctx.o.delivery_at)}"></div></div>
       ${bal>0.004?`<div style="font-size:11px;font-weight:700;color:#a35b00;margin:2px 0 12px">A OS só finaliza depois que o valor total estiver todo alocado em pagamentos -- registre a forma de pagamento do saldo restante (pode ser DESCONTO, se for o caso).</div>`:''}
+      ${timeExceptionHtml(ctx.o)}
       <div class="vx-bottom-buttons" style="justify-content:flex-end"><button class="vx-green-btn" onclick="vxFinalizeOs()">FINALIZAR</button></div>
     </div></section>`}
 

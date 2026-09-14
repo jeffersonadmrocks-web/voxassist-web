@@ -29,9 +29,22 @@
     {code:'NPS',weight_percent:30,target_value:70}
   ];
 
+  // Achado do usuário (2026-09-14): .catch(()=>[]) em toda consulta de
+  // bonificação transformava QUALQUER falha (tabela inexistente, RLS
+  // incorreta, erro de rede, RPC quebrada) na mesma tela de "Nenhum
+  // programa configurado" -- indistinguível de um backend que
+  // simplesmente nunca foi configurado. fetchOrError() nunca esconde a
+  // falha: loga o erro técnico real no console (nunca pro usuário
+  // comum) e devolve {ok:false} pra quem chamou decidir a mensagem
+  // certa (ver renderProgramaTab/renderHistoricoTab).
+  async function fetchOrError(path, label){
+    try{ return {ok:true, rows:await api(path)}; }
+    catch(err){ console.error('[Bonificação] falha ao carregar '+label+':', err); return {ok:false, error:err}; }
+  }
   async function fetchCurrentProgram(cid){
-    const rows=await api(`bonus_programs?company_id=eq.${cid}&status=eq.ATIVO&valid_to=is.null&select=*,bonus_criteria(*,bonus_criteria_rules(*))&order=created_at.desc&limit=1`).catch(()=>[]);
-    return rows?.[0]||null;
+    const r=await fetchOrError(`bonus_programs?company_id=eq.${cid}&status=eq.ATIVO&valid_to=is.null&select=*,bonus_criteria(*,bonus_criteria_rules(*))&order=created_at.desc&limit=1`, 'programa atual');
+    if(!r.ok)return {error:true};
+    return r.rows?.[0]||null;
   }
 
   function injectBonusCard(){
@@ -66,6 +79,10 @@
   function moneyOrDash(v){return v==null?'—':money(v);}
 
   function renderProgramaTab(body,cid){
+    if(currentProgram?.error){
+      body.innerHTML=`<p class="vx-sg-empty vx-sg-error">Não foi possível carregar a Bonificação no momento. Tente novamente em instantes; se persistir, avise o suporte.</p>`;
+      return;
+    }
     if(!currentProgram){
       body.innerHTML=`<p class="vx-sg-empty">Nenhum programa de bonificação configurado ainda.</p><button type="button" class="secondary" id="vxBonusNew">+ Criar programa de bonificação</button>`;
       body.querySelector('#vxBonusNew').onclick=()=>openProgramForm(cid,null);
@@ -199,6 +216,7 @@
   function dateInputVal(v){return v?String(v).slice(0,10):'';}
 
   function renderSimuladorTab(body,cid){
+    if(currentProgram?.error){body.innerHTML='<p class="vx-sg-empty vx-sg-error">Não foi possível carregar a Bonificação no momento. Tente novamente em instantes.</p>';return;}
     if(!currentProgram){body.innerHTML='<p class="vx-sg-empty">Configure um programa antes de simular.</p>';return;}
     body.innerHTML=`
       <div class="vx-form-3">
@@ -241,10 +259,15 @@
 
   async function renderHistoricoTab(body,cid){
     body.innerHTML='<p class="vx-sg-help">Carregando histórico...</p>';
-    const [programs,techs]=await Promise.all([
-      api(`bonus_programs?company_id=eq.${cid}&select=id,name,status,period_start,period_end,valid_from,valid_to,reason&order=valid_from.desc`).catch(()=>[]),
-      api('profiles?role=eq.TECNICO&active=eq.true&select=id,full_name&order=full_name').catch(()=>[])
+    const [programsR,techsR]=await Promise.all([
+      fetchOrError(`bonus_programs?company_id=eq.${cid}&select=id,name,status,period_start,period_end,valid_from,valid_to,reason&order=valid_from.desc`, 'histórico de programas'),
+      fetchOrError('profiles?role=eq.TECNICO&active=eq.true&select=id,full_name&order=full_name', 'lista de técnicos')
     ]);
+    if(!programsR.ok||!techsR.ok){
+      body.innerHTML='<p class="vx-sg-empty vx-sg-error">Não foi possível carregar o histórico agora. Tente novamente em instantes.</p>';
+      return;
+    }
+    const programs=programsR.rows, techs=techsR.rows;
     body.innerHTML=`
       <div class="vx-admin-title"><h3>CALCULAR / CONSULTAR RESULTADO</h3></div>
       <div class="vx-form-3">
@@ -284,7 +307,9 @@
     let q=`bonus_results?technician_id=eq.${techId}&order=period_start.desc&select=*`;
     if(from)q+=`&period_start=gte.${from}`;
     if(to)q+=`&period_end=lte.${to}`;
-    const rows=await api(q).catch(()=>[]);
+    const r=await fetchOrError(q, 'resultados de bonificação');
+    if(!r.ok){list.innerHTML='<p class="vx-sg-empty vx-sg-error">Não foi possível carregar os resultados agora. Tente novamente em instantes.</p>';return;}
+    const rows=r.rows;
     list.innerHTML=rows.length?rows.map(r=>`<div class="vx-sg-row"><b>${dateOnlySafe(r.period_start)} a ${dateOnlySafe(r.period_end)}</b><span>${r.status} · ${money(r.final_bonus)} de ${money(r.potential_bonus)} potencial</span>${r.status==='PROVISORIO'&&isGestor()?`<div class="vx-sg-row-actions"><button type="button" data-close-result="${r.id}">Fechar folha</button></div>`:''}</div>`).join(''):'<p class="vx-sg-empty">Nenhum resultado pra esse técnico/período.</p>';
     list.querySelectorAll('[data-close-result]').forEach(b=>b.onclick=async()=>{
       if(!confirm('Fechar esta folha? Depois de fechada não pode ser recalculada.'))return;
@@ -299,6 +324,7 @@
   .vx-sg-tabs{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
   .vx-sg-tab{border:1px solid #cfd9e3;background:#fff;border-radius:6px;padding:6px 12px;font-size:10.5px;font-weight:700;color:#496175;cursor:pointer}
   .vx-sg-tab.active{background:#0d2536;color:#fff;border-color:#0d2536}
+  .vx-sg-empty.vx-sg-error{color:#a35b00;font-weight:700}
   .vx-bonus-params{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-top:8px}
   .vx-bonus-params div{border:1px solid #dbe4ec;border-radius:8px;padding:8px 10px}
   .vx-bonus-params small{display:block;color:#708296;font-size:8.5px;text-transform:uppercase;margin-bottom:3px}
