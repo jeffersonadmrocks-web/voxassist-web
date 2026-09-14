@@ -6,29 +6,28 @@ import { ARTIFACT_DIR, PORTAL_URL, PROFILE_DIR, assertWhirlpoolUrl } from "./con
 import { extractPdfText, parseWhirlpoolPdf } from "./pdf-parser.mjs";
 
 const LIMIT = Math.min(Math.max(Number(process.env.WHIRLPOOL_BATCH_LIMIT || 3), 1), 3);
-const supabaseUrl = process.env.VOXASSIST_SUPABASE_URL || "https://dgasmtvpgifceyqufcfg.supabase.co";
-const serviceKey = process.env.VOXASSIST_SUPABASE_SERVICE_ROLE_KEY;
-if (!serviceKey) throw new Error("Chave temporária não configurada.");
-if (new URL(supabaseUrl).hostname !== "dgasmtvpgifceyqufcfg.supabase.co") throw new Error("Projeto Supabase não autorizado.");
+const workerApiUrl = process.env.WHIRLPOOL_WORKER_API_URL || "https://dgasmtvpgifceyqufcfg.supabase.co/functions/v1/whirlpool-worker-api";
+if (new URL(workerApiUrl).hostname !== "dgasmtvpgifceyqufcfg.supabase.co") throw new Error("Gateway Supabase não autorizado.");
 assertWhirlpoolUrl(PORTAL_URL);
-const auth = { apikey: serviceKey };
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-async function rest(table, query) {
-  const url = new URL(`/rest/v1/${table}`, supabaseUrl);
-  Object.entries(query).forEach(([k,v]) => url.searchParams.set(k,v));
-  const r = await fetch(url,{headers:auth}); const t=await r.text();
-  if(!r.ok) throw new Error(`Consulta ${table} falhou (HTTP ${r.status}): ${t.slice(0,250)}`);
+let oidcToken;
+async function githubOidcToken(){
+  if(oidcToken)return oidcToken;
+  const base=process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+  const requestToken=process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+  if(!base||!requestToken)throw new Error("Identidade temporária do executor não disponível.");
+  const url=new URL(base);url.searchParams.set("audience","voxassist-whirlpool");
+  const r=await fetch(url,{headers:{authorization:"Bearer "+requestToken}});
+  const data=await r.json();if(!r.ok||!data.value)throw new Error("Não foi possível obter identidade temporária.");
+  oidcToken=data.value;return oidcToken;
+}
+async function workerRequest(action,payload={}){
+  const token=await githubOidcToken();
+  const r=await fetch(workerApiUrl,{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json"},body:JSON.stringify({action,...payload})});
+  const t=await r.text();if(!r.ok)throw new Error("Gateway Whirlpool falhou (HTTP "+r.status+"): "+t.slice(0,160));
   return JSON.parse(t);
 }
-async function pendingOrders() {
-  const queue=await rest("whirlpool_import_queue",{state:"eq.PENDENTE",queue_reason:"eq.ATIVA_NOVA",select:"id,external_order_id,created_at",order:"created_at.asc",limit:String(LIMIT)});
-  const out=[];
-  for(const item of queue){
-    const ext=await rest("whirlpool_external_orders",{id:`eq.${item.external_order_id}`,select:"external_order_id,service_status",limit:"1"});
-    if(ext[0]?.external_order_id) out.push({queueId:item.id,...ext[0]});
-  }
-  return out;
-}
+async function pendingOrders(){return workerRequest("pending",{limit:LIMIT});}
 const norm=(v="")=>v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
 async function clickText(page, texts) {
   for(const frame of page.frames()){
@@ -117,25 +116,9 @@ async function capturePdf(context,page,id){
  return bytes;
 }
 async function uploadAndImport(id,payload,pdf){
- const hash=createHash("sha256").update(pdf).digest("hex").slice(0,16);
- const storagePath=`whirlpool/${id}/${hash}.pdf`;
- const objectUrl=new URL(`/storage/v1/object/voxassist-files/${storagePath.split("/").map(encodeURIComponent).join("/")}`,supabaseUrl);
- const up=await fetch(objectUrl,{method:"POST",headers:{...auth,"content-type":"application/pdf","x-upsert":"false"},body:pdf});
- let uploaded=up.ok;if(!up.ok&&!([400,409].includes(up.status)))throw new Error(`Upload do PDF falhou (HTTP ${up.status}).`);
- try{
-  const r=await fetch(new URL("/rest/v1/rpc/whirlpool_import_pdf",supabaseUrl),{method:"POST",headers:{...auth,"content-type":"application/json"},body:JSON.stringify({p_filial:"SERRA",p_payload:payload,p_storage_path:storagePath})});
-  const t=await r.text();if(!r.ok)throw new Error(`Importação falhou (HTTP ${r.status}): ${t.slice(0,300)}`);return JSON.parse(t);
- }catch(e){if(uploaded)await fetch(objectUrl,{method:"DELETE",headers:auth}).catch(()=>{});throw e;}
+ return workerRequest("upload_import",{external_order_id:id,payload,pdf_base64:pdf.toString("base64")});
 }
 async function closePdfPages(context,main){for(const p of context.pages())if(p!==main&&/crm_pdf_print|\.pdf/i.test(p.url()))await p.close().catch(()=>{});}
-async function rpc(name,body){
- const r=await fetch(new URL("/rest/v1/rpc/"+name,supabaseUrl),{method:"POST",headers:{...auth,"content-type":"application/json"},body:JSON.stringify(body)});
- const t=await r.text();if(!r.ok)throw new Error("Controle do worker falhou (HTTP "+r.status+").");return JSON.parse(t);
-}
-async function connection(){
- const rows=await rest("whirlpool_connections",{active:"eq.true",select:"id",order:"created_at.asc",limit:"1"});
- if(!rows[0]?.id)throw new Error("Conexão Whirlpool ativa não encontrada.");return rows[0];
-}
 async function loginIfNeeded(page,claim){
  await page.goto(PORTAL_URL,{waitUntil:"domcontentloaded",timeout:120000});
  const password=page.locator('input[type="password"]:visible').first();
@@ -159,8 +142,8 @@ async function loginIfNeeded(page,claim){
  return true;
 }
 const workerId=crypto.randomUUID();
-const conn=await connection();
-const claim=await rpc("whirlpool_worker_claim",{p_connection_id:conn.id,p_worker_id:workerId,p_lease_seconds:900});
+const conn={id:null};
+const claim=await workerRequest("claim",{worker_id:workerId,lease_seconds:900});
 if(!claim?.claimed){console.log("EXECUÇÃO NÃO INICIADA: "+String(claim?.reason||"SEM_LEASE"));process.exit(0);}
 let browser,context,reported=false;
 const results=[];
@@ -192,12 +175,12 @@ try{
   }
  }
  const sessionState=JSON.stringify(await context.storageState());
- await rpc("whirlpool_worker_report",{p_connection_id:conn.id,p_lock_token:claim.lock_token,p_outcome:"AUTH_OK",p_session_state:sessionState,p_error_code:null});
+ await workerRequest("report",{connection_id:conn.id,lock_token:claim.lock_token,outcome:"AUTH_OK",session_state:sessionState,error_code:null});
  reported=true;
 }catch(e){
  const code=String(e?.code||"");
  const outcome=code==="CREDENCIAIS_INVALIDAS"?"CREDENCIAIS_INVALIDAS":code==="SESSION_EXPIRED"?"SESSION_EXPIRED":"PORTAL_INDISPONIVEL";
- if(!reported)await rpc("whirlpool_worker_report",{p_connection_id:conn.id,p_lock_token:claim.lock_token,p_outcome:outcome,p_session_state:null,p_error_code:code||"WORKER_FAILURE"}).catch(()=>{});
+ if(!reported)await workerRequest("report",{connection_id:conn.id,lock_token:claim.lock_token,outcome,session_state:null,error_code:code||"WORKER_FAILURE"}).catch(()=>{});
  console.error("WORKER WHIRLPOOL: "+outcome);
  process.exitCode=outcome==="CREDENCIAIS_INVALIDAS"?2:1;
 }finally{
