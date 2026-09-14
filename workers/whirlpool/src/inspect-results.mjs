@@ -56,9 +56,10 @@ async function readFrame(frame) {
       );
       if (osIndex < 0 || statusIndex < 0) continue;
 
-      const group = headerRow.parentElement;
-      const candidateRows = group ? [...group.children].filter((element) => element.tagName === "TR") : trs;
-      for (const tr of candidateRows.slice(candidateRows.indexOf(headerRow) + 1)) {
+      // O SAP mantém o cabeçalho no THEAD e os resultados no TBODY
+      // da mesma tabela ResultTable_TableHeader.
+      const candidateRows = [...table.tBodies].flatMap((tbody) => [...tbody.rows]);
+      for (const tr of candidateRows) {
         const cells = directCells(tr);
         if (cells.length !== headers.length) continue;
         const osText = clean(cells[osIndex].innerText);
