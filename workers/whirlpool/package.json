@@ -1,10 +1,12 @@
 {
   "name": "voxassist-whirlpool-worker",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Worker local para mapear e sincronizar o portal Whirlpool com o VoxAssist",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "install-browser": "playwright install chromium",
     "login": "node src/login.mjs",
@@ -17,7 +19,8 @@
     "capture-pdf-sample": "node src/capture-pdf-sample.mjs",
     "parse-pdf-sample": "node src/parse-pdf-sample.mjs",
     "simulate-pdf-import": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/run-secure-simulation.ps1",
-    "import-pdf-sample": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/run-secure-import.ps1"
+    "import-pdf-sample": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/run-secure-import.ps1",
+    "run-import-batch": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/run-secure-batch.ps1"
   },
   "dependencies": {
     "playwright": "1.55.0",
