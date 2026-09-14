@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -16,6 +16,7 @@ if (!sample) throw new Error("Nenhuma OS ativa disponível no lote local.");
 const pdfDir = path.join(ARTIFACT_DIR, "pdfs");
 await mkdir(pdfDir, { recursive: true });
 const pdfPath = path.join(pdfDir, `${sample.externalOrderId}.pdf`);
+await unlink(pdfPath).catch(() => {});
 
 const context = await chromium.launchPersistentContext(PROFILE_DIR, {
   channel: "chromium",
@@ -26,33 +27,69 @@ const context = await chromium.launchPersistentContext(PROFILE_DIR, {
 });
 const rl = readline.createInterface({ input, output });
 let captured = false;
+let capturing = false;
+const rejectedCandidates = [];
 
-async function savePdf(bytes) {
-  if (captured || !bytes?.length) return;
-  await writeFile(pdfPath, bytes);
-  captured = true;
+function inspectPdf(bytes) {
+  const buffer = Buffer.from(bytes || []);
+  const header = buffer.subarray(0, 5).toString("ascii");
+  const tail = buffer.subarray(Math.max(0, buffer.length - 2048)).toString("latin1");
+  return {
+    valid: buffer.length >= 4096 && header === "%PDF-" && tail.includes("%%EOF"),
+    bytes: buffer.length,
+    header,
+    hasEof: tail.includes("%%EOF"),
+  };
+}
+
+async function savePdf(bytes, source) {
+  if (captured || capturing) return false;
+  capturing = true;
+  try {
+    const check = inspectPdf(bytes);
+    if (!check.valid) {
+      rejectedCandidates.push({ source, ...check });
+      console.log(
+        `Resposta descartada (${source}): ${check.bytes} bytes, cabeçalho ${JSON.stringify(check.header)}.`,
+      );
+      return false;
+    }
+    await writeFile(pdfPath, bytes);
+    captured = true;
+    console.log(`PDF válido recebido: ${check.bytes} bytes.`);
+    return true;
+  } finally {
+    capturing = false;
+  }
 }
 
 context.on("response", async (response) => {
   try {
+    const responseUrl = new URL(response.url());
     const contentType = (response.headers()["content-type"] || "").toLowerCase();
-    if (contentType.includes("application/pdf") || response.url().includes("/crm/crm_pdf_print")) {
-      await savePdf(await response.body());
+    const exactPdfRoute =
+      responseUrl.hostname === "larcrm7.whirlpool.com" &&
+      responseUrl.pathname.toLowerCase().endsWith("/crm/crm_pdf_print") &&
+      responseUrl.searchParams.has("actionguid") &&
+      responseUrl.searchParams.has("scenario");
+    if (exactPdfRoute && contentType.includes("application/pdf")) {
+      await savePdf(await response.body(), "response:crm_pdf_print");
     }
   } catch {
-    // O evento download abaixo cobre navegadores que não liberam response.body().
+    // O evento download abaixo cobre respostas cujo corpo não é exposto.
   }
 });
 
 function attachDownloads(page) {
   page.on("download", async (download) => {
+    const temporaryPath = `${pdfPath}.download`;
     try {
-      if (!captured) {
-        await download.saveAs(pdfPath);
-        captured = true;
-      }
+      await download.saveAs(temporaryPath);
+      await savePdf(await readFile(temporaryPath), "download");
     } catch {
-      // A validação final informará se o PDF não foi capturado.
+      // A validação final informará se nenhum PDF válido foi capturado.
+    } finally {
+      await unlink(temporaryPath).catch(() => {});
     }
   });
 }
@@ -148,7 +185,12 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
   if (!captured) {
-    throw new Error("O PDF não foi capturado. Não prossiga; repetiremos o mapeamento da Visualização.");
+    const diagnostic = rejectedCandidates.length
+      ? ` Candidatos rejeitados: ${JSON.stringify(rejectedCandidates)}`
+      : "";
+    throw new Error(
+      "Nenhum PDF válido foi capturado. Não prossiga; a OS continua sem importação." + diagnostic,
+    );
   }
   console.log(`PDF ORIGINAL CAPTURADO: ${pdfPath}`);
   console.log("Feche a visualização, volte para a OS e clique em Encerrar.");
