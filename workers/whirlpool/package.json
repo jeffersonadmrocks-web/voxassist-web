@@ -1,6 +1,6 @@
 {
   "name": "voxassist-whirlpool-worker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Worker local para mapear e sincronizar o portal Whirlpool com o VoxAssist",
   "type": "module",
@@ -20,7 +20,10 @@
     "parse-pdf-sample": "node src/parse-pdf-sample.mjs",
     "simulate-pdf-import": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/run-secure-simulation.ps1",
     "import-pdf-sample": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/run-secure-import.ps1",
-    "run-import-batch": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/run-secure-batch.ps1"
+    "run-import-batch": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/run-secure-batch.ps1",
+    "install-automation": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/install-windows-automation.ps1",
+    "run-automation-now": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/scheduled-runner.ps1",
+    "uninstall-automation": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File src/uninstall-windows-automation.ps1"
   },
   "dependencies": {
     "playwright": "1.55.0",
