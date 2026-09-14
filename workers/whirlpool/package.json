@@ -1,0 +1,18 @@
+{
+  "name": "voxassist-whirlpool-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Worker local para mapear e sincronizar o portal Whirlpool com o VoxAssist",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "install-browser": "playwright install chromium",
+    "login": "node src/login.mjs",
+    "map-page": "node src/map-page.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.55.0"
+  }
+}
