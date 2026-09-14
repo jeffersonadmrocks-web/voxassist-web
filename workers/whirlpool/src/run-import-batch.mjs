@@ -174,7 +174,6 @@ try{
  const jobs=await pendingOrders();
  if(!jobs.length)console.log("Nenhuma OS ativa pendente.");
  for(const job of jobs){
- for(const job of jobs){
   try{
    await openSearch(page);await openOrder(page,job.external_order_id);
    const pdf=await capturePdf(context,page,job.external_order_id);
