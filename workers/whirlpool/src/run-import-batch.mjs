@@ -35,12 +35,23 @@ async function clickText(page, texts) {
       const hit=await frame.evaluate((targets)=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
         const wanted=targets.map(norm);
-        const el=[...document.querySelectorAll("a,button,input[type=button],input[type=submit]")].find(x=>{
-          const s=getComputedStyle(x); if(s.display==="none"||s.visibility==="hidden")return false;
-          const label=x.innerText||x.textContent||x.value||x.title||x.getAttribute("aria-label")||"";
-          return wanted.includes(norm(label));
-        });
-        if(!el)return false; el.click(); return true;
+        const nodes=[...document.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"],[role="menuitem"],span,td')];
+        const choices=nodes.map(node=>{
+          const label=node.innerText||node.textContent||node.value||node.title||node.getAttribute("aria-label")||"";
+          if(!wanted.includes(norm(label)))return null;
+          const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
+          const rect=action.getBoundingClientRect();
+          if(!rect.width||!rect.height)return null;
+          let parent=action;
+          while(parent){
+            const style=getComputedStyle(parent);
+            if(style.display==="none"||style.visibility==="hidden"||style.opacity==="0")return null;
+            parent=parent.parentElement;
+          }
+          return {action,priority:/^(A|BUTTON)$/.test(action.tagName)?0:1,area:rect.width*rect.height};
+        }).filter(Boolean).sort((x,y)=>x.priority-y.priority||x.area-y.area);
+        if(!choices.length)return false;
+        choices[0].action.click();return true;
       },texts);
       if(hit)return true;
     }catch{}
@@ -52,26 +63,43 @@ async function waitForTextClick(page,texts,timeout=30000){
   while(Date.now()<end){if(await clickText(page,texts))return true;await delay(500);}
   return false;
 }
-async function openSearch(page){
-  if(await clickText(page,["Ordem de Serviço"]))await delay(800);
-  if(!(await waitForTextClick(page,["Pesquisas"],15000))) throw new Error("Menu Pesquisas não localizado.");
-  await delay(1500);
-  let configured=false;
+async function findSearchLimit(page){
   for(const frame of page.frames()){
     try{
-      const ok=await frame.evaluate(()=>{
-        const max=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
-        if(!max)return false;
-        max.value="1000";max.dispatchEvent(new Event("input",{bubbles:true}));max.dispatchEvent(new Event("change",{bubbles:true}));
-        return true;
+      const found=await frame.evaluate(()=>{
+        const input=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
+        return input?{id:input.id||"",name:input.name||""}:null;
       });
-      if(ok){configured=true;break;}
+      if(found)return {frame,found};
     }catch{}
   }
-  if(!configured) throw new Error("Campo Nº máximo resultados não localizado.");
-  if(!(await waitForTextClick(page,["Procurar"],15000)))throw new Error("Botão Procurar não localizado.");
-  await delay(2500);
+  return null;
 }
+async function openSearch(page){
+  const deadline=Date.now()+90000;
+  let lastOrderClick=0,lastSearchClick=0;
+  while(Date.now()<deadline){
+    const located=await findSearchLimit(page);
+    if(located){
+      await located.frame.evaluate(()=>{
+        const max=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
+        max.value="1000";max.dispatchEvent(new Event("input",{bubbles:true}));max.dispatchEvent(new Event("change",{bubbles:true}));
+      });
+      if(!(await waitForTextClick(page,["Procurar"],20000)))throw new Error("Botão Procurar não localizado.");
+      await delay(2500);return;
+    }
+    const now=Date.now();
+    if(now-lastOrderClick>4000){
+      if(await clickText(page,["Ordem de Serviço"]))lastOrderClick=now;
+    }
+    if(now-lastSearchClick>3000){
+      if(await clickText(page,["Pesquisas"]))lastSearchClick=now;
+    }
+    await delay(750);
+  }
+  throw new Error("Tela de pesquisa de OS não carregou em 90 segundos.");
+}
+
 async function inspectAndOpen(frame,id){
  return frame.evaluate((target)=>{
   const clean=v=>String(v||"").replace(/\s+/g," ").trim();
