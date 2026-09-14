@@ -11,7 +11,7 @@ const serviceKey = process.env.VOXASSIST_SUPABASE_SERVICE_ROLE_KEY;
 if (!serviceKey) throw new Error("Chave temporária não configurada.");
 if (new URL(supabaseUrl).hostname !== "dgasmtvpgifceyqufcfg.supabase.co") throw new Error("Projeto Supabase não autorizado.");
 assertWhirlpoolUrl(PORTAL_URL);
-const auth = { apikey: serviceKey, authorization: `Bearer ${serviceKey}` };
+const auth = { apikey: serviceKey };
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function rest(table, query) {
   const url = new URL(`/rest/v1/${table}`, supabaseUrl);
@@ -128,13 +128,52 @@ async function uploadAndImport(id,payload,pdf){
  }catch(e){if(uploaded)await fetch(objectUrl,{method:"DELETE",headers:auth}).catch(()=>{});throw e;}
 }
 async function closePdfPages(context,main){for(const p of context.pages())if(p!==main&&/crm_pdf_print|\.pdf/i.test(p.url()))await p.close().catch(()=>{});}
-const jobs=await pendingOrders();
-if(!jobs.length){console.log("Nenhuma OS ativa pendente.");process.exit(0);}
-const context=await chromium.launchPersistentContext(PROFILE_DIR,{channel:"chromium",headless:false,viewport:null,acceptDownloads:true,args:["--start-maximized"]});
+async function rpc(name,body){
+ const r=await fetch(new URL("/rest/v1/rpc/"+name,supabaseUrl),{method:"POST",headers:{...auth,"content-type":"application/json"},body:JSON.stringify(body)});
+ const t=await r.text();if(!r.ok)throw new Error("Controle do worker falhou (HTTP "+r.status+").");return JSON.parse(t);
+}
+async function connection(){
+ const rows=await rest("whirlpool_connections",{active:"eq.true",select:"id",order:"created_at.asc",limit:"1"});
+ if(!rows[0]?.id)throw new Error("Conexão Whirlpool ativa não encontrada.");return rows[0];
+}
+async function loginIfNeeded(page,claim){
+ await page.goto(PORTAL_URL,{waitUntil:"domcontentloaded",timeout:120000});
+ const password=page.locator('input[type="password"]:visible').first();
+ if(!(await password.count()))return false;
+ if(!claim.needs_login)throw Object.assign(new Error("Sessão Whirlpool expirada."),{code:"SESSION_EXPIRED"});
+ const username=page.locator('input[type="text"]:visible,input[type="email"]:visible').first();
+ if(!(await username.count()))throw Object.assign(new Error("Tela de login Whirlpool incompleta."),{code:"PORTAL_INDISPONIVEL"});
+ await username.fill(String(claim.username||""));
+ await password.fill(String(claim.password||""));
+ claim.username="";claim.password="";
+ const submit=page.locator('button[type="submit"]:visible,input[type="submit"]:visible').first();
+ if(await submit.count())await submit.click();else await password.press("Enter");
+ await page.waitForTimeout(2500);
+ const body=norm(await page.locator("body").innerText().catch(()=>""));
+ if(/senha invalida|usuario ou senha|credenciais invalidas|password incorrect|authentication failed|logon failed/.test(body)){
+   throw Object.assign(new Error("Credenciais Whirlpool rejeitadas."),{code:"CREDENCIAIS_INVALIDAS"});
+ }
+ if(await page.locator('input[type="password"]:visible').count()){
+   throw Object.assign(new Error("Login Whirlpool não concluído sem rejeição explícita."),{code:"PORTAL_INDISPONIVEL"});
+ }
+ return true;
+}
+const workerId=crypto.randomUUID();
+const conn=await connection();
+const claim=await rpc("whirlpool_worker_claim",{p_connection_id:conn.id,p_worker_id:workerId,p_lease_seconds:900});
+if(!claim?.claimed){console.log("EXECUÇÃO NÃO INICIADA: "+String(claim?.reason||"SEM_LEASE"));process.exit(0);}
+let browser,context,reported=false;
 const results=[];
 try{
- let page=context.pages()[0]||await context.newPage();await page.goto(PORTAL_URL,{waitUntil:"domcontentloaded",timeout:120000});
- if(await page.locator('input[type="password"]:visible').count())throw new Error("Sessão expirada. Execute npm.cmd run login.");
+ browser=await chromium.launch({channel:"chromium",headless:true,args:["--disable-dev-shm-usage","--no-sandbox"]});
+ let storageState;
+ try{if(claim.session_state)storageState=JSON.parse(claim.session_state);}catch{}
+ context=await browser.newContext({storageState,acceptDownloads:true,viewport:{width:1600,height:1000}});
+ let page=await context.newPage();
+ await loginIfNeeded(page,claim);
+ const jobs=await pendingOrders();
+ if(!jobs.length)console.log("Nenhuma OS ativa pendente.");
+ for(const job of jobs){
  for(const job of jobs){
   try{
    await openSearch(page);await openOrder(page,job.external_order_id);
@@ -153,6 +192,18 @@ try{
    await delay(1000);
   }
  }
-}finally{await context.close();}
+ const sessionState=JSON.stringify(await context.storageState());
+ await rpc("whirlpool_worker_report",{p_connection_id:conn.id,p_lock_token:claim.lock_token,p_outcome:"AUTH_OK",p_session_state:sessionState,p_error_code:null});
+ reported=true;
+}catch(e){
+ const code=String(e?.code||"");
+ const outcome=code==="CREDENCIAIS_INVALIDAS"?"CREDENCIAIS_INVALIDAS":code==="SESSION_EXPIRED"?"SESSION_EXPIRED":"PORTAL_INDISPONIVEL";
+ if(!reported)await rpc("whirlpool_worker_report",{p_connection_id:conn.id,p_lock_token:claim.lock_token,p_outcome:outcome,p_session_state:null,p_error_code:code||"WORKER_FAILURE"}).catch(()=>{});
+ console.error("WORKER WHIRLPOOL: "+outcome);
+ process.exitCode=outcome==="CREDENCIAIS_INVALIDAS"?2:1;
+}finally{
+ claim.username="";claim.password="";claim.session_state="";
+ await context?.close().catch(()=>{});await browser?.close().catch(()=>{});
+}
 console.log("LOTE AUTOMÁTICO FINALIZADO");
 console.log(JSON.stringify({limit:LIMIT,processed:results.length,results}));
