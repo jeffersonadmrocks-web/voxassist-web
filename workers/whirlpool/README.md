@@ -63,6 +63,28 @@ Os arquivos são gravados em `.artifacts/` e permanecem somente na máquina loca
 
 Nesta fase, consultar somente. Não editar nenhuma OS no portal.
 
+## Limite de atuação do robô
+
+O robô é prioritariamente um leitor e coletor de dados.
+
+- No portal Whirlpool, a única operação que o robô pode inserir ou alterar é o agendamento aprovado no VoxAssist: data, período, motivo de agendamento e parceiro técnico necessário para concluir esse fluxo.
+- Nenhum outro dado da OS Whirlpool pode ser criado, corrigido ou alterado automaticamente.
+- Demais alterações no portal são responsabilidade do operador e devem ser feitas manualmente.
+- A leitura, comparação de status, captura do PDF e identificação de OS novas não autorizam escrita no portal.
+- O modo de escrita deve usar uma lista explícita de campos permitidos. Qualquer campo fora dessa lista causa interrupção segura da tentativa.
+
+### Falha no envio do agendamento
+
+A integração do agendamento é não bloqueante:
+
+1. O VoxAssist salva normalmente o agendamento e libera a continuidade da operação.
+2. O robô tenta registrar o agendamento na Whirlpool.
+3. Se não conseguir, mantém a tentativa como `PENDENTE_MANUAL_WHIRLPOOL`.
+4. Exibe alerta claro ao operador com número da OS, data, período, técnico e motivo da falha.
+5. O operador pode registrar manualmente no portal e confirmar a conclusão no VoxAssist.
+6. A falha nunca cancela, apaga, reverte ou trava o agendamento do VoxAssist.
+7. Novas tentativas automáticas não podem gerar duplicidade e devem parar quando houver confirmação no portal ou confirmação manual do operador.
+
 ## Regras aprovadas
 
 ### Identidade e deduplicação
