@@ -102,7 +102,7 @@ Chave única: fabricante + conexão/filial + número externo Whirlpool.
 ### Endereço
 
 - Nova OS: comparar o endereço recebido com os endereços do cliente.
-- Se não existir, usar o fluxo existente de adicionar endereço, com nome inicial `Whirlpool — OS [número]`.
+- Se não existir, usar o fluxo existente de adicionar endereço, com o nome `Whirlpool`.
 - Vincular o endereço à nova OS sem substituir automaticamente o endereço principal.
 - Depois da importação, o portal Whirlpool nunca sobrescreve o endereço daquela OS.
 - Uma OS futura do mesmo cliente processa novamente o endereço e pode criar outro.
