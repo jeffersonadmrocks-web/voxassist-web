@@ -44,7 +44,17 @@
   // constando na lista de atendentes do próprio Chat. RLS de
   // chat_conversations já permite GESTOR e ATENDENTE por igual --
   // só faltava o menu não escondê-la.
-  function canUseChat(){return isGestor()||role()==='ATENDENTE'}
+  //
+  // Pedido do usuário em 2026-09-14: liberar o Chat pra todos os
+  // papéis, incluindo TECNICO. A policy "Escopo de visualização da
+  // Central de Conversas" (migration chat_queues) JÁ previa TECNICO
+  // desde 2026-09-02 -- só nunca tinha frontend que chegasse até ela:
+  // técnico enxerga a própria conversa (assigned_user_id = ele) ou a
+  // conversa vinculada à OS da qual é responsável, nunca a empresa
+  // toda (RLS já faz esse recorte -- nada a reforçar aqui). Sub-telas
+  // administrativas (Robô/Monitor/Usuários/Vincular usuário) continuam
+  // exclusivas de GESTOR via isGestor(), sem relação com esta função.
+  function canUseChat(){return isGestor()||role()==='ATENDENTE'||role()==='TECNICO'}
   // PWA-1: exportado só pra o menu inferior mobile (mobile-nav-v1.js)
   // decidir se mostra o atalho de Chat sem duplicar esta regra em outro
   // arquivo -- nenhuma mudança de comportamento aqui, mesma função.
@@ -653,7 +663,11 @@
     hubState.list=await api(`chat_conversations?select=${CONV_SELECT}&order=last_message_at.desc.nullslast`).catch(()=>[]);
   }
   async function loadAttendants(){
-    cache.attendants=await api('profiles?select=id,full_name,role&active=eq.true&role=in.(GESTOR,ATENDENTE)&order=full_name').catch(()=>[]);
+    // Inclui TECNICO desde 2026-09-14 (liberação do Chat pra todos os
+    // papéis) -- sem isso, uma conversa atribuída a um técnico exibia
+    // "Atribuída a: —" (attendantName() não encontrava o usuário nesta
+    // lista), mesmo a RLS já deixando o técnico ver a própria conversa.
+    cache.attendants=await api('profiles?select=id,full_name,role&active=eq.true&role=in.(GESTOR,ATENDENTE,TECNICO)&order=full_name').catch(()=>[]);
   }
   // Achado do usuário em 2026-09-02 (referência visual aprovada): a
   // barra de status do rodapé ("Atendentes online") precisa de dado
@@ -909,7 +923,7 @@
     const aguardando=hubState.list.filter(c=>Number(c.unread_count||0)>0).length;
     bar.innerHTML=`
       <span class="vx-cc-status-item"><span class="vx-cc-status-dot ${operational?'ok':'off'}"></span>Sistema ${operational?'operacional':'sem conexão ativa'}</span>
-      <span class="vx-cc-status-item">👤 Atendentes online: <b>${onlineCount}</b></span>
+      <span class="vx-cc-status-item">👤 Equipe online: <b>${onlineCount}</b></span>
       <span class="vx-cc-status-item">💬 Conversas ativas: <b>${ativas}</b></span>
       <span class="vx-cc-status-item">⏳ Aguardando: <b>${aguardando}</b></span>
       <span class="vx-cc-status-item vx-cc-status-refresh">🔄 Atualizado ${cache.lastRefreshAt?cache.lastRefreshAt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'agora'}</span>
