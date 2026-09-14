@@ -638,14 +638,14 @@
         </div>
         <div class="vx-fin-search"><input class="vx-control" id="vxFinSearch" placeholder="🔎 Pesquisar OS, cliente, CPF/CNPJ..." value="${esc(ui.q)}"></div>
       </div>
-      <div class="vx-fin-filters">
+      <div class="vx-fin-filters vx-fin-filters-selects">
         <select class="vx-control" id="vxFinFilterUser"><option value="">Usuário (todos)</option>${ui.users.map((u) => `<option value="${u.id}">${esc(u.full_name)}</option>`).join('')}</select>
         <select class="vx-control" id="vxFinFilterMethod"><option value="">Forma (todas)</option>${ui.methods.filter((m) => up(m.name) !== 'DESCONTO').map((m) => `<option>${esc(m.name)}</option>`).join('')}</select>
         <select class="vx-control" id="vxFinFilterSituacao"><option value="">Situação (todas)</option><option value="RECEBIDO">Recebido</option><option value="PARCIAL_ESTORNADO">Parcial estornado</option><option value="ESTORNADO">Estornado</option><option value="ESTORNO">Estorno (lançamento)</option></select>
         <select class="vx-control" id="vxFinSortBy" title="Organiza os lançamentos dentro de cada dia">
-          <option value="horario" ${ui.sortBy === 'horario' ? 'selected' : ''}>Organizar por: Horário</option>
-          <option value="forma" ${ui.sortBy === 'forma' ? 'selected' : ''}>Organizar por: Forma de pagamento</option>
-          <option value="os" ${ui.sortBy === 'os' ? 'selected' : ''}>Organizar por: OS</option>
+          <option value="horario" ${ui.sortBy === 'horario' ? 'selected' : ''}>Ordem: Horário</option>
+          <option value="forma" ${ui.sortBy === 'forma' ? 'selected' : ''}>Ordem: Forma de pagamento</option>
+          <option value="os" ${ui.sortBy === 'os' ? 'selected' : ''}>Ordem: OS</option>
         </select>
       </div>
       <div class="vx-fin-table-wrap"><table class="vx-fin-table"><thead><tr><th>Hora</th><th>OS</th><th>Cliente</th><th>Descrição</th><th>Forma</th><th>Valor</th><th>Usuário</th><th>Situação</th><th></th></tr></thead><tbody id="vxFinRows"></tbody></table></div>

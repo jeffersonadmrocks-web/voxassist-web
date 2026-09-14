@@ -136,6 +136,12 @@
   .vx-fin-head{flex-direction:column;align-items:flex-start}
   .vx-fin-btn{width:100%}
   .vx-fin-filters{flex-direction:column;align-items:stretch}
+  /* Achado do usuário: Usuário/Forma/Situação/Ordem empilhados um por
+     linha ocupava espaço demais. Ficam numa linha só sempre -- encolhem
+     pra caber e, se ainda não couber, essa linha rola na horizontal em
+     vez de empilhar (nunca quebra pra baixo). */
+  .vx-fin-filters.vx-fin-filters-selects{flex-direction:row;flex-wrap:nowrap;align-items:stretch;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .vx-fin-filters-selects select.vx-control{flex:1 1 0;min-width:118px}
   .vx-fin-period-inputs{flex-wrap:wrap}
   .vx-fin-table-wrap{overflow-x:auto}
   .vx-fin-totals-grid{grid-template-columns:1fr 1fr}
