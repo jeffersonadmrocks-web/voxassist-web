@@ -1,6 +1,6 @@
 {
   "name": "voxassist-whirlpool-worker",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Worker local para mapear e sincronizar o portal Whirlpool com o VoxAssist",
   "type": "module",
@@ -14,7 +14,8 @@
     "capture-network": "node src/capture-network.mjs",
     "inspect-results": "node src/inspect-results.mjs",
     "inspect-grid": "node src/inspect-grid-structure.mjs",
-    "prepare-catalog": "node src/prepare-catalog.mjs"
+    "prepare-catalog": "node src/prepare-catalog.mjs",
+    "upload-catalog": "node src/upload-catalog.mjs"
   },
   "dependencies": {
     "playwright": "1.55.0"
