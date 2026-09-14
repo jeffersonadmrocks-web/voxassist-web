@@ -1,0 +1,98 @@
+# Robô Whirlpool — fundação segura
+
+Branch de desenvolvimento: `feat/whirlpool-robot-foundation`
+
+## Objetivo
+
+Automatizar a integração Whirlpool da filial Serra em duas direções:
+
+1. Portal Whirlpool → VoxAssist: localizar OS novas ou alteradas, abrir detalhes e importar sem duplicidade.
+2. VoxAssist → Portal Whirlpool: publicar agendamentos criados ou alterados no VoxAssist.
+
+O portal não oferece API ou arquivo estruturado. A integração será feita exclusivamente por navegador automatizado com perfil persistente.
+
+## Segurança
+
+- O perfil local fica em `.playwright-profile/serra` e não entra no Git.
+- Senha, cookies, páginas e dados das OS não entram no código ou no Git.
+- O primeiro login é manual na janela local.
+- O mapeador salva apenas controles, atributos e cabeçalhos; valores dos campos e linhas de clientes não são capturados.
+- O worker deve usar Node.js 22 ou superior.
+- A futura chave secreta do Supabase ficará somente no ambiente do worker, nunca no frontend.
+
+## Preparação local
+
+Na raiz do repositório:
+
+```bash
+cd workers/whirlpool
+npm install
+npm run install-browser
+npm run login
+```
+
+Se o portal acusar erro de cookie, permitir cookies para `larcrm7.whirlpool.com`, fechar todas as janelas do worker e repetir `npm run login`.
+
+## Mapeamento inicial
+
+Mapear separadamente:
+
+```bash
+npm run map-page
+```
+
+Telas necessárias:
+
+1. `busca-os`
+2. `resultado-busca`
+3. `detalhe-os`
+4. `editar-agendamento`
+5. `confirmacao-agendamento`
+
+Os arquivos são gravados em `.artifacts/` e permanecem somente na máquina local.
+
+## OS de homologação fornecidas
+
+- Novas: 7015769978, 7015766640, 7015769061
+- Alteradas: 7015759452, 7015742815
+- Com agendamento: 7015754326, 7015732211
+- Encerradas: 7015752064, 7015700316
+
+Nesta fase, consultar somente. Não editar nenhuma OS no portal.
+
+## Regras aprovadas
+
+### Identidade e deduplicação
+
+Chave única: fabricante + conexão/filial + número externo Whirlpool.
+
+### Endereço
+
+- Nova OS: comparar o endereço recebido com os endereços do cliente.
+- Se não existir, usar o fluxo existente de adicionar endereço, com nome inicial `Whirlpool — OS [número]`.
+- Vincular o endereço à nova OS sem substituir automaticamente o endereço principal.
+- Depois da importação, o portal Whirlpool nunca sobrescreve o endereço daquela OS.
+- Uma OS futura do mesmo cliente processa novamente o endereço e pode criar outro.
+- A OS preserva uma cópia histórica do endereço usado no atendimento.
+
+### Agendamento VoxAssist → Whirlpool
+
+- Inclusão e alteração de agendamento de OS Whirlpool geram item em fila.
+- A fila só é marcada como concluída depois de reler o portal e confirmar data/período.
+- Falhas são retentadas e exibidas ao gestor.
+- Nenhuma alteração será enviada durante o mapeamento somente leitura.
+
+### Exclusão com reconfirmação
+
+Uma ausência na busca não significa exclusão confirmada.
+
+1. Primeira ausência: marcar `SUSPEITA_DE_EXCLUSAO`.
+2. Fazer nova consulta direta pelo número da OS.
+3. Reconsultar em janela de até 24 horas.
+4. Confirmar exclusão somente após duas ausências independentes e consulta direta sem resultado.
+5. Se a OS reaparecer, cancelar a suspeita e registrar falso positivo.
+6. Nunca excluir a OS do VoxAssist; apenas registrar o estado externo e alertar o gestor.
+
+## Próxima etapa
+
+Após obter os cinco mapas sanitizados, implementar seletores estáveis, parser de detalhes, fila Supabase, escrita de agendamento e testes automatizados. O worker só poderá operar em modo de escrita depois da homologação explícita.
