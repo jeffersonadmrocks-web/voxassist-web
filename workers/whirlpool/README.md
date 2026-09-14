@@ -94,6 +94,25 @@ A Whirlpool não possui fila de novas OS. O worker abre a visualização de toda
 
 ### Agendamento VoxAssist → Whirlpool
 
+O agendamento altera o item `VISITA NORMAL`; a OS principal permanece com status `ABERTO`.
+
+Sequência obrigatória no portal:
+
+1. No item, alterar o status de `Agendar` para `Agendado`.
+2. Alterar o motivo de status para `AGENDAMENTO`.
+3. Em Datas, preencher `Data início anterior` com a data da visita e o horário inicial definido pelo período.
+4. Não preencher `Última data de início`: o SAP atualiza esse campo automaticamente.
+5. Clicar em `Voltar` no item para retornar à OS.
+6. Preencher `Parceiro Técnico` no item `VISITA NORMAL`, usando o mapeamento do técnico do VoxAssist.
+7. Clicar em `Salvar` na OS.
+8. Verificar na grade: status Agendado, data, período, motivo AGENDAMENTO e parceiro técnico.
+9. Clicar obrigatoriamente em `Encerrar` antes de abrir outra OS, evitando mistura de dados de consumidores.
+
+Técnicos Whirlpool inicialmente conhecidos na filial Serra:
+
+- BRENDO PEREIRA FERREIRA
+- DORLEAN ANASTACIO ELIAS
+
 - Inclusão e alteração de agendamento de OS Whirlpool geram item em fila.
 - A fila só é marcada como concluída depois de reler o portal e confirmar data/período.
 - Falhas são retentadas e exibidas ao gestor.
