@@ -217,25 +217,30 @@ async function uploadAndImport(id,payload,pdf){
 async function closePdfPages(context,main){for(const p of context.pages())if(p!==main&&/crm_pdf_print|\.pdf/i.test(p.url()))await p.close().catch(()=>{});}
 async function loginIfNeeded(page,claim){
  await page.goto(PORTAL_URL,{waitUntil:"domcontentloaded",timeout:120000});
- const password=page.locator('input[type="password"]:visible').first();
- if(!(await password.count()))return false;
+ const password=page.locator('input[type="password"]').first();
+ const isLogon=/logon|login/i.test(await page.title().catch(()=>""));
+ if(!(await password.count())){
+   if(isLogon)throw Object.assign(new Error("Tela de login Whirlpool incompleta."),{code:"PORTAL_INDISPONIVEL"});
+   return false;
+ }
  if(!claim.needs_login)throw Object.assign(new Error("Sessão Whirlpool expirada."),{code:"SESSION_EXPIRED"});
- const username=page.locator('input[type="text"]:visible,input[type="email"]:visible').first();
+ const username=page.locator('input[type="text"],input[type="email"]').filter({hasNot:page.locator('[type="hidden"]')}).first();
  if(!(await username.count()))throw Object.assign(new Error("Tela de login Whirlpool incompleta."),{code:"PORTAL_INDISPONIVEL"});
- await username.fill(String(claim.username||""));
- await password.fill(String(claim.password||""));
+ await username.fill(String(claim.username||""),{force:true});
+ await password.fill(String(claim.password||""),{force:true});
  claim.username="";claim.password="";
- const submit=page.locator('button[type="submit"]:visible,input[type="submit"]:visible').first();
- if(await submit.count())await submit.click();else await password.press("Enter");
- await page.waitForTimeout(2500);
- const body=norm(await page.locator("body").innerText().catch(()=>""));
- if(/senha invalida|usuario ou senha|credenciais invalidas|password incorrect|authentication failed|logon failed/.test(body)){
-   throw Object.assign(new Error("Credenciais Whirlpool rejeitadas."),{code:"CREDENCIAIS_INVALIDAS"});
+ const submit=page.locator('button[type="submit"],input[type="submit"]').first();
+ if(await submit.count())await submit.click({force:true});else await password.press("Enter");
+ const deadline=Date.now()+30000;
+ while(Date.now()<deadline){
+   await page.waitForTimeout(500);
+   const body=norm(await page.locator("body").innerText().catch(()=>""));
+   if(/senha invalida|usuario ou senha|credenciais invalidas|password incorrect|authentication failed|logon failed/.test(body)){
+     throw Object.assign(new Error("Credenciais Whirlpool rejeitadas."),{code:"CREDENCIAIS_INVALIDAS"});
+   }
+   if(!(await page.locator('input[type="password"]').count()))return true;
  }
- if(await page.locator('input[type="password"]:visible').count()){
-   throw Object.assign(new Error("Login Whirlpool não concluído sem rejeição explícita."),{code:"PORTAL_INDISPONIVEL"});
- }
- return true;
+ throw Object.assign(new Error("Login Whirlpool não concluído sem rejeição explícita."),{code:"PORTAL_INDISPONIVEL"});
 }
 const workerId=crypto.randomUUID();
 const conn={id:null};
