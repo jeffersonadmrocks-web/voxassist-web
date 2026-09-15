@@ -114,7 +114,8 @@ async function openSearch(page){
     }
     await delay(750);
   }
-  const snapshot=await safeNavigationSnapshot(page);\n  throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico sanitizado: "+snapshot),{code:"NAVIGATION_FAILURE"});
+  const snapshot=await safeNavigationSnapshot(page);
+  throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico sanitizado: "+snapshot),{code:"NAVIGATION_FAILURE"});
 }
 
 async function inspectAndOpen(frame,id){
