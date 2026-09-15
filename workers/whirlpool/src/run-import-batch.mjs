@@ -123,7 +123,7 @@ async function safeNavigationSnapshot(page){
 }
 async function openSearch(page){
   const deadline=Date.now()+45000;
-  let lastOrderClick=0,lastSearchClick=0;
+  let searchMenuOpenedAt=0;
   while(Date.now()<deadline){
     const located=await findSearchLimit(page);
     if(located){
@@ -131,15 +131,22 @@ async function openSearch(page){
         const max=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
         max.value="1000";max.dispatchEvent(new Event("input",{bubbles:true}));max.dispatchEvent(new Event("change",{bubbles:true}));
       });
-      if(!(await waitForTextClick(page,["Procurar"],20000)))throw new Error("Botão Procurar não localizado.");
+      if(!(await waitForTextClick(page,["Procurar","Search"],20000)))throw new Error("Botão Procurar não localizado.");
       await delay(2500);return;
     }
     const now=Date.now();
-    if(now-lastOrderClick>4000){
-      if(await clickSidebarText(page,["Ordem de Serviço","Service Order"]))lastOrderClick=now;
+    if(!searchMenuOpenedAt||now-searchMenuOpenedAt>8000){
+      if(await clickSidebarText(page,["Pesquisas","Search"])){
+        searchMenuOpenedAt=now;
+        await delay(1200);
+        continue;
+      }
     }
-    if(now-lastSearchClick>3000){
-      if(await clickSidebarText(page,["Pesquisas","Search"]))lastSearchClick=now;
+    if(searchMenuOpenedAt){
+      if(await clickSidebarText(page,["Ordens de serviço","Service Orders"])){
+        await delay(1500);
+        continue;
+      }
     }
     await delay(750);
   }
