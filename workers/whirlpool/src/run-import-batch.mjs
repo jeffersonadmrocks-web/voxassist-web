@@ -69,7 +69,7 @@ async function clickSidebarText(page,texts){
       const hit=await frame.evaluate(targets=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
         const wanted=targets.map(norm);
-        const choices=[...document.querySelectorAll('a,button,[role="button"],[role="menuitem"],span,td')]
+        const choices=[...document.querySelectorAll('a,button,[role="button"],[role="menuitem"],span,td,div')]
           .map(node=>{
             const label=node.innerText||node.textContent||node.title||node.getAttribute("aria-label")||"";
             if(!wanted.includes(norm(label)))return null;
@@ -111,10 +111,13 @@ async function safeNavigationSnapshot(page){
       const url=new URL(frame.url());
       const controls=await frame.evaluate(()=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
-        return [...document.querySelectorAll('a,button,[role="button"],[role="menuitem"]')]
-          .map(node=>({id:String(node.id||"").slice(0,90),label:norm(node.getAttribute("aria-label")||node.title||node.innerText||node.textContent||"").slice(0,60)}))
-          .filter(x=>/^(ordem de servico|pesquisas|procurar)$/.test(x.label))
-          .slice(0,12);
+        return [...document.querySelectorAll('a,button,[role="button"],[role="menuitem"],span,td,div')]
+          .map(node=>{
+            const rect=node.getBoundingClientRect();
+            return {tag:node.tagName.toLowerCase(),id:String(node.id||"").slice(0,90),label:norm(node.getAttribute("aria-label")||node.title||node.innerText||node.textContent||"").slice(0,60),left:Math.round(rect.left),top:Math.round(rect.top),width:Math.round(rect.width),height:Math.round(rect.height)};
+          })
+          .filter(x=>x.width>0&&x.height>0&&x.left<300&&/(service order|ordem de servico|service orders|ordens de servico|search|pesquisa|pesquisas)/.test(x.label))
+          .slice(0,24);
       });
       frames.push({index,host:url.hostname,path:url.pathname.slice(0,140),controls});
     }catch{}
