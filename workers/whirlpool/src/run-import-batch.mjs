@@ -119,10 +119,10 @@ async function safeNavigationSnapshot(page){
           .filter(x=>x.width>0&&x.height>0&&x.left<300&&/(service order|ordem de servico|service orders|ordens de servico|search|pesquisa|pesquisas)/.test(x.label))
           .slice(0,24);
       });
-      frames.push({index,host:url.hostname,path:url.pathname.slice(0,140),controls});
+      if(controls.length)frames.push({index,host:url.hostname,path:url.pathname.slice(0,140),controls});
     }catch{}
   }
-  return JSON.stringify(frames).slice(0,1400);
+  return JSON.stringify(frames).slice(0,3000);
 }
 async function openSearch(page){
   const deadline=Date.now()+45000;
