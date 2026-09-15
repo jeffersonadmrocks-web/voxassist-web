@@ -118,6 +118,21 @@ async function openSearch(page){
   throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico sanitizado: "+snapshot),{code:"NAVIGATION_FAILURE"});
 }
 
+async function selectCrmPage(context,initialPage){
+  const deadline=Date.now()+30000;
+  while(Date.now()<deadline){
+    const pages=context.pages().filter(p=>!p.isClosed());
+    for(const candidate of [...pages].reverse()){
+      const urls=[candidate.url(),...candidate.frames().map(frame=>frame.url())];
+      if(urls.some(url=>/\/bc\/bsp\/sap\/crm_ui_frame\/|BSPWDApplication\.do/i.test(url)))return candidate;
+      if(await findSearchLimit(candidate))return candidate;
+    }
+    await delay(500);
+  }
+  const alternatives=context.pages().filter(p=>!p.isClosed()&&p!==initialPage);
+  if(alternatives.length)return alternatives.at(-1);
+  throw Object.assign(new Error("Janela operacional do CRM não foi aberta."),{code:"NAVIGATION_FAILURE"});
+}
 async function inspectAndOpen(frame,id){
  return frame.evaluate((target)=>{
   const clean=v=>String(v||"").replace(/\s+/g," ").trim();
@@ -200,6 +215,8 @@ try{
  context=await browser.newContext({storageState,acceptDownloads:true,viewport:{width:1600,height:1000}});
  let page=await context.newPage();
  await loginIfNeeded(page,claim);
+ page=await selectCrmPage(context,page);
+ await page.bringToFront().catch(()=>{});
  const jobs=await pendingOrders();
  if(!jobs.length)console.log("Nenhuma OS ativa pendente.");
  for(const job of jobs){
