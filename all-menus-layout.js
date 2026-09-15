@@ -79,15 +79,18 @@
   }
   async function openTarget(t){
     if(t==='nova-os') return baseRender('nova-os');
-    if(t==='pesquisa-os') return renderOperational('os','Pesquisa O.S.');
-    if(t==='clientes') return renderOperational('clientes','Clientes');
-    if(t==='oficina-operacional') return renderOperational('oficina','Fila Técnica');
-    if(t==='agenda-operacional') return renderOperational('agenda','Atividades');
+    // Roteadas por window.render (chave 'op:<view>') em vez de chamar
+    // renderOperational direto -- mesmo motivo de orcamentos-aprovacoes/
+    // structure: acima, ver case 'op:' no wrap de window.render.
+    if(t==='pesquisa-os') return window.render('op:os');
+    if(t==='clientes') return window.render('op:clientes');
+    if(t==='oficina-operacional') return window.render('op:oficina');
+    if(t==='agenda-operacional') return window.render('op:agenda');
     if(t==='nps-electrolux') return window.render('nps-electrolux');
-    if(t==='estoque-operacional') return renderOperational('estoque','Estoque / Peças');
-    if(t==='financeiro-operacional') return renderOperational('financeiro','Financeiro');
-    if(t==='testes-operacional') return renderOperational('testes','Testes de Funções');
-    if(t==='usuarios-operacional') return renderOperational('usuarios','Usuários / Segurança');
+    if(t==='estoque-operacional') return window.render('op:estoque');
+    if(t==='financeiro-operacional') return window.render('op:financeiro');
+    if(t==='testes-operacional') return window.render('op:testes');
+    if(t==='usuarios-operacional') return window.render('op:usuarios');
     if(t==='dashboard') return baseRender('dashboard');
     // Achado do usuário (2026-09-15): telas abertas por chamada direta
     // de função (nunca via window.render) ficam invisíveis pro
@@ -122,7 +125,35 @@
     </div>`;
     document.getElementById('vxOrcaBack').onclick=()=>{const v=state.__vxOrcaPrevView||'dashboard';state.__vxOrcaPrevView=null;window.render(v)};
   }
-  async function renderOperational(view,label){await baseRender(view);state.view='op:'+view;renderTabs(label);const title=document.querySelector('#title');if(title)title.textContent=label;}
+  // Achado do usuário (2026-09-15): estas telas (Pesquisar O.S.,
+  // Clientes, Estoque/Peças etc.) nunca tiveram botão "Voltar" nenhum
+  // -- só existiam como destino de um card de hub, mas a função de
+  // render em si (app.js: renderOrders/renderClients/renderStock/...)
+  // nunca soube disso, nunca ofereceu um caminho de volta. Injeta uma
+  // barra "← Voltar" no topo do #app depois do render original (nunca
+  // edita app.js) -- mesmo state.__vxOpPrevView (guardado por quem
+  // chama, ver wrap de window.render abaixo) usado pelos outros drill-
+  // downs desta sessão (Orçamentos/Aprovações, WP/SEG, estrutura).
+  async function renderOperational(view,label){
+    await baseRender(view);
+    state.view='op:'+view;
+    renderTabs(label);
+    const title=document.querySelector('#title');if(title)title.textContent=label;
+    const app=document.querySelector('#app');
+    if(app){
+      const bar=document.createElement('div');
+      bar.setAttribute('style','margin-bottom:12px');
+      bar.innerHTML='<button type="button" class="secondary" id="vxOpBack">← Voltar</button>';
+      app.insertBefore(bar,app.firstChild);
+      document.getElementById('vxOpBack').onclick=()=>{const v=state.__vxOpPrevView||'dashboard';state.__vxOpPrevView=null;window.render(v)};
+    }
+  }
+  // Mapa view->label 1:1 (auditado: cada view de renderOperational já
+  // era chamada com um único label fixo no arquivo inteiro) -- usado
+  // pelo case 'op:' do wrap de window.render abaixo, pra rotear por lá
+  // (nunca chamada direta de função) e cair no mesmo mecanismo de
+  // histórico do botão físico de voltar do Android.
+  const OP_LABELS={os:'Pesquisa O.S.',clientes:'Clientes',oficina:'Fila Técnica',agenda:'Atividades',estoque:'Estoque / Peças',financeiro:'Financeiro',testes:'Testes de Funções',usuarios:'Usuários / Segurança'};
   function lowerTabs(){return `<div class="module-lower-tabs"><button class="active">Oportunidades do Dia</button><button>Casos de Atenção</button><button data-target="agenda-operacional">Minhas Tarefas</button><button data-target="agenda-operacional">Agenda / Compromissos</button><button data-target="estoque-operacional">Pedidos de Peças</button><button>Produtividade / Bonificação</button></div><div class="module-lower-content">Ambiente de homologação — dados fictícios.</div>`}
   // summaryDrills NÃO é resetado aqui -- os argumentos (metrics, com os
   // summary(...) que povoam summaryDrills) já foram todos avaliados
@@ -279,6 +310,15 @@
         if(!state.__vxStructPrevView)state.__vxStructPrevView=state.view;
         state.view=view;
         renderStructureOnly(key,...STRUCTURE_ONLY_TARGETS[key]);
+        return;
+      }
+    }
+    if(view.startsWith('op:')){
+      const rawView=view.slice('op:'.length);
+      const label=OP_LABELS[rawView];
+      if(label){
+        if(!state.__vxOpPrevView)state.__vxOpPrevView=state.view;
+        await renderOperational(rawView,label);
         return;
       }
     }
