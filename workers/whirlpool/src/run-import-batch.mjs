@@ -254,6 +254,9 @@ async function captureDiagnostics(tag){
 }
 async function loginIfNeeded(page,claim){
  await page.goto(PORTAL_URL,{waitUntil:"domcontentloaded",timeout:120000});
+ // O HTML chega antes de o SAP LightSpeed terminar de ligar os handlers.
+ // Aguarda o carregamento integral antes de preencher ou enviar o login.
+ await page.waitForLoadState("load",{timeout:30000}).catch(()=>{});
  const password=page.locator('input[type="password"]').first();
  const isLogon=/logon|login/i.test(await page.title().catch(()=>""));
  if(!(await password.count())){
@@ -273,10 +276,12 @@ async function loginIfNeeded(page,claim){
  // sap-system-login-oninputprocessing e executa a proteção exigida pelo SAP.
  const sapLogon=form.locator("#LOGON_BUTTON").first();
  if(await sapLogon.count()){
-   // Replica a semântica do onclick original do SAP. O componente visual é
-   // um DIV oculto para o Playwright, mas callSubmitLogin é a API que a
-   // própria página usa para preparar o XSRF e enviar o evento onLogin.
-   await form.evaluate(node=>{
+   // O clique real preserva a inicialização e a fila de eventos do SAP.
+   // A chamada semântica é usada apenas quando o componente não se torna
+   // visível, mesmo após o carregamento completo.
+   const visible=await sapLogon.waitFor({state:"visible",timeout:15000}).then(()=>true).catch(()=>false);
+   if(visible)await sapLogon.click();
+   else await form.evaluate(node=>{
      const win=node.ownerDocument.defaultView;
      if(typeof win.callSubmitLogin==="function")win.callSubmitLogin("onLogin");
      else{
