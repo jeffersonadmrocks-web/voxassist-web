@@ -40,7 +40,7 @@
     const side=document.querySelector('.sidebar');
     if(!side || side.querySelector('.nav[data-view="'+VIEW+'"]')) return;
     const btn=document.createElement('button');
-    btn.className='nav';btn.dataset.view=VIEW;btn.innerHTML='◈ <span>WHIRLPOOL</span>';
+    btn.className='nav';btn.dataset.view=VIEW;btn.innerHTML='◈ <span>WP / SEG</span>';
     // Mesmo ponto de inserção do Electrolux (antes de "Configurações")
     // -- mantém a ordem visual dos módulos de fábrica juntos no menu.
     const elxBtn=side.querySelector('.nav[data-view="electrolux"]');
