@@ -272,8 +272,20 @@ async function loginIfNeeded(page,claim){
  // LOGON_BUTTON dispara callSubmitLogin('onLogin'), que preenche
  // sap-system-login-oninputprocessing e executa a proteção exigida pelo SAP.
  const sapLogon=form.locator("#LOGON_BUTTON").first();
- if(await sapLogon.count())await sapLogon.click({force:true});
- else{
+ if(await sapLogon.count()){
+   // Replica a semântica do onclick original do SAP. O componente visual é
+   // um DIV oculto para o Playwright, mas callSubmitLogin é a API que a
+   // própria página usa para preparar o XSRF e enviar o evento onLogin.
+   await form.evaluate(node=>{
+     const win=node.ownerDocument.defaultView;
+     if(typeof win.callSubmitLogin==="function")win.callSubmitLogin("onLogin");
+     else{
+       const eventField=node.querySelector('input[name="sap-system-login-oninputprocessing"]');
+       if(eventField)eventField.value="onLogin";
+       node.submit();
+     }
+   });
+ } else{
    const submit=form.locator('button[type="submit"],input[type="submit"]').first();
    if(await submit.count())await submit.click({force:true});
    else await form.evaluate(node=>{
