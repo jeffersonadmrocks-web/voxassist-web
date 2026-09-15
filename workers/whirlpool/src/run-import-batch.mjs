@@ -63,6 +63,35 @@ async function waitForTextClick(page,texts,timeout=30000){
   while(Date.now()<end){if(await clickText(page,texts))return true;await delay(500);}
   return false;
 }
+async function clickSidebarText(page,texts){
+  for(const frame of page.frames()){
+    try{
+      const hit=await frame.evaluate(targets=>{
+        const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+        const wanted=targets.map(norm);
+        const choices=[...document.querySelectorAll('a,button,[role="button"],[role="menuitem"],span,td')]
+          .map(node=>{
+            const label=node.innerText||node.textContent||node.title||node.getAttribute("aria-label")||"";
+            if(!wanted.includes(norm(label)))return null;
+            const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
+            const rect=action.getBoundingClientRect();
+            if(!rect.width||!rect.height||rect.left>280)return null;
+            let parent=action;
+            while(parent){
+              const style=getComputedStyle(parent);
+              if(style.display==="none"||style.visibility==="hidden"||style.opacity==="0")return null;
+              parent=parent.parentElement;
+            }
+            return {action,left:rect.left,top:rect.top,area:rect.width*rect.height};
+          }).filter(Boolean).sort((a,b)=>a.left-b.left||a.top-b.top||a.area-b.area);
+        if(!choices.length)return false;
+        choices[0].action.click();return true;
+      },texts);
+      if(hit)return true;
+    }catch{}
+  }
+  return false;
+}
 async function findSearchLimit(page){
   for(const frame of page.frames()){
     try{
@@ -107,10 +136,10 @@ async function openSearch(page){
     }
     const now=Date.now();
     if(now-lastOrderClick>4000){
-      if(await clickText(page,["Ordem de Serviço"]))lastOrderClick=now;
+      if(await clickSidebarText(page,["Ordem de Serviço","Service Order"]))lastOrderClick=now;
     }
     if(now-lastSearchClick>3000){
-      if(await clickText(page,["Pesquisas"]))lastSearchClick=now;
+      if(await clickSidebarText(page,["Pesquisas","Search"]))lastSearchClick=now;
     }
     await delay(750);
   }
