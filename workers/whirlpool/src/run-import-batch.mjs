@@ -247,9 +247,18 @@ async function loginIfNeeded(page,claim){
  await username.fill(String(claim.username||""),{force:true});
  await password.fill(String(claim.password||""),{force:true});
  claim.username="";claim.password="";
- const submit=form.locator('button[type="submit"],input[type="submit"]').first();
- if(await submit.count())await submit.click({force:true});
- else await form.evaluate(node=>{if(typeof node.requestSubmit==="function")node.requestSubmit();else node.submit();});
+ await captureDiagnostics("pre_submit");
+ // Achado (2026-09-15, via screenshot+HTML de diagnóstico): o "Log On" do
+ // SAP NetWeaver Logon (id=LOGON_BUTTON) não é um <button type="submit">
+ // nem <input type="submit"> -- é um widget custom (role="button") cujo
+ // handler JS (SL_SystemLogin_handleEvent, case "LOGON_BUTTON;Press") chama
+ // callSubmitLogin('onLogin') pra processar o login de verdade. O fallback
+ // antigo (form.requestSubmit()) nunca disparava esse handler -- o form era
+ // submetido de forma nativa/crua, sem a preparação que o SAP exige, e por
+ // isso a tela sempre voltava limpa sem nenhuma mensagem de rejeição.
+ if(!(await waitForTextClick(page,["Log On","Iniciar sessão","Anmelden"],10000))){
+   throw Object.assign(new Error("Botão Log On não localizado."),{code:"PORTAL_INDISPONIVEL"});
+ }
  const deadline=Date.now()+30000;
  while(Date.now()<deadline){
    await page.waitForTimeout(500);
