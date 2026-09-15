@@ -118,14 +118,38 @@ async function openSearch(page){
   throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico sanitizado: "+snapshot),{code:"NAVIGATION_FAILURE"});
 }
 
+async function crmTargetFromStartPage(page){
+  try{
+    const raw=await page.evaluate(()=>document.documentElement?.innerHTML||"");
+    const decoded=raw.replace(/&amp;/gi,"&");
+    const matches=[...decoded.matchAll(/["']([^"'<>]*(?:crm_ui_frame|BSPWDApplication)[^"'<>]*)["']/ig)];
+    for(const match of matches){
+      const candidate=match[1].replace(/\\\//g,"/");
+      try{
+        const url=new URL(candidate,page.url());
+        if(url.protocol==="https:"&&url.hostname==="larcrm7.whirlpool.com")return url.href;
+      }catch{}
+    }
+  }catch{}
+  return null;
+}
 async function selectCrmPage(context,initialPage){
-  const deadline=Date.now()+30000;
+  const deadline=Date.now()+45000;
+  let followedStartTarget=false;
   while(Date.now()<deadline){
     const pages=context.pages().filter(p=>!p.isClosed());
     for(const candidate of [...pages].reverse()){
       const urls=[candidate.url(),...candidate.frames().map(frame=>frame.url())];
       if(urls.some(url=>/\/bc\/bsp\/sap\/crm_ui_frame\/|BSPWDApplication\.do/i.test(url)))return candidate;
       if(await findSearchLimit(candidate))return candidate;
+    }
+    if(!followedStartTarget&&Date.now()>deadline-40000){
+      const target=await crmTargetFromStartPage(initialPage);
+      followedStartTarget=true;
+      if(target){
+        await initialPage.goto(target,{waitUntil:"domcontentloaded",timeout:120000});
+        continue;
+      }
     }
     await delay(500);
   }
@@ -209,7 +233,7 @@ if(!claim?.claimed){console.log("EXECUÇÃO NÃO INICIADA: "+String(claim?.reaso
 let browser,context,reported=false;
 const results=[];
 try{
- browser=await chromium.launch({channel:"chromium",headless:true,args:["--disable-dev-shm-usage","--no-sandbox"]});
+ browser=await chromium.launch({channel:"chromium",headless:true,args:["--disable-dev-shm-usage","--no-sandbox","--disable-popup-blocking"]});
  let storageState;
  try{if(claim.session_state)storageState=JSON.parse(claim.session_state);}catch{}
  context=await browser.newContext({storageState,acceptDownloads:true,viewport:{width:1600,height:1000}});
