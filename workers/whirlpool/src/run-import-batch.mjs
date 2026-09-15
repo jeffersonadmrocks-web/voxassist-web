@@ -155,7 +155,18 @@ async function selectCrmPage(context,initialPage){
   }
   const alternatives=context.pages().filter(p=>!p.isClosed()&&p!==initialPage);
   if(alternatives.length)return alternatives.at(-1);
-  throw Object.assign(new Error("Janela operacional do CRM não foi aberta."),{code:"NAVIGATION_FAILURE"});
+  const diagnostic=await safeNavigationSnapshot(initialPage);
+  const start=await initialPage.evaluate(()=>({
+    readyState:document.readyState,
+    title:String(document.title||"").slice(0,80),
+    htmlLength:(document.documentElement?.innerHTML||"").length,
+    bodyChildren:document.body?.children?.length||0,
+    scripts:document.scripts.length,
+    forms:document.forms.length,
+    hasWindowOpen:/window\.open/i.test(document.documentElement?.innerHTML||""),
+    hasCrmTarget:/crm_ui_frame|BSPWDApplication/i.test(document.documentElement?.innerHTML||"")
+  })).catch(()=>null);
+  throw Object.assign(new Error("Janela operacional do CRM não foi aberta. Diagnóstico sanitizado: "+JSON.stringify({pages:context.pages().length,start,frames:JSON.parse(diagnostic)}).slice(0,1400)),{code:"NAVIGATION_FAILURE"});
 }
 async function inspectAndOpen(frame,id){
  return frame.evaluate((target)=>{
@@ -229,6 +240,7 @@ async function loginIfNeeded(page,claim){
 const workerId=crypto.randomUUID();
 const conn={id:null};
 const claim=await workerRequest("claim",{worker_id:workerId,lease_seconds:900});
+conn.id=claim?.connection_id||null;
 if(!claim?.claimed){console.log("EXECUÇÃO NÃO INICIADA: "+String(claim?.reason||"SEM_LEASE"));process.exit(0);}
 let browser,context,reported=false;
 const results=[];
@@ -268,8 +280,8 @@ try{
 }catch(e){
  const code=String(e?.code||"");
  const outcome=code==="CREDENCIAIS_INVALIDAS"?"CREDENCIAIS_INVALIDAS":code==="SESSION_EXPIRED"?"SESSION_EXPIRED":"PORTAL_INDISPONIVEL";
- if(!reported)await workerRequest("report",{connection_id:conn.id,lock_token:claim.lock_token,outcome,session_state:null,error_code:code||"WORKER_FAILURE"}).catch(()=>{});
- console.error("WORKER WHIRLPOOL: "+outcome);
+ if(!reported)await workerRequest("report",{connection_id:conn.id,lock_token:claim.lock_token,outcome,session_state:null,error_code:code||"WORKER_FAILURE"}).catch(err=>console.error("RELATÓRIO WHIRLPOOL FALHOU: "+String(err?.message||err).replace(/Bearer\\s+\\S+/gi,"Bearer [redacted]").slice(0,240)));
+ console.error("WORKER WHIRLPOOL: "+outcome+" — "+String(e?.message||e).slice(0,1600));
  process.exitCode=outcome==="CREDENCIAIS_INVALIDAS"?2:1;
 }finally{
  claim.username="";claim.password="";claim.session_state="";

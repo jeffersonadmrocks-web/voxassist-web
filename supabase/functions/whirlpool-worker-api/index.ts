@@ -45,7 +45,7 @@ Deno.serve(async req=>{
 
     if(action==="claim"){
       const {data,error}=await admin.rpc("whirlpool_worker_claim",{p_connection_id:cid,p_worker_id:String(input.worker_id),p_lease_seconds:Math.min(Number(input.lease_seconds)||900,900)});
-      if(error)throw error;return json(data);
+      if(error)throw error;return json({...data,connection_id:cid});
     }
     if(action==="pending"){
       const limit=Math.min(Math.max(Number(input.limit)||3,1),3);
