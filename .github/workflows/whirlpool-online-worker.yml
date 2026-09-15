@@ -43,3 +43,11 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run guarded Whirlpool batch
         run: npm run run-online
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whirlpool-diagnostics-${{ github.run_id }}
+          path: workers/whirlpool/.artifacts/diagnostics
+          if-no-files-found: ignore
+          retention-days: 14

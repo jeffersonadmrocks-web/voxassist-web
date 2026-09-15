@@ -215,6 +215,22 @@ async function uploadAndImport(id,payload,pdf){
  return workerRequest("upload_import",{external_order_id:id,payload,pdf_base64:pdf.toString("base64")});
 }
 async function closePdfPages(context,main){for(const p of context.pages())if(p!==main&&/crm_pdf_print|\.pdf/i.test(p.url()))await p.close().catch(()=>{});}
+// Só roda em falha, nunca no caminho feliz. Screenshot + HTML servem só pra
+// diagnóstico visual real (em vez de mais um "chute" às cegas sobre o CRM
+// SAP) -- nunca vazam a senha: campo password renderiza mascarado no
+// screenshot, e page.content() serializa o atributo HTML original do
+// input, não o valor digitado via .fill().
+async function captureDiagnostics(tag){
+ try{
+  if(!page||page.isClosed())return;
+  const dir=path.join(ARTIFACT_DIR,"diagnostics");
+  await mkdir(dir,{recursive:true});
+  const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+  await page.screenshot({path:path.join(dir,`${stamp}-${tag}.png`),fullPage:true}).catch(()=>{});
+  const html=await page.content().catch(()=>null);
+  if(html)await writeFile(path.join(dir,`${stamp}-${tag}.html`),html);
+ }catch{}
+}
 async function loginIfNeeded(page,claim){
  await page.goto(PORTAL_URL,{waitUntil:"domcontentloaded",timeout:120000});
  const password=page.locator('input[type="password"]').first();
@@ -250,14 +266,14 @@ const conn={id:null};
 const claim=await workerRequest("claim",{worker_id:workerId,lease_seconds:900});
 conn.id=claim?.connection_id||null;
 if(!claim?.claimed){console.log("EXECUÇÃO NÃO INICIADA: "+String(claim?.reason||"SEM_LEASE"));process.exit(0);}
-let browser,context,reported=false;
+let browser,context,page,reported=false;
 const results=[];
 try{
  browser=await chromium.launch({channel:"chromium",headless:true,args:["--disable-dev-shm-usage","--no-sandbox","--disable-popup-blocking"]});
  let storageState;
  try{if(claim.session_state)storageState=JSON.parse(claim.session_state);}catch{}
  context=await browser.newContext({storageState,acceptDownloads:true,viewport:{width:1600,height:1000}});
- let page=await context.newPage();
+ page=await context.newPage();
  await loginIfNeeded(page,claim);
  page=await selectCrmPage(context,page);
  await page.bringToFront().catch(()=>{});
@@ -276,6 +292,7 @@ try{
    results.push({externalOrderId:job.external_order_id,status:"IMPORTADA",appointmentStatus:imported.appointmentStatus||null});
   }catch(e){
    results.push({externalOrderId:job.external_order_id,status:"FALHA",reason:String(e.message||e).slice(0,1600)});
+   await captureDiagnostics(`job-${job.external_order_id}`);
    await closePdfPages(context,page);
    await clickText(page,["Encerrar"]).catch(()=>{});
    await delay(1000);
@@ -288,6 +305,7 @@ try{
 }catch(e){
  const code=String(e?.code||"");
  const outcome=code==="CREDENCIAIS_INVALIDAS"?"CREDENCIAIS_INVALIDAS":code==="SESSION_EXPIRED"?"SESSION_EXPIRED":"PORTAL_INDISPONIVEL";
+ await captureDiagnostics(outcome.toLowerCase());
  if(!reported)await workerRequest("report",{connection_id:conn.id,lock_token:claim.lock_token,outcome,session_state:null,error_code:code||"WORKER_FAILURE"}).catch(err=>console.error("RELATÓRIO WHIRLPOOL FALHOU: "+String(err?.message||err).replace(/Bearer\\s+\\S+/gi,"Bearer [redacted]").slice(0,240)));
  console.error("WORKER WHIRLPOOL: "+outcome+" — "+String(e?.message||e).slice(0,1600));
  process.exitCode=outcome==="CREDENCIAIS_INVALIDAS"?2:1;
