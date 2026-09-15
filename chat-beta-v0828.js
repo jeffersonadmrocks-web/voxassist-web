@@ -134,7 +134,12 @@
     });
     const data=await res.json().catch(()=>null);
     if(!data)throw new Error('Resposta inesperada da function.');
-    if(!res.ok||data.ok===false)throw new Error(GATEWAY_ERROR_MESSAGES[data.error]||data.error||'Falha na operação.');
+    // Achado do usuário (2026-09-15): "create_failed" (e qualquer outro
+    // código sem entrada no mapa acima) nunca dizia o motivo real --
+    // agora prefere data.message (detalhe real que o gateway já manda
+    // pra códigos sem tradução amigável, ex.: create_failed) antes do
+    // código cru, sem mudar nenhuma mensagem já mapeada acima.
+    if(!res.ok||data.ok===false)throw new Error(GATEWAY_ERROR_MESSAGES[data.error]||data.message||data.error||'Falha na operação.');
     return data;
   }
 
