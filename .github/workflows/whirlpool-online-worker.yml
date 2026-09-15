@@ -44,10 +44,10 @@ jobs:
       - name: Run guarded Whirlpool batch
         run: npm run run-online
       - name: Upload failure diagnostics
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: whirlpool-diagnostics-${{ github.run_id }}
+          name: whirlpool-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: workers/whirlpool/.artifacts/diagnostics
           if-no-files-found: ignore
           retention-days: 14
