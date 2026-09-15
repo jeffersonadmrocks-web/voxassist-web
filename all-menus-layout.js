@@ -85,8 +85,30 @@
     if(t==='testes-operacional') return renderOperational('testes','Testes de Funções');
     if(t==='usuarios-operacional') return renderOperational('usuarios','Usuários / Segurança');
     if(t==='dashboard') return baseRender('dashboard');
+    if(t==='orcamentos-aprovacoes') return renderOrcamentosAprovacoes();
+    if(t==='whirlpool-portal') return window.render('whirlpool-portal');
     if(STRUCTURE_ONLY_TARGETS[t])return renderStructureOnly(t,...STRUCTURE_ONLY_TARGETS[t]);
     toast('Função registrada para evolução/homologação da V0.8.12.');
+  }
+
+  // Achado do usuário (consolidação Atendimento, 2026-09-15): o card
+  // "ORÇAMENTOS / APROVAÇÕES" abria a tela genérica de Financeiro (sem
+  // filtro nenhum) -- pedido pra virar um relatório de verdade com as
+  // duas listas que o nome promete: ORÇAMENTOS = OS aguardando análise
+  // (é aí que o orçamento é montado, antes de ir pro cliente);
+  // APROVAÇÕES = OS já orçadas aguardando o cliente decidir. Reaproveita
+  // ordersByStatus/ordersTable (já usados no resto do app -- nenhuma
+  // consulta nova).
+  function renderOrcamentosAprovacoes(){
+    const app=document.querySelector('#app');if(!app)return;
+    const orcamentos=ordersByStatus('AGUARDANDO ANALISE');
+    const aprovacoes=ordersByStatus('AGUARDANDO APROVACAO');
+    app.innerHTML=`<div class="module-home">
+      <div class="module-home-head"><div><h2>Orçamentos / Aprovações</h2><p>Aparelhos aguardando análise (orçamento) e aguardando aprovação do cliente</p></div><div class="module-head-actions"><button class="secondary" id="vxOrcaBack">← Voltar</button></div></div>
+      <div><h3 style="margin:18px 4px 8px;font-size:14px;color:#23364e">ORÇAMENTOS <small style="font-weight:400;color:#60728a">(${orcamentos.length} aguardando análise)</small></h3>${ordersTable(orcamentos)}</div>
+      <div><h3 style="margin:22px 4px 8px;font-size:14px;color:#23364e">APROVAÇÕES <small style="font-weight:400;color:#60728a">(${aprovacoes.length} aguardando aprovação do cliente)</small></h3>${ordersTable(aprovacoes)}</div>
+    </div>`;
+    document.getElementById('vxOrcaBack').onclick=()=>window.render(state.view||'dashboard');
   }
   async function renderOperational(view,label){await baseRender(view);state.view='op:'+view;renderTabs(label);const title=document.querySelector('#title');if(title)title.textContent=label;}
   function lowerTabs(){return `<div class="module-lower-tabs"><button class="active">Oportunidades do Dia</button><button>Casos de Atenção</button><button data-target="agenda-operacional">Minhas Tarefas</button><button data-target="agenda-operacional">Agenda / Compromissos</button><button data-target="estoque-operacional">Pedidos de Peças</button><button>Produtividade / Bonificação</button></div><div class="module-lower-content">Ambiente de homologação — dados fictícios.</div>`}
@@ -101,16 +123,27 @@
   function ordersByStatus(s){return state.orders.filter(o=>o.status===s)}
   function countStatus(s){return ordersByStatus(s).length}
 
+  // Consolidação Atendimento (achado do usuário, 2026-09-15): PESQUISAR
+  // O.S. e ENTREGA/SAÍDA abriam exatamente a mesma tela (pesquisa-os),
+  // sem nenhuma distinção real -- unificados num só card, mesmo critério
+  // já usado na consolidação da Oficina (2026-09-13). RECIBOS removido
+  // (função real já existe em Financeiro → Recebimentos,
+  // financeiro-recebimentos-v1.js -- este card era um segundo caminho
+  // pro financeiro genérico, sem nada específico de recibo). A vaga
+  // aberta por essas duas mudanças recebe WP / SEG (OS Whirlpool/
+  // Seguradora importadas pelo robô, aguardando tratativa) + 1 posição
+  // reservada "EM CONSTRUÇÃO" -- mantém as 9 posições visuais, mesma
+  // regra da Oficina (nunca inventa função fictícia pra preencher vaga).
   function atendimento(){home('Atendimento','Balcão • Clientes • Ordens de Serviço',
     card('+','ABRIR NOVA O.S.','Inicie um atendimento sem sair da tela da OS.','nova-os','blue')+
-    card('⌕','PESQUISAR O.S.','Localize ordens por número, cliente ou equipamento.','pesquisa-os','purple')+
+    card('⌕','PESQUISAR / ENTREGA DE O.S.','Localize ordens por número, cliente ou equipamento — inclusive pra finalizar entrega/saída.','pesquisa-os','purple')+
     card('◉','CLIENTES','Cadastros, histórico e dados de contato.','clientes','purple')+
     card('▥','SITUAÇÃO DOS APARELHOS','Acompanhe rapidamente cada etapa das OS.','pesquisa-os','orange')+
-    card('$','ORÇAMENTOS / APROVAÇÕES','Acompanhe orçamentos e retornos de clientes.','financeiro-operacional','green')+
-    card('↗','ENTREGA / SAÍDA','Finalize serviços e documentos de saída.','pesquisa-os','cyan')+
-    card('▤','RECIBOS','Emissão e consulta de recibos.','financeiro-operacional','gray')+
+    card('$','ORÇAMENTOS / APROVAÇÕES','Orçamentos aguardando análise e aparelhos aguardando aprovação do cliente.','orcamentos-aprovacoes','green')+
     card('▦','VENDA DE PEÇAS','Venda rápida vinculada ao atendimento.','estoque-operacional','teal')+
-    card('▣','VENDA DE APARELHO','Registro de venda de equipamentos.','loja-vendas','brown'),
+    card('▣','VENDA DE APARELHO','Registro de venda de equipamentos.','loja-vendas','brown')+
+    card('◈','WP / SEG','Ordens Whirlpool e Seguradora importadas — aguardando tratativa.','whirlpool-portal','red')+
+    placeholderCard('⚙','EM CONSTRUÇÃO','Espaço reservado para nova funcionalidade do Atendimento.'),
     summary('AGUARDANDO ANÁLISE',ordersByStatus('AGUARDANDO ANALISE'),'orange')+
     summary('AGUARDANDO APROVAÇÃO',ordersByStatus('AGUARDANDO APROVACAO'),'purple')+
     summary('EM CONSERTO',ordersByStatus('AGUARDANDO CONSERTO'),'blue')+

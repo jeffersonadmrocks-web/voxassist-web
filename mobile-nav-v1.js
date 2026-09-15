@@ -39,7 +39,6 @@
     { view: 'estoque', label: 'LOJA VIRTUAL', icon: '▤' },
     { view: 'testes', label: 'RELATÓRIOS', icon: '▥' },
     { view: 'electrolux', label: 'ELECTROLUX', icon: '▥' },
-    { view: 'whirlpool-portal', label: 'WP / SEG', icon: '◈' },
     { view: 'usuarios', label: 'CONFIGURAÇÕES', icon: '⚙' },
   ];
 
