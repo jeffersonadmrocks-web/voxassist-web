@@ -75,8 +75,25 @@ async function findSearchLimit(page){
   }
   return null;
 }
+async function safeNavigationSnapshot(page){
+  const frames=[];
+  for(const [index,frame] of page.frames().entries()){
+    try{
+      const url=new URL(frame.url());
+      const controls=await frame.evaluate(()=>{
+        const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+        return [...document.querySelectorAll('a,button,[role="button"],[role="menuitem"]')]
+          .map(node=>({id:String(node.id||"").slice(0,90),label:norm(node.getAttribute("aria-label")||node.title||node.innerText||node.textContent||"").slice(0,60)}))
+          .filter(x=>/^(ordem de servico|pesquisas|procurar)$/.test(x.label))
+          .slice(0,12);
+      });
+      frames.push({index,host:url.hostname,path:url.pathname.slice(0,140),controls});
+    }catch{}
+  }
+  return JSON.stringify(frames).slice(0,1400);
+}
 async function openSearch(page){
-  const deadline=Date.now()+90000;
+  const deadline=Date.now()+45000;
   let lastOrderClick=0,lastSearchClick=0;
   while(Date.now()<deadline){
     const located=await findSearchLimit(page);
@@ -97,7 +114,7 @@ async function openSearch(page){
     }
     await delay(750);
   }
-  throw new Error("Tela de pesquisa de OS não carregou em 90 segundos.");
+  const snapshot=await safeNavigationSnapshot(page);\n  throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico sanitizado: "+snapshot),{code:"NAVIGATION_FAILURE"});
 }
 
 async function inspectAndOpen(frame,id){
@@ -196,10 +213,11 @@ try{
    await delay(1500);
    results.push({externalOrderId:job.external_order_id,status:"IMPORTADA",appointmentStatus:imported.appointmentStatus||null});
   }catch(e){
-   results.push({externalOrderId:job.external_order_id,status:"FALHA",reason:String(e.message||e).slice(0,180)});
+   results.push({externalOrderId:job.external_order_id,status:"FALHA",reason:String(e.message||e).slice(0,1600)});
    await closePdfPages(context,page);
    await clickText(page,["Encerrar"]).catch(()=>{});
    await delay(1000);
+   if(e?.code==="NAVIGATION_FAILURE")break;
   }
  }
  const sessionState=JSON.stringify(await context.storageState());
