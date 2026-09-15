@@ -76,6 +76,11 @@
 .vx-bf-version-status button{border:1px solid var(--cc-border);background:var(--cc-surface-2);color:var(--cc-ink-dim);font-weight:700;font-size:12px;padding:8px 14px;border-radius:8px;cursor:pointer}
 .vx-bf-version-status button.primary{border:0;background:var(--cc-accent);color:#fff}
 .vx-bf-version-status button.primary:hover{background:var(--cc-accent-hover)}
+.vx-bf-version-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.vx-bf-version-status button.vx-bf-pause-btn{border:1px solid var(--cc-err-ink);background:transparent;color:var(--cc-err-ink)}
+.vx-bf-version-status button.vx-bf-pause-btn:hover{background:var(--cc-err-ink);color:#fff}
+.vx-bf-paused-badge{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;background:var(--cc-err-ink);color:#fff;font-size:10.5px;font-weight:800;letter-spacing:.03em;vertical-align:middle}
+.vx-bf-paused-note{margin:0 0 10px;padding:9px 12px;border-radius:8px;background:color-mix(in srgb,var(--cc-err-ink) 12%,transparent);color:var(--cc-err-ink);font-size:12px;font-weight:600}
 .vx-bf-version-history-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--cc-ink-faint);margin:10px 0 6px}
 
 .vx-bf-table{width:100%;border-collapse:collapse;font-size:12.5px}
