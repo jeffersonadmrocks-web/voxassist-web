@@ -30,7 +30,7 @@ function csvSplit(line,sep){
   for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;}else if(c===sep&&!q){out.push(cur);cur='';}else cur+=c;}out.push(cur);return out;
 }
 function pickLegacy(obj,names){for(const n of names){const k=Object.keys(obj).find(x=>x.toUpperCase()===n);if(k&&obj[k])return String(obj[k]).trim()}return null}
-async function indexCsvSystem3(file,fileId){
+async function indexCsvSystem3(file,fileId,companyId){
   const text=await file.text(); const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(Boolean); if(lines.length<2)return 0;
   const sep=(lines[0].match(/;/g)||[]).length>=(lines[0].match(/,/g)||[]).length?';':',';
   const headers=csvSplit(lines[0],sep).map(x=>x.trim()); let count=0;
@@ -39,7 +39,7 @@ async function indexCsvSystem3(file,fileId){
     for(const line of lines.slice(i,i+100)){
       const vals=csvSplit(line,sep),o={};headers.forEach((h,j)=>o[h]=vals[j]??'');
       const client=pickLegacy(o,['CLIENTE','NOME','NOMECLIENTE','NOMCLI']),doc=pickLegacy(o,['CPF','CNPJ','DOCUMENTO']),phone=pickLegacy(o,['TELEFONE','FONE','CELULAR']),osn=pickLegacy(o,['OS','ORDEM','ORDEMSERVICO','NUMOS']),ptype=pickLegacy(o,['PRODUTO','TIPO','EQUIPAMENTO']),brand=pickLegacy(o,['MARCA']),model=pickLegacy(o,['MODELO']),serial=pickLegacy(o,['SERIE','NUMSERIE']),status=pickLegacy(o,['STATUS','SITUACAO']);
-      batch.push({source_file_id:fileId,source_table:file.name,source_key:String(i+count),record_type:osn?'OS':client?'CLIENTE':'REGISTRO',client_name:client,document:doc,phone,os_number:osn,product_type:ptype,brand,model,serial_number:serial,status,searchable_text:[client,doc,phone,osn,ptype,brand,model,serial,status,JSON.stringify(o)].filter(Boolean).join(' '),raw_data:o});count++;
+      batch.push({company_id:companyId,source_file_id:fileId,source_table:file.name,source_key:String(i+count),record_type:osn?'OS':client?'CLIENTE':'REGISTRO',client_name:client,document:doc,phone,os_number:osn,product_type:ptype,brand,model,serial_number:serial,status,searchable_text:[client,doc,phone,osn,ptype,brand,model,serial,status,JSON.stringify(o)].filter(Boolean).join(' '),raw_data:o});count++;
     }
     await api('system3_legacy_records',{method:'POST',body:JSON.stringify(batch)});
   }
@@ -54,9 +54,15 @@ async function uploadSystem3Files(){
     try{
       const path=`${new Date().toISOString().slice(0,10)}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
       await storageUploadSystem3(file,path);
-      const rows=await api('system3_legacy_files',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({file_name:file.name,storage_path:path,file_type:file.name.split('.').pop()?.toUpperCase()||'',file_size:file.size,imported_by:state.session.user.id,status:'ARQUIVADO'})});
+      // Achado (2026-09-15): a RLS de escrita de system3_legacy_files/
+      // records exige company_id = current_company_id() -- sem enviar
+      // company_id aqui, o INSERT sempre violava a RLS (o upload
+      // "funcionava" no Storage mas a linha de metadados nunca era
+      // gravada, caindo direto no catch abaixo como falha genérica).
+      const companyId=state.profile?.active_company_id;
+      const rows=await api('system3_legacy_files',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({file_name:file.name,storage_path:path,file_type:file.name.split('.').pop()?.toUpperCase()||'',file_size:file.size,imported_by:state.session.user.id,status:'ARQUIVADO',company_id:companyId})});
       const rec=rows?.[0]; let indexed=0;
-      if(rec && /\.csv$/i.test(file.name)){indexed=await indexCsvSystem3(file,rec.id);await api(`system3_legacy_files?id=eq.${rec.id}`,{method:'PATCH',body:JSON.stringify({status:indexed?'INDEXADO':'ARQUIVADO',notes:indexed?`${indexed} registros indexados automaticamente`:'CSV sem registros'})});}
+      if(rec && /\.csv$/i.test(file.name)){indexed=await indexCsvSystem3(file,rec.id,companyId);await api(`system3_legacy_files?id=eq.${rec.id}`,{method:'PATCH',body:JSON.stringify({status:indexed?'INDEXADO':'ARQUIVADO',notes:indexed?`${indexed} registros indexados automaticamente`:'CSV sem registros'})});}
       ok++;
     }catch(e){toast(`Falha em ${file.name}: ${e.message}`,'err')}
   }
