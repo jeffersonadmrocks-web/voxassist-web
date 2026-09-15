@@ -224,13 +224,16 @@ async function loginIfNeeded(page,claim){
    return false;
  }
  if(!claim.needs_login)throw Object.assign(new Error("Sessão Whirlpool expirada."),{code:"SESSION_EXPIRED"});
- const username=page.locator('input[type="text"],input[type="email"]').filter({hasNot:page.locator('[type="hidden"]')}).first();
+ const form=password.locator("xpath=ancestor::form[1]");
+ if(!(await form.count()))throw Object.assign(new Error("Formulário de login Whirlpool não localizado."),{code:"PORTAL_INDISPONIVEL"});
+ const username=form.locator('input:not([type="hidden"]):not([type="password"]):not([type="submit"]):not([type="button"])').first();
  if(!(await username.count()))throw Object.assign(new Error("Tela de login Whirlpool incompleta."),{code:"PORTAL_INDISPONIVEL"});
  await username.fill(String(claim.username||""),{force:true});
  await password.fill(String(claim.password||""),{force:true});
  claim.username="";claim.password="";
- const submit=page.locator('button[type="submit"],input[type="submit"]').first();
- if(await submit.count())await submit.click({force:true});else await password.press("Enter");
+ const submit=form.locator('button[type="submit"],input[type="submit"]').first();
+ if(await submit.count())await submit.click({force:true});
+ else await form.evaluate(node=>{if(typeof node.requestSubmit==="function")node.requestSubmit();else node.submit();});
  const deadline=Date.now()+30000;
  while(Date.now()<deadline){
    await page.waitForTimeout(500);
