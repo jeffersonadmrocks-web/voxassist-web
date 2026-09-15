@@ -1,0 +1,45 @@
+name: Whirlpool Online Worker
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "workers/whirlpool/**"
+      - "supabase/functions/whirlpool-worker-api/**"
+      - ".github/workflows/whirlpool-online-worker.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: whirlpool-online-worker-serra
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: workers/whirlpool
+    env:
+      WHIRLPOOL_WORKER_API_URL: https://dgasmtvpgifceyqufcfg.supabase.co/functions/v1/whirlpool-worker-api
+      WHIRLPOOL_BATCH_LIMIT: "3"
+      CI: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install worker
+        run: npm install --no-audit --no-fund
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run guarded Whirlpool batch
+        run: npm run run-online
