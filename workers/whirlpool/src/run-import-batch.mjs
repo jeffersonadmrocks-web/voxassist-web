@@ -226,8 +226,29 @@ async function captureDiagnostics(tag){
   const dir=path.join(ARTIFACT_DIR,"diagnostics");
   await mkdir(dir,{recursive:true});
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+  // Redige credenciais visíveis antes da captura. O diagnóstico só existe
+  // no caminho de falha, portanto não há necessidade de restaurar os campos.
+  await page.locator('input[type="password"],input[name="sap-user"],#sap-user').evaluateAll(inputs=>{
+    for(const input of inputs)input.value="[redacted]";
+  }).catch(()=>{});
   await page.screenshot({path:path.join(dir,`${stamp}-${tag}.png`),fullPage:true}).catch(()=>{});
-  const html=await page.content().catch(()=>null);
+  // Nunca persiste o DOM bruto: campos ocultos do SAP carregam XSRF,
+  // tickets e outros valores de sessão. A cópia sanitizada conserva apenas
+  // a estrutura necessária ao diagnóstico.
+  const html=await page.evaluate(()=>{
+    const clone=document.documentElement.cloneNode(true);
+    for(const input of clone.querySelectorAll("input")){
+      const key=((input.getAttribute("name")||"")+" "+(input.id||"")+" "+(input.type||"")).toLowerCase();
+      if(input.type==="hidden"||input.type==="password"||/token|xsrf|csrf|secret|cookie|session|password|sap-user/.test(key)){
+        input.setAttribute("value","[redacted]");
+      }
+    }
+    for(const meta of clone.querySelectorAll("meta")){
+      const key=((meta.getAttribute("name")||"")+" "+(meta.getAttribute("http-equiv")||"")).toLowerCase();
+      if(/token|xsrf|csrf|secret|cookie|session|authorization/.test(key))meta.setAttribute("content","[redacted]");
+    }
+    return "<!DOCTYPE html>\n"+clone.outerHTML;
+  }).catch(()=>null);
   if(html)await writeFile(path.join(dir,`${stamp}-${tag}.html`),html);
  }catch{}
 }
@@ -247,14 +268,25 @@ async function loginIfNeeded(page,claim){
  await username.fill(String(claim.username||""),{force:true});
  await password.fill(String(claim.password||""),{force:true});
  claim.username="";claim.password="";
- const submit=form.locator('button[type="submit"],input[type="submit"]').first();
- if(await submit.count())await submit.click({force:true});
- else await form.evaluate(node=>{if(typeof node.requestSubmit==="function")node.requestSubmit();else node.submit();});
+ // SAP NetWeaver não usa um submit HTML nativo nesta tela. O componente
+ // LOGON_BUTTON dispara callSubmitLogin('onLogin'), que preenche
+ // sap-system-login-oninputprocessing e executa a proteção exigida pelo SAP.
+ const sapLogon=form.locator("#LOGON_BUTTON").first();
+ if(await sapLogon.count())await sapLogon.click({force:true});
+ else{
+   const submit=form.locator('button[type="submit"],input[type="submit"]').first();
+   if(await submit.count())await submit.click({force:true});
+   else await form.evaluate(node=>{
+     const eventField=node.querySelector('input[name="sap-system-login-oninputprocessing"]');
+     if(eventField)eventField.value="onLogin";
+     if(typeof node.requestSubmit==="function")node.requestSubmit();else node.submit();
+   });
+ }
  const deadline=Date.now()+30000;
  while(Date.now()<deadline){
    await page.waitForTimeout(500);
    const body=norm(await page.locator("body").innerText().catch(()=>""));
-   if(/senha invalida|usuario ou senha|credenciais invalidas|password incorrect|authentication failed|logon failed/.test(body)){
+   if(/senha invalida|usuario ou senha|credenciais invalidas|password incorrect|name or password is incorrect|authentication failed|logon failed/.test(body)){
      throw Object.assign(new Error("Credenciais Whirlpool rejeitadas."),{code:"CREDENCIAIS_INVALIDAS"});
    }
    if(!(await page.locator('input[type="password"]').count()))return true;
