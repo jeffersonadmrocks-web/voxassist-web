@@ -60,6 +60,12 @@ Deno.serve(async req=>{
       const {data,error}=await admin.rpc("whirlpool_worker_report",{p_connection_id:cid,p_lock_token:String(input.lock_token),p_outcome:String(input.outcome),p_session_state:input.session_state||null,p_error_code:input.error_code||null});
       if(error)throw error;return json(data);
     }
+    if(action==="job_failed"){
+      const queueId=String(input.queue_id||"");
+      if(!queueId)throw new Error("QUEUE_ID_AUSENTE");
+      const {error}=await admin.rpc("whirlpool_worker_job_failed",{p_queue_id:queueId,p_error_code:String(input.error_code||"").slice(0,100),p_error_message:String(input.error_message||"").slice(0,1600)});
+      if(error)throw error;return json({ok:true});
+    }
     if(action==="upload_import"){
       const id=String(input.external_order_id||"");
       if(!/^7015\d+$/.test(id))throw new Error("OS_INVALIDA");

@@ -29,8 +29,38 @@ async function workerRequest(action,payload={}){
 }
 async function pendingOrders(){return workerRequest("pending",{limit:LIMIT});}
 const norm=(v="")=>v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+// O CRM SAP mant\u00e9m mais de uma \u00e1rvore de frames carregada ao mesmo tempo
+// (idiomas/janelas antigas ficam para tr\u00e1s em vez de serem descartadas).
+// getBoundingClientRect() dentro de um frame reflete s\u00f3 o layout LOCAL
+// daquele documento -- um elemento pode ter largura/altura v\u00e1lidas mesmo
+// dentro de um <iframe> que est\u00e1 oculto (display:none/visibility:hidden)
+// no documento pai. Sem checar a cadeia de ancestrais, clickText/
+// clickSidebarText podiam clicar de verdade dentro de uma \u00e1rvore CRM
+// invis\u00edvel: a Promise resolvia true, mas a tela que o usu\u00e1rio via nunca
+// mudava. isFrameChainVisible sobe de frame em frame at\u00e9 a main frame
+// confirmando que cada <iframe> da cadeia est\u00e1 de fato vis\u00edvel.
+async function isFrameChainVisible(frame){
+  let current=frame;
+  for(;;){
+    const parent=current.parentFrame();
+    if(!parent)return true;
+    let handle;
+    try{handle=await current.frameElement();}catch{return false;}
+    if(!handle)return false;
+    let visible=false;
+    try{visible=await handle.isVisible();}catch{visible=false;}
+    await handle.dispose().catch(()=>{});
+    if(!visible)return false;
+    current=parent;
+  }
+}
+async function visibleFrames(page){
+  const frames=page.frames();
+  const flags=await Promise.all(frames.map(f=>isFrameChainVisible(f).catch(()=>false)));
+  return frames.filter((_,i)=>flags[i]);
+}
 async function clickText(page, texts) {
-  for(const frame of page.frames()){
+  for(const frame of await visibleFrames(page)){
     try{
       const hit=await frame.evaluate((targets)=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
@@ -64,7 +94,7 @@ async function waitForTextClick(page,texts,timeout=30000){
   return false;
 }
 async function clickSidebarText(page,texts){
-  for(const frame of page.frames()){
+  for(const frame of await visibleFrames(page)){
     try{
       const hit=await frame.evaluate(targets=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
@@ -74,6 +104,11 @@ async function clickSidebarText(page,texts){
             const label=node.innerText||node.textContent||node.title||node.getAttribute("aria-label")||"";
             if(!wanted.includes(norm(label)))return null;
             const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
+            // Um container que engloba a p\u00e1gina inteira (ex.: rootAreaDiv)
+            // n\u00e3o deve ser tratado como item de menu clic\u00e1vel mesmo se seu
+            // texto agregado bater por acidente -- um item real de sidebar
+            // n\u00e3o tem dezenas de elementos dentro dele.
+            if(action.querySelectorAll("*").length>40)return null;
             const rect=action.getBoundingClientRect();
             if(!rect.width||!rect.height||rect.left>280)return null;
             let parent=action;
@@ -93,7 +128,7 @@ async function clickSidebarText(page,texts){
   return false;
 }
 async function findSearchLimit(page){
-  for(const frame of page.frames()){
+  for(const frame of await visibleFrames(page)){
     try{
       const found=await frame.evaluate(()=>{
         const input=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
@@ -106,7 +141,9 @@ async function findSearchLimit(page){
 }
 async function safeNavigationSnapshot(page){
   const frames=[];
-  for(const [index,frame] of page.frames().entries()){
+  const allFrames=page.frames();
+  const visibleSet=new Set(await visibleFrames(page));
+  for(const [index,frame] of allFrames.entries()){
     try{
       const url=new URL(frame.url());
       const controls=await frame.evaluate(()=>{
@@ -119,7 +156,7 @@ async function safeNavigationSnapshot(page){
           .filter(x=>x.width>0&&x.height>0&&x.left<300&&/(service order|ordem de servico|service orders|ordens de servico|search|pesquisa|pesquisas)/.test(x.label))
           .slice(0,24);
       });
-      if(controls.length)frames.push({index,host:url.hostname,path:url.pathname.slice(0,140),controls});
+      if(controls.length)frames.push({index,visible:visibleSet.has(frame),host:url.hostname,path:url.pathname.slice(0,140),controls});
     }catch{}
   }
   return JSON.stringify(frames).slice(0,3000);
@@ -222,7 +259,7 @@ async function inspectAndOpen(frame,id){
 }
 async function openOrder(page,id){
  for(let n=1;n<=100;n++){
-  for(const frame of page.frames()){try{const r=await inspectAndOpen(frame,id);if(r==="OPENED"){await delay(2000);return;}if(r==="NO_ACTION")throw new Error("OS sem link.");}catch(e){if(e.message==="OS sem link.")throw e;}}
+  for(const frame of await visibleFrames(page)){try{const r=await inspectAndOpen(frame,id);if(r==="OPENED"){await delay(2000);return;}if(r==="NO_ACTION")throw new Error("OS sem link.");}catch(e){if(e.message==="OS sem link.")throw e;}}
   if(!(await clickText(page,["Avançar"])))break;
   await delay(1200);
  }
@@ -252,6 +289,13 @@ async function capturePdf(context,page,id){
 }
 async function uploadAndImport(id,payload,pdf){
  return workerRequest("upload_import",{external_order_id:id,payload,pdf_base64:pdf.toString("base64")});
+}
+// Registra a falha de UMA OS na fila (attempts+last_error) sem tirá-la de
+// PENDENTE -- antes desta chamada, uma falha só existia no log do GitHub
+// Actions e a linha da fila continuava parecendo nunca ter sido tentada.
+// Nunca lança: uma falha ao registrar a falha não pode derrubar o lote.
+async function reportJobFailure(job,code,message){
+ await workerRequest("job_failed",{queue_id:job.queueId,error_code:code,error_message:message}).catch(()=>{});
 }
 async function closePdfPages(context,main){for(const p of context.pages())if(p!==main&&/crm_pdf_print|\.pdf/i.test(p.url()))await p.close().catch(()=>{});}
 // Só roda em falha, nunca no caminho feliz. Screenshot + HTML servem só pra
@@ -379,8 +423,10 @@ try{
    await delay(1500);
    results.push({externalOrderId:job.external_order_id,status:"IMPORTADA",appointmentStatus:imported.appointmentStatus||null});
   }catch(e){
-   results.push({externalOrderId:job.external_order_id,status:"FALHA",reason:String(e.message||e).slice(0,1600)});
+   const reason=String(e.message||e).slice(0,1600);
+   results.push({externalOrderId:job.external_order_id,status:"FALHA",reason});
    await captureDiagnostics(`job-${job.external_order_id}`);
+   await reportJobFailure(job,e?.code||"JOB_FAILURE",reason);
    await closePdfPages(context,page);
    await clickText(page,["Encerrar"]).catch(()=>{});
    await delay(1000);
@@ -390,6 +436,14 @@ try{
  const sessionState=JSON.stringify(await context.storageState());
  await workerRequest("report",{connection_id:conn.id,lock_token:claim.lock_token,outcome:"AUTH_OK",session_state:sessionState,error_code:null});
  reported=true;
+ // Autenticação/sessão terem funcionado (AUTH_OK) não significa que
+ // alguma OS foi de fato importada. Sem isto, um lote em que TODAS as
+ // tentativas falharam (ex.: bloqueio de navegação no CRM) terminava com
+ // exit code 0 -- o GitHub Actions aparecia verde mesmo sem importar nada.
+ if(results.length>0&&!results.some(r=>r.status==="IMPORTADA")){
+   console.error(`WORKER WHIRLPOOL: nenhuma das ${results.length} OS tentada(s) foi importada.`);
+   process.exitCode=3;
+ }
 }catch(e){
  const code=String(e?.code||"");
  const outcome=code==="CREDENCIAIS_INVALIDAS"?"CREDENCIAIS_INVALIDAS":code==="SESSION_EXPIRED"?"SESSION_EXPIRED":"PORTAL_INDISPONIVEL";
