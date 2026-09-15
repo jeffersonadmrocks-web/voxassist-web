@@ -71,24 +71,89 @@
     const app=document.querySelector('#app');if(!app)return;
     const badge=typeof window.vxStructurePanel==='function'?window.vxStructurePanel(title,detail):`<div><strong>${title}</strong><p>${detail}</p></div>`;
     app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>${title}</h2><p>Estrutura disponível para avaliação visual — integração funcional em homologação.</p></div><div class="module-head-actions"><button class="secondary" id="vxStructureBack">← Voltar</button></div></div>${badge}</div>`;
-    document.getElementById('vxStructureBack').onclick=()=>window.render(state.view||'dashboard');
+    // state.__vxStructPrevView guarda de onde o usuário veio (mesmo
+    // padrão de state.__vxBonusPrevView em bonus-technician-view-v0912.js)
+    // -- nunca state.view aqui, que agora É 'structure:<target>' (ver
+    // wrap de window.render), senão Voltar reabriria a própria tela.
+    document.getElementById('vxStructureBack').onclick=()=>{const v=state.__vxStructPrevView||'dashboard';state.__vxStructPrevView=null;window.render(v)};
   }
   async function openTarget(t){
     if(t==='nova-os') return baseRender('nova-os');
-    if(t==='pesquisa-os') return renderOperational('os','Pesquisa O.S.');
-    if(t==='clientes') return renderOperational('clientes','Clientes');
-    if(t==='oficina-operacional') return renderOperational('oficina','Fila Técnica');
-    if(t==='agenda-operacional') return renderOperational('agenda','Atividades');
+    // Roteadas por window.render (chave 'op:<view>') em vez de chamar
+    // renderOperational direto -- mesmo motivo de orcamentos-aprovacoes/
+    // structure: acima, ver case 'op:' no wrap de window.render.
+    if(t==='pesquisa-os') return window.render('op:os');
+    if(t==='clientes') return window.render('op:clientes');
+    if(t==='oficina-operacional') return window.render('op:oficina');
+    if(t==='agenda-operacional') return window.render('op:agenda');
     if(t==='nps-electrolux') return window.render('nps-electrolux');
-    if(t==='estoque-operacional') return renderOperational('estoque','Estoque / Peças');
-    if(t==='financeiro-operacional') return renderOperational('financeiro','Financeiro');
-    if(t==='testes-operacional') return renderOperational('testes','Testes de Funções');
-    if(t==='usuarios-operacional') return renderOperational('usuarios','Usuários / Segurança');
+    if(t==='estoque-operacional') return window.render('op:estoque');
+    if(t==='financeiro-operacional') return window.render('op:financeiro');
+    if(t==='testes-operacional') return window.render('op:testes');
+    if(t==='usuarios-operacional') return window.render('op:usuarios');
     if(t==='dashboard') return baseRender('dashboard');
-    if(STRUCTURE_ONLY_TARGETS[t])return renderStructureOnly(t,...STRUCTURE_ONLY_TARGETS[t]);
+    // Achado do usuário (2026-09-15): telas abertas por chamada direta
+    // de função (nunca via window.render) ficam invisíveis pro
+    // histórico do navegador (mobile-back-nav-v1.js só registra uma
+    // entrada quando window.render roda e state.view muda) -- o botão/
+    // gesto de voltar do Android pulava essas telas inteiras. Roteadas
+    // por window.render com uma chave própria (view muda de verdade)
+    // pra cair de graça no mesmo mecanismo já usado por 'os'/'oficina'/
+    // etc. -- ver os 3 casos novos no wrap de window.render abaixo.
+    if(t==='orcamentos-aprovacoes') return window.render('orcamentos-aprovacoes');
+    if(t==='whirlpool-portal') return window.render('whirlpool-portal');
+    if(STRUCTURE_ONLY_TARGETS[t])return window.render('structure:'+t);
     toast('Função registrada para evolução/homologação da V0.8.12.');
   }
-  async function renderOperational(view,label){await baseRender(view);state.view='op:'+view;renderTabs(label);const title=document.querySelector('#title');if(title)title.textContent=label;}
+
+  // Achado do usuário (consolidação Atendimento, 2026-09-15): o card
+  // "ORÇAMENTOS / APROVAÇÕES" abria a tela genérica de Financeiro (sem
+  // filtro nenhum) -- pedido pra virar um relatório de verdade com as
+  // duas listas que o nome promete: ORÇAMENTOS = OS aguardando análise
+  // (é aí que o orçamento é montado, antes de ir pro cliente);
+  // APROVAÇÕES = OS já orçadas aguardando o cliente decidir. Reaproveita
+  // ordersByStatus/ordersTable (já usados no resto do app -- nenhuma
+  // consulta nova).
+  function renderOrcamentosAprovacoes(){
+    const app=document.querySelector('#app');if(!app)return;
+    const orcamentos=ordersByStatus('AGUARDANDO ANALISE');
+    const aprovacoes=ordersByStatus('AGUARDANDO APROVACAO');
+    app.innerHTML=`<div class="module-home">
+      <div class="module-home-head"><div><h2>Orçamentos / Aprovações</h2><p>Aparelhos aguardando análise (orçamento) e aguardando aprovação do cliente</p></div><div class="module-head-actions"><button class="secondary" id="vxOrcaBack">← Voltar</button></div></div>
+      <div><h3 style="margin:18px 4px 8px;font-size:14px;color:#23364e">ORÇAMENTOS <small style="font-weight:400;color:#60728a">(${orcamentos.length} aguardando análise)</small></h3>${ordersTable(orcamentos)}</div>
+      <div><h3 style="margin:22px 4px 8px;font-size:14px;color:#23364e">APROVAÇÕES <small style="font-weight:400;color:#60728a">(${aprovacoes.length} aguardando aprovação do cliente)</small></h3>${ordersTable(aprovacoes)}</div>
+    </div>`;
+    document.getElementById('vxOrcaBack').onclick=()=>{const v=state.__vxOrcaPrevView||'dashboard';state.__vxOrcaPrevView=null;window.render(v)};
+  }
+  // Achado do usuário (2026-09-15): estas telas (Pesquisar O.S.,
+  // Clientes, Estoque/Peças etc.) nunca tiveram botão "Voltar" nenhum
+  // -- só existiam como destino de um card de hub, mas a função de
+  // render em si (app.js: renderOrders/renderClients/renderStock/...)
+  // nunca soube disso, nunca ofereceu um caminho de volta. Injeta uma
+  // barra "← Voltar" no topo do #app depois do render original (nunca
+  // edita app.js) -- mesmo state.__vxOpPrevView (guardado por quem
+  // chama, ver wrap de window.render abaixo) usado pelos outros drill-
+  // downs desta sessão (Orçamentos/Aprovações, WP/SEG, estrutura).
+  async function renderOperational(view,label){
+    await baseRender(view);
+    state.view='op:'+view;
+    renderTabs(label);
+    const title=document.querySelector('#title');if(title)title.textContent=label;
+    const app=document.querySelector('#app');
+    if(app){
+      const bar=document.createElement('div');
+      bar.setAttribute('style','margin-bottom:12px');
+      bar.innerHTML='<button type="button" class="secondary" id="vxOpBack">← Voltar</button>';
+      app.insertBefore(bar,app.firstChild);
+      document.getElementById('vxOpBack').onclick=()=>{const v=state.__vxOpPrevView||'dashboard';state.__vxOpPrevView=null;window.render(v)};
+    }
+  }
+  // Mapa view->label 1:1 (auditado: cada view de renderOperational já
+  // era chamada com um único label fixo no arquivo inteiro) -- usado
+  // pelo case 'op:' do wrap de window.render abaixo, pra rotear por lá
+  // (nunca chamada direta de função) e cair no mesmo mecanismo de
+  // histórico do botão físico de voltar do Android.
+  const OP_LABELS={os:'Pesquisa O.S.',clientes:'Clientes',oficina:'Fila Técnica',agenda:'Atividades',estoque:'Estoque / Peças',financeiro:'Financeiro',testes:'Testes de Funções',usuarios:'Usuários / Segurança'};
   function lowerTabs(){return `<div class="module-lower-tabs"><button class="active">Oportunidades do Dia</button><button>Casos de Atenção</button><button data-target="agenda-operacional">Minhas Tarefas</button><button data-target="agenda-operacional">Agenda / Compromissos</button><button data-target="estoque-operacional">Pedidos de Peças</button><button>Produtividade / Bonificação</button></div><div class="module-lower-content">Ambiente de homologação — dados fictícios.</div>`}
   // summaryDrills NÃO é resetado aqui -- os argumentos (metrics, com os
   // summary(...) que povoam summaryDrills) já foram todos avaliados
@@ -101,16 +166,27 @@
   function ordersByStatus(s){return state.orders.filter(o=>o.status===s)}
   function countStatus(s){return ordersByStatus(s).length}
 
+  // Consolidação Atendimento (achado do usuário, 2026-09-15): PESQUISAR
+  // O.S. e ENTREGA/SAÍDA abriam exatamente a mesma tela (pesquisa-os),
+  // sem nenhuma distinção real -- unificados num só card, mesmo critério
+  // já usado na consolidação da Oficina (2026-09-13). RECIBOS removido
+  // (função real já existe em Financeiro → Recebimentos,
+  // financeiro-recebimentos-v1.js -- este card era um segundo caminho
+  // pro financeiro genérico, sem nada específico de recibo). A vaga
+  // aberta por essas duas mudanças recebe WP / SEG (OS Whirlpool/
+  // Seguradora importadas pelo robô, aguardando tratativa) + 1 posição
+  // reservada "EM CONSTRUÇÃO" -- mantém as 9 posições visuais, mesma
+  // regra da Oficina (nunca inventa função fictícia pra preencher vaga).
   function atendimento(){home('Atendimento','Balcão • Clientes • Ordens de Serviço',
     card('+','ABRIR NOVA O.S.','Inicie um atendimento sem sair da tela da OS.','nova-os','blue')+
-    card('⌕','PESQUISAR O.S.','Localize ordens por número, cliente ou equipamento.','pesquisa-os','purple')+
+    card('⌕','PESQUISAR / ENTREGA DE O.S.','Localize ordens por número, cliente ou equipamento — inclusive pra finalizar entrega/saída.','pesquisa-os','purple')+
     card('◉','CLIENTES','Cadastros, histórico e dados de contato.','clientes','purple')+
     card('▥','SITUAÇÃO DOS APARELHOS','Acompanhe rapidamente cada etapa das OS.','pesquisa-os','orange')+
-    card('$','ORÇAMENTOS / APROVAÇÕES','Acompanhe orçamentos e retornos de clientes.','financeiro-operacional','green')+
-    card('↗','ENTREGA / SAÍDA','Finalize serviços e documentos de saída.','pesquisa-os','cyan')+
-    card('▤','RECIBOS','Emissão e consulta de recibos.','financeiro-operacional','gray')+
+    card('$','ORÇAMENTOS / APROVAÇÕES','Orçamentos aguardando análise e aparelhos aguardando aprovação do cliente.','orcamentos-aprovacoes','green')+
     card('▦','VENDA DE PEÇAS','Venda rápida vinculada ao atendimento.','estoque-operacional','teal')+
-    card('▣','VENDA DE APARELHO','Registro de venda de equipamentos.','loja-vendas','brown'),
+    card('▣','VENDA DE APARELHO','Registro de venda de equipamentos.','loja-vendas','brown')+
+    card('◈','WP / SEG','Ordens Whirlpool e Seguradora importadas — aguardando tratativa.','whirlpool-portal','red')+
+    placeholderCard('⚙','EM CONSTRUÇÃO','Espaço reservado para nova funcionalidade do Atendimento.'),
     summary('AGUARDANDO ANÁLISE',ordersByStatus('AGUARDANDO ANALISE'),'orange')+
     summary('AGUARDANDO APROVAÇÃO',ordersByStatus('AGUARDANDO APROVACAO'),'purple')+
     summary('EM CONSERTO',ordersByStatus('AGUARDANDO CONSERTO'),'blue')+
@@ -218,6 +294,34 @@
     if(view==='estoque'){state.view='estoque';addTab('estoque','Loja');renderTabs('Loja');document.querySelector('#title').textContent='Loja';document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view==='estoque'));loja();return;}
     if(view==='testes'){state.view='testes';addTab('testes','Relatórios');renderTabs('Relatórios');document.querySelector('#title').textContent='Relatórios';document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view==='testes'));relatorios();return;}
     if(view==='usuarios'){state.view='usuarios';addTab('usuarios','Configurações');renderTabs('Configurações');document.querySelector('#title').textContent='Configurações';document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view==='usuarios'));configuracoes();return;}
+    // Achado do usuário (2026-09-15): estas duas telas eram chamadas por
+    // função direta a partir de openTarget(), nunca por window.render --
+    // ficavam invisíveis pro histórico do navegador (mobile-back-nav-
+    // v1.js só registra entrada quando window.render roda e state.view
+    // muda), então o botão/gesto de voltar do Android pulava a tela
+    // inteira. state.__vx*PrevView (mesmo padrão de
+    // state.__vxBonusPrevView em bonus-technician-view-v0912.js) guarda
+    // de onde veio -- só na PRIMEIRA vez (nunca sobrescreve se o usuário
+    // ficar entrando/saindo várias vezes sem soltar a referência).
+    if(view==='orcamentos-aprovacoes'){if(!state.__vxOrcaPrevView)state.__vxOrcaPrevView=state.view;state.view=view;renderOrcamentosAprovacoes();return;}
+    if(view.startsWith('structure:')){
+      const key=view.slice('structure:'.length);
+      if(STRUCTURE_ONLY_TARGETS[key]){
+        if(!state.__vxStructPrevView)state.__vxStructPrevView=state.view;
+        state.view=view;
+        renderStructureOnly(key,...STRUCTURE_ONLY_TARGETS[key]);
+        return;
+      }
+    }
+    if(view.startsWith('op:')){
+      const rawView=view.slice('op:'.length);
+      const label=OP_LABELS[rawView];
+      if(label){
+        if(!state.__vxOpPrevView)state.__vxOpPrevView=state.view;
+        await renderOperational(rawView,label);
+        return;
+      }
+    }
     return baseRender(view);
   };
 })();

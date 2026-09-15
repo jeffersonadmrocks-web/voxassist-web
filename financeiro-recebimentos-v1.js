@@ -64,6 +64,12 @@
   // DOM/console ainda esbarra em reverse_payment/RLS no servidor.
   const norm = (s) => String(s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replaceAll('_', ' ').trim();
   const isManager = () => ['GESTOR', 'ADMIN', 'ADMINISTRADOR'].includes(norm(state?.profile?.role));
+  // "Corrigir forma de pagamento" \u00e9 GESTOR estrito (decis\u00e3o do usu\u00e1rio,
+  // 2026-09-14) -- diferente de isManager() (que tamb\u00e9m aceita
+  // ADMIN/ADMINISTRADOR), nunca por permiss\u00e3o granular. Mesma checagem
+  // exata que o backend (correct_payment_method) faz -- s\u00f3 pra n\u00e3o
+  // mostrar a a\u00e7\u00e3o pra quem o servidor rejeitaria de qualquer forma.
+  const isGestorStrict = () => norm(state?.profile?.role) === 'GESTOR';
   async function userCanReverse() {
     if (isManager()) return true;
     try {
@@ -117,6 +123,23 @@
     return !p.reversal_of_payment_id && remainingFor(p) > 0.004;
   }
 
+  // Estruturalmente correto pra correct_payment_method (migration
+  // 20260914050000) -- espelha as mesmas checagens do backend (status
+  // RECEBIDO, não é estorno, não foi estornado) só pra não mostrar a
+  // ação pra quem o servidor rejeitaria. GESTOR estrito é checado à
+  // parte (isGestorStrict()) em cada ponto de uso.
+  function canCorrectMethod(p) {
+    return up(p.status) === 'RECEBIDO' && !p.reversal_of_payment_id && !p.reversal_state;
+  }
+
+  // Asterisco discreto (pedido do usuário) na forma de um pagamento
+  // vigente que resultou de uma correção -- correction_of_payment_id
+  // só existe na linha NOVA criada por correct_payment_method.
+  function methodLabel(p) {
+    if (!p.correction_of_payment_id) return esc(p.method);
+    return `${esc(p.method)} <span class="vx-fin-corrected-mark" title="Pagamento com informações corrigidas">*</span>`;
+  }
+
   function rangeFor(preset) {
     const now = new Date();
     if (preset === 'hoje') return [startOfDay(now), endOfDay(now)];
@@ -158,7 +181,13 @@
     // acesso a mais de uma empresa (user_companies) -- aqui só a EMPRESA
     // ATIVA importa, nunca uma Loja/seletor Serra×Vitória (essas são
     // empresas distintas, cada uma só enxerga a própria).
-    const rows = await api(`payments?company_id=eq.${state.profile?.active_company_id}&paid_at=gte.${encodeURIComponent(from.toISOString())}&paid_at=lte.${encodeURIComponent(to.toISOString())}&select=*,service_orders(os_number,client_id,clients(name,document)),profiles(full_name)&order=paid_at.desc&limit=2000`).catch(() => []);
+    // payments_operational (migration 20260914050000), não payments --
+    // filtra as linhas internas de uma correção de forma (estorno
+    // interno + original superada), pra um recebimento corrigido
+    // aparecer como UMA linha só, nunca duas nem valor em dobro. Um
+    // estorno de verdade (reverse_payment) não é afetado por esse
+    // filtro e continua aparecendo como sempre.
+    const rows = await api(`payments_operational?company_id=eq.${state.profile?.active_company_id}&paid_at=gte.${encodeURIComponent(from.toISOString())}&paid_at=lte.${encodeURIComponent(to.toISOString())}&select=*,service_orders(os_number,client_id,clients(name,document)),profiles(full_name)&order=paid_at.desc&limit=2000`).catch(() => []);
     return (rows || []).filter((p) => !isCancelled(p.status) && !isDiscount(p));
   }
 
@@ -254,12 +283,13 @@
     // parte, um usuário sem financeiro.reverse via a ação normalmente e
     // só descobria que não podia ao clicar (erro do servidor).
     const canRev = canReverseRow(p) && ui.canReverse;
+    const canCorrect = isGestorStrict() && canCorrectMethod(p);
     return `<tr class="${os ? '' : 'vx-fin-avulso-row'}${fullyReversed ? ' vx-fin-row-reversed' : ''}" onclick="vxFinOpenDrawer('${p.id}')">
       <td>${hhmm(p.paid_at)}</td>
       <td>${os ? esc(os) : '—'}</td>
       <td>${esc(cliente)}</td>
       <td>${esc(p.notes || '—')}</td>
-      <td><span class="vx-fin-method-tag">${esc(p.method)}</span></td>
+      <td><span class="vx-fin-method-tag">${methodLabel(p)}</span></td>
       <td class="vx-fin-amount ${isReversal ? 'vx-fin-reversal-tag' : ''}">${money(p.amount)}</td>
       <td>${esc(p.profiles?.full_name || '—')}</td>
       <td class="vx-fin-situacao-cell"><span class="vx-fin-situacao vx-fin-situacao-${situacao.toLowerCase()}">${SITUACAO_LABEL[situacao]}</span></td>
@@ -268,6 +298,7 @@
         <div class="vx-fin-menu" id="vxFinMenu-${p.id}" hidden>
           <button type="button" onclick="vxFinOpenDrawer('${p.id}')">Ver detalhes</button>
           ${canRev ? `<button type="button" class="vx-fin-menu-danger" onclick="vxFinQuickReverse('${p.id}')">Estornar recebimento</button>` : ''}
+          ${canCorrect ? `<button type="button" onclick="vxFinOpenCorrectMethod('${p.id}')">Corrigir forma de pagamento</button>` : ''}
         </div>
       </td>
     </tr>`;
@@ -396,7 +427,7 @@
     const [finRows, parts, payRows] = await Promise.all([
       api(`os_financial?service_order_id=eq.${p.service_order_id}&select=*`).catch(() => []),
       api(`os_parts?service_order_id=eq.${p.service_order_id}&select=quantity,unit_value`).catch(() => []),
-      api(`payments?service_order_id=eq.${p.service_order_id}&select=amount,status,method,paid_at`).catch(() => []),
+      api(`payments_operational?service_order_id=eq.${p.service_order_id}&select=amount,status,method,paid_at`).catch(() => []),
     ]);
     const fin = finRows?.[0] || {};
     const partsTotal = (parts || []).reduce((s, x) => s + Number(x.quantity || 0) * Number(x.unit_value || 0), 0);
@@ -410,6 +441,37 @@
 
   async function loadAuditLog(paymentId) {
     return api(`audit_log?entity_type=eq.PAYMENT&entity_id=eq.${paymentId}&select=*,profiles(full_name)&order=created_at.desc`).catch(() => []);
+  }
+
+  // Anda a cadeia de correção pra trás via correction_of_payment_id
+  // (só existe na linha NOVA/vigente) até a origem -- cada elo lê o
+  // método da linha ANTERIOR (raw `payments`, nunca payments_operational
+  // -- a original superada não aparece na view operacional de propósito)
+  // e o motivo/gestor/data já gravados na linha ATUAL (correction_reason/
+  // correction_by/correction_at, direto no INSERT de correct_payment_method).
+  // correction_by é uuid solto (sem FK -- ver comentário na migration
+  // 20260914050000, pra não ambiguar o embed profiles(full_name) já
+  // usado em todo lugar), por isso o nome do gestor é buscado à parte.
+  async function loadCorrectionHistory(p) {
+    const chain = [];
+    let current = p;
+    const gestorCache = new Map();
+    while (current?.correction_of_payment_id) {
+      const prevRows = await api(`payments?id=eq.${current.correction_of_payment_id}&select=id,method,amount,correction_of_payment_id`).catch(() => []);
+      const prev = prevRows?.[0];
+      if (!prev) break;
+      let gestor = '—';
+      if (current.correction_by) {
+        if (!gestorCache.has(current.correction_by)) {
+          const rows = await api(`profiles?id=eq.${current.correction_by}&select=full_name`).catch(() => []);
+          gestorCache.set(current.correction_by, rows?.[0]?.full_name || '—');
+        }
+        gestor = gestorCache.get(current.correction_by);
+      }
+      chain.unshift({ from: prev.method, to: current.method, amount: current.amount, reason: current.correction_reason, gestor, at: current.correction_at });
+      current = prev;
+    }
+    return chain;
   }
 
   function auditActionLabel(a) {
@@ -436,6 +498,14 @@
     if (!canReverseRow(p)) return toast('Este lançamento não pode ser estornado.', 'err');
     openReverseModal(p, remaining);
   };
+  window.vxFinOpenCorrectMethod = function (id) {
+    closeAllMenus();
+    const p = ui.rows.find((x) => x.id === id);
+    if (!p) return;
+    if (!isGestorStrict()) return toast('Somente o GESTOR pode corrigir a forma de um recebimento.', 'err');
+    if (!canCorrectMethod(p)) return toast('Este lançamento não pode ter a forma corrigida.', 'err');
+    openCorrectMethodModal(p);
+  };
 
   window.vxFinOpenDrawer = async function (paymentId) {
     const p = ui.rows.find((x) => x.id === paymentId);
@@ -448,6 +518,7 @@
     const remaining = remainingFor(p);
     const reversibleHere = canReverseRow(p);
     const canReverse = reversibleHere && ui.canReverse;
+    const canCorrect = isGestorStrict() && canCorrectMethod(p);
     // Estorno(s) já aplicados a ESTE lançamento (se for o original) --
     // pra "Detalhes do estorno" (quem estornou, quando, motivo) sem
     // precisar abrir a transação de estorno separadamente.
@@ -464,7 +535,7 @@
         <div><span>OS</span><b>${os ? esc(os) : 'SEM OS (AVULSO)'}</b></div>
         <div><span>CLIENTE</span><b>${esc(cliente)}</b></div>
         <div><span>VALOR ORIGINAL</span><b class="${Number(p.amount) < 0 ? 'vx-fin-reversal-tag' : ''}">${money(p.amount)}</b></div>
-        <div><span>FORMA</span><b>${esc(p.method)}</b></div>
+        <div><span>FORMA</span><b>${methodLabel(p)}</b></div>
         <div><span>RECEBIDO EM</span><b>${dtFull(p.paid_at)}</b></div>
         <div><span>RECEBIDO POR</span><b>${esc(p.profiles?.full_name || '—')}</b></div>
         <div><span>EMPRESA</span><b>${esc(ui.companyName)}</b></div>
@@ -482,6 +553,10 @@
           <div><span>ESTORNADO EM</span><b>${dtFull(r.paid_at)}</b></div>
           <div><span>MOTIVO / OBSERVAÇÃO</span><b>${esc(r.notes || '—')}</b></div>
         </div>`).join('')}</div>` : ''}
+      ${isGestorStrict() && p.correction_of_payment_id ? `<div class="vx-fin-correction-history">
+        <button type="button" class="vx-fin-collapsible-toggle" id="vxFinCorrHistToggle">▸ Histórico de correções</button>
+        <div id="vxFinCorrHistBody" hidden></div>
+      </div>` : ''}
       <div id="vxFinDrawerAudit" class="vx-fin-drawer-audit"></div>
       <div class="vx-modal-actions" style="justify-content:space-between;flex-wrap:wrap">
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -490,6 +565,7 @@
           <button type="button" id="vxFinDrawerAuditBtn">AUDITORIA</button>
           ${canReverse ? `<button type="button" class="vx-orange-btn" id="vxFinDrawerReverse">ESTORNAR RECEBIMENTO</button>`
             : (reversibleHere && !ui.canReverse ? `<span class="vx-fin-reverse-locked" title="Requer a permissão financeiro.reverse">Estornar recebimento indisponível — requer a permissão <b>financeiro.reverse</b></span>` : '')}
+          ${canCorrect ? `<button type="button" id="vxFinDrawerCorrect">CORRIGIR FORMA DE PAGAMENTO</button>` : ''}
         </div>
         <button type="button" data-close>FECHAR</button>
       </div>
@@ -508,6 +584,30 @@
         : '<h4>AUDITORIA</h4><p class="vx-empty">Nenhum registro de auditoria encontrado.</p>';
     };
     if (canReverse) bg.querySelector('#vxFinDrawerReverse').onclick = () => openReverseModal(p, remaining);
+    if (canCorrect) bg.querySelector('#vxFinDrawerCorrect').onclick = () => openCorrectMethodModal(p);
+    const corrHistToggle = bg.querySelector('#vxFinCorrHistToggle');
+    if (corrHistToggle) {
+      corrHistToggle.onclick = async () => {
+        const body = bg.querySelector('#vxFinCorrHistBody');
+        const willOpen = body.hidden;
+        if (willOpen && !body.dataset.loaded) {
+          body.innerHTML = 'Carregando…';
+          const chain = await loadCorrectionHistory(p);
+          body.dataset.loaded = '1';
+          body.innerHTML = chain.length ? chain.map((c) => `
+            <div class="vx-fin-correction-item">
+              <div><span>FORMA ANTERIOR</span><b>${esc(c.from)}</b></div>
+              <div><span>FORMA CORRIGIDA</span><b>${esc(c.to)}</b></div>
+              <div><span>VALOR</span><b>${money(c.amount)}</b></div>
+              <div><span>MOTIVO</span><b>${esc(c.reason || '—')}</b></div>
+              <div><span>GESTOR RESPONSÁVEL</span><b>${esc(c.gestor)}</b></div>
+              <div><span>DATA/HORA</span><b>${dtFull(c.at)}</b></div>
+            </div>`).join('') : '<p class="vx-empty">Nenhuma correção encontrada.</p>';
+        }
+        body.hidden = !willOpen;
+        corrHistToggle.textContent = `${willOpen ? '▾' : '▸'} Histórico de correções`;
+      };
+    }
 
     computeSaldoResultante(p).then((saldo) => {
       if (saldo === null) {
@@ -611,6 +711,65 @@
         closeDrawer();
         await reload();
       } catch (e) { toast('Erro ao estornar: ' + e.message, 'err'); confirmBtn.disabled = false; }
+    };
+  }
+
+  // ---- Corrigir forma de pagamento (GESTOR estrito, migration
+  // 20260914050000) ----
+  // Por baixo dos panos é estorno interno + novo recebimento
+  // (correct_payment_method), mas o usuário nunca precisa saber disso
+  // pra usar a tela -- só o resumo explica, e o resultado sempre
+  // aparece como UM pagamento só (com "*") em qualquer relatório.
+  function openCorrectMethodModal(p) {
+    document.querySelector('#vxFinCorrectModal')?.remove();
+    const os = p.service_orders?.os_number;
+    const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO';
+    const otherMethods = ui.methods.filter((m) => up(m.name) !== 'DESCONTO' && up(m.name) !== up(p.method));
+    const bg = document.createElement('div');
+    bg.id = 'vxFinCorrectModal';
+    bg.className = 'vx-modal-bg';
+    bg.innerHTML = `<div class="vx-modal vx-fin-avulso-modal vx-fin-correct-modal">
+      <h3>Corrigir forma de pagamento</h3>
+      <div class="vx-fin-reverse-summary">
+        <div><span>OS</span><b>${os ? esc(os) : 'SEM OS (AVULSO)'}</b></div>
+        <div><span>Cliente</span><b>${esc(cliente)}</b></div>
+        <div><span>Valor a corrigir</span><b>${money(p.amount)}</b></div>
+        <div><span>Forma registrada atualmente</span><b>${esc(p.method)}</b></div>
+      </div>
+      <div class="vx-field"><label>NOVA FORMA DE PAGAMENTO *</label><select class="vx-control" id="vxFinCorrMethod"><option value="">Selecione...</option>${otherMethods.map((m) => `<option>${esc(m.name)}</option>`).join('')}</select></div>
+      <div class="vx-field"><label>MOTIVO DA CORREÇÃO *</label><textarea class="vx-control" id="vxFinCorrReason" rows="2" placeholder="Ex.: Cliente informou que pagou via PIX, não em dinheiro"></textarea></div>
+      <p class="vx-fin-reverse-warning">O lançamento atual será estornado e um novo recebimento será criado com a forma corrigida. Mesma OS, empresa e valor -- o recebimento continuará aparecendo como um único pagamento (com um * ao lado da forma) no Financeiro, Caixa, relatório diário e financeiro da OS.</p>
+      <div class="vx-modal-actions"><button type="button" data-close>Cancelar</button><button type="button" class="vx-green-btn" id="vxFinCorrConfirm">Confirmar correção</button></div>
+    </div>`;
+    document.body.appendChild(bg);
+    const close = () => bg.remove();
+    bg.querySelector('[data-close]').onclick = close;
+    bg.addEventListener('click', (e) => { if (e.target === bg) close(); });
+    // Mesma chave de idempotência por abertura do modal -- ver
+    // vxOpenRegisterPayment/openAvulsoModal -- clique duplo/retry de
+    // rede na mesma chave devolve o mesmo resultado (correct_payment_method
+    // é idempotente via payment_corrections), nunca duplica.
+    const idempotencyKey = (crypto.randomUUID ? crypto.randomUUID() : 'idem-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    const confirmBtn = bg.querySelector('#vxFinCorrConfirm');
+    confirmBtn.onclick = async () => {
+      if (confirmBtn.disabled) return;
+      const newMethod = $('#vxFinCorrMethod', bg).value;
+      const reason = ($('#vxFinCorrReason', bg).value || '').trim();
+      if (!newMethod) return toast('Selecione a nova forma de pagamento.', 'err');
+      if (up(newMethod) === up(p.method)) return toast('A nova forma precisa ser diferente da forma atual.', 'err');
+      if (!reason) return toast('Informe o motivo da correção.', 'err');
+      if (!confirm(`Confirmar correção: ${esc(p.method)} → ${esc(newMethod)} (${money(p.amount)})?`)) return;
+      confirmBtn.disabled = true;
+      try {
+        await api('rpc/correct_payment_method', {
+          method: 'POST',
+          body: JSON.stringify({ p_payment_id: p.id, p_new_method: newMethod, p_reason: reason, p_idempotency_key: idempotencyKey }),
+        });
+        toast('Forma de pagamento corrigida.');
+        close();
+        closeDrawer();
+        await reload();
+      } catch (e) { toast('Erro ao corrigir forma de pagamento: ' + e.message, 'err'); confirmBtn.disabled = false; }
     };
   }
 

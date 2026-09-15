@@ -87,6 +87,15 @@
 .vx-fin-reversal-item span{font-size:9.5px;font-weight:800;color:#a35a5a;text-transform:uppercase;letter-spacing:.3px}
 .vx-fin-reversal-item b{font-size:12.5px;color:#5c2323}
 
+.vx-fin-corrected-mark{color:#245984;font-weight:900;cursor:help}
+
+.vx-fin-correction-history{border-top:1px solid #edf1f5;margin-top:10px;padding-top:10px}
+.vx-fin-collapsible-toggle{background:none;border:none;padding:0;font-size:11px;font-weight:800;color:#245984;text-transform:uppercase;letter-spacing:.3px;cursor:pointer}
+.vx-fin-correction-item{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px 14px;background:#eaf2fb;border-radius:8px;padding:9px 12px;margin:8px 0 0}
+.vx-fin-correction-item div{display:flex;flex-direction:column;gap:2px}
+.vx-fin-correction-item span{font-size:9.5px;font-weight:800;color:#59779c;text-transform:uppercase;letter-spacing:.3px}
+.vx-fin-correction-item b{font-size:12.5px;color:#1c3350}
+
 .vx-fin-situacao{display:inline-block;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:800}
 .vx-fin-situacao-recebido{background:#e7f6ee;color:#0b6f3c}
 .vx-fin-situacao-estorno{background:#fbeaea;color:#a63131}

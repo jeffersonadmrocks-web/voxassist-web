@@ -134,7 +134,12 @@
     });
     const data=await res.json().catch(()=>null);
     if(!data)throw new Error('Resposta inesperada da function.');
-    if(!res.ok||data.ok===false)throw new Error(GATEWAY_ERROR_MESSAGES[data.error]||data.error||'Falha na operação.');
+    // Achado do usuário (2026-09-15): "create_failed" (e qualquer outro
+    // código sem entrada no mapa acima) nunca dizia o motivo real --
+    // agora prefere data.message (detalhe real que o gateway já manda
+    // pra códigos sem tradução amigável, ex.: create_failed) antes do
+    // código cru, sem mudar nenhuma mensagem já mapeada acima.
+    if(!res.ok||data.ok===false)throw new Error(GATEWAY_ERROR_MESSAGES[data.error]||data.message||data.error||'Falha na operação.');
     return data;
   }
 
@@ -1789,6 +1794,16 @@
     // templates do robô (firstNameOf, chatBotFlow.ts).
     const attendantName=(!isBot&&!isImport&&m.direction==='OUTBOUND'&&m.profiles?.full_name)?String(m.profiles.full_name).trim().split(/\s+/)[0]:null;
     const attendantTag=attendantName?`<span class="vx-msg-tag vx-msg-tag-attendant">👤 ${E(attendantName)}</span>`:'';
+    // Achado da auditoria de infraestrutura (2026-09-14): mensagem
+    // OUTBOUND mandada por OUTRO dispositivo vinculado à mesma conta
+    // (celular principal, WhatsApp Web -- ver P0 fromMe em
+    // chat-inbound-webhook/inboundForwarder.ts) chegava sem NENHUM selo
+    // -- indistinguível de uma falha de carregamento do nome do
+    // atendente. Backend já grava esse caso sem sender_user_id (nunca
+    // veio de uma sessão VoxAssist) -- único caso OUTBOUND real (não
+    // Robô, não Histórico, não Nota interna) sem attendantName resolvido.
+    const isExternalDevice=!isBot&&!isImport&&m.direction==='OUTBOUND'&&!attendantName;
+    const externalDeviceTag=isExternalDevice?'<span class="vx-msg-tag vx-msg-tag-external">📱 Dispositivo externo</span>':'';
     const replyBtn=isDeleted?'':`<button type="button" class="vx-msg-reply-btn" data-reply="${E(m.id)}" title="Responder">↩</button>`;
     // Achado do usuário 2026-09-03: "apagar mensagem" tinha que revogar
     // de verdade no WhatsApp ("apagar para todos"), nunca só esconder no
@@ -1803,7 +1818,7 @@
     // (ex.: template de NPS) chegava como um parágrafo único no balão --
     // HTML colapsa \n por padrão, precisa de white-space explícito.
     const bodyHtml=isMedia?mediaBodyHtml(m):`<span class="vx-msg-text">${E(m.body||'[sem texto]')}</span>`;
-    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}" data-msg-body="${E((m.body||'').toLowerCase())}"><div class="vx-msg-bubble${isBot?' vx-msg-bubble-bot':''}">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}${botTag}${attendantTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}${deleteBtn}</div>`;
+    return `<div class="vx-msg-row ${lado}${isDeleted?' vx-msg-deleted':''}" data-msg-body="${E((m.body||'').toLowerCase())}"><div class="vx-msg-bubble${isBot?' vx-msg-bubble-bot':''}">${quoteBlock}${deletedLabel}${bodyHtml}${isMedia?mediaPendingNoteHtml(m):''}<div class="vx-msg-meta">${importTag}${botTag}${attendantTag}${externalDeviceTag}<small>${E(hora)}</small>${mensagemTick(m)}</div></div>${replyBtn}${deleteBtn}</div>`;
   }
   function renderReplyBanner(){
     const el=document.getElementById('vxReplyBanner');
