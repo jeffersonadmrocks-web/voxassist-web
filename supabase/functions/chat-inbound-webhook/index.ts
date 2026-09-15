@@ -464,12 +464,18 @@ Deno.serve(async (req) => {
     // existe "fora do horário" nem triagem pra responder a si mesmo).
     if (!fromMe) try {
       const canSend = connection.status === "CONECTADO" && !!GATEWAY_URL && !!GATEWAY_SERVICE_TOKEN;
-      const { data: publishedFlow } = await admin
+      const { data: publishedFlowRaw } = await admin
         .from("chat_bot_flow_versions")
-        .select("id, welcome_message, invalid_message, retry_limit, always_human_toggle, after_hours_toggle, after_hours_message, default_attendant_id")
+        .select("id, welcome_message, invalid_message, retry_limit, always_human_toggle, after_hours_toggle, after_hours_message, default_attendant_id, paused")
         .eq("company_id", connection.company_id)
         .eq("status", "PUBLICADA")
         .maybeSingle();
+      // Pausa de emergência (achado do usuário 2026-09-15, após um loop
+      // infinito real entre robôs de duas conexões): paused=true é
+      // tratado exatamente como "nenhum fluxo publicado" -- desliga
+      // triagem, boas-vindas e mensagem de ausência de uma vez só, sem
+      // tocar no conteúdo publicado nem criar rascunho.
+      const publishedFlow = publishedFlowRaw && !publishedFlowRaw.paused ? publishedFlowRaw : null;
 
       // Achado do usuário em 2026-09-02: o GESTOR configurou a mensagem
       // de boas-vindas com "{{nome_contato}}" esperando substituição --

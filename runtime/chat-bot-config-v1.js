@@ -122,6 +122,21 @@
       await loadAll();renderScreen();
     }catch(err){toast?.('Não foi possível publicar: '+err.message,'err')}
   }
+  // Pausa de emergência (achado do usuário 2026-09-15: já houve um
+  // loop infinito real -- robô de uma conexão respondendo ao robô de
+  // outra). Alterna só o campo `paused` da versão publicada, sem criar
+  // rascunho nem tocar no conteúdo -- retomar volta exatamente ao
+  // estado publicado de antes.
+  async function handleTogglePause(){
+    if(!bf.published)return;
+    const pausing=!bf.published.paused;
+    if(pausing&&!confirm('Pausar o Robô de Atendimento? Ele para de responder mensagens novas (triagem, boas-vindas e ausência) até você retomar -- nenhuma configuração é perdida.'))return;
+    try{
+      await api(`chat_bot_flow_versions?id=eq.${bf.published.id}`,{method:'PATCH',body:JSON.stringify({paused:pausing})});
+      toast?.(pausing?'Robô de Atendimento pausado.':'Robô de Atendimento retomado.');
+      await loadAll();renderScreen();
+    }catch(err){toast?.('Não foi possível '+(pausing?'pausar':'retomar')+': '+err.message,'err')}
+  }
 
   // ---------- edição de campos do rascunho ----------
   async function patchDraft(fields){
@@ -317,9 +332,13 @@
       <h3>Versões do fluxo</h3>
       <p class="vx-bf-sub">Rascunho é livremente editável. Publicar congela o conteúdo pra sempre -- pra mudar depois, restaure uma versão do histórico (cria um rascunho novo a partir dela).</p>
       <div class="vx-bf-version-status">
-        <span>Versão publicada: <b>${bf.published?`publicada em ${new Date(bf.published.published_at||bf.published.created_at).toLocaleString('pt-BR')}`:'Nenhuma'}</b></span>
-        ${bf.draft?`<button type="button" class="primary" id="vxBfPublish">Publicar versão</button>`:bf.published?`<button type="button" id="vxBfCreateDraftFromPublished">Editar (criar rascunho)</button>`:`<button type="button" class="primary" id="vxBfCreateBlank">Criar robô de atendimento</button>`}
+        <span>Versão publicada: <b>${bf.published?`publicada em ${new Date(bf.published.published_at||bf.published.created_at).toLocaleString('pt-BR')}`:'Nenhuma'}</b>${bf.published?.paused?' <span class="vx-bf-paused-badge">PAUSADO</span>':''}</span>
+        <div class="vx-bf-version-actions">
+          ${bf.published?`<button type="button" class="${bf.published.paused?'primary':'vx-bf-pause-btn'}" id="vxBfTogglePause">${bf.published.paused?'▶ Retomar robô':'⏸ Pausar robô'}</button>`:''}
+          ${bf.draft?`<button type="button" class="primary" id="vxBfPublish">Publicar versão</button>`:bf.published?`<button type="button" id="vxBfCreateDraftFromPublished">Editar (criar rascunho)</button>`:`<button type="button" class="primary" id="vxBfCreateBlank">Criar robô de atendimento</button>`}
+        </div>
       </div>
+      ${bf.published?.paused?'<p class="vx-bf-paused-note">O robô está pausado -- mensagens novas não recebem triagem, boas-vindas nem resposta de ausência até você retomar. Nenhuma configuração foi perdida.</p>':''}
       <div class="vx-bf-version-history">
         <div class="vx-bf-version-history-label">Histórico</div>
         <table class="vx-bf-table"><thead><tr><th>Status</th><th>Criada</th><th>Publicada</th><th></th></tr></thead>
@@ -551,6 +570,7 @@
       after_hours_message:document.getElementById('vxBfAfterHoursMsg').value,
     }).then(()=>toast?.('Configurações salvas.')));
     document.getElementById('vxBfPublish')?.addEventListener('click',handlePublish);
+    document.getElementById('vxBfTogglePause')?.addEventListener('click',handleTogglePause);
     document.getElementById('vxBfCreateBlank')?.addEventListener('click',handleCreateBlankDraft);
     document.getElementById('vxBfCreateDraftFromPublished')?.addEventListener('click',()=>handleRestore(bf.published.id));
     document.querySelectorAll('[data-restore]').forEach(btn=>btn.addEventListener('click',()=>handleRestore(btn.dataset.restore)));
