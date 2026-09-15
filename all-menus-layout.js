@@ -71,7 +71,11 @@
     const app=document.querySelector('#app');if(!app)return;
     const badge=typeof window.vxStructurePanel==='function'?window.vxStructurePanel(title,detail):`<div><strong>${title}</strong><p>${detail}</p></div>`;
     app.innerHTML=`<div class="module-home"><div class="module-home-head"><div><h2>${title}</h2><p>Estrutura disponível para avaliação visual — integração funcional em homologação.</p></div><div class="module-head-actions"><button class="secondary" id="vxStructureBack">← Voltar</button></div></div>${badge}</div>`;
-    document.getElementById('vxStructureBack').onclick=()=>window.render(state.view||'dashboard');
+    // state.__vxStructPrevView guarda de onde o usuário veio (mesmo
+    // padrão de state.__vxBonusPrevView em bonus-technician-view-v0912.js)
+    // -- nunca state.view aqui, que agora É 'structure:<target>' (ver
+    // wrap de window.render), senão Voltar reabriria a própria tela.
+    document.getElementById('vxStructureBack').onclick=()=>{const v=state.__vxStructPrevView||'dashboard';state.__vxStructPrevView=null;window.render(v)};
   }
   async function openTarget(t){
     if(t==='nova-os') return baseRender('nova-os');
@@ -85,9 +89,17 @@
     if(t==='testes-operacional') return renderOperational('testes','Testes de Funções');
     if(t==='usuarios-operacional') return renderOperational('usuarios','Usuários / Segurança');
     if(t==='dashboard') return baseRender('dashboard');
-    if(t==='orcamentos-aprovacoes') return renderOrcamentosAprovacoes();
+    // Achado do usuário (2026-09-15): telas abertas por chamada direta
+    // de função (nunca via window.render) ficam invisíveis pro
+    // histórico do navegador (mobile-back-nav-v1.js só registra uma
+    // entrada quando window.render roda e state.view muda) -- o botão/
+    // gesto de voltar do Android pulava essas telas inteiras. Roteadas
+    // por window.render com uma chave própria (view muda de verdade)
+    // pra cair de graça no mesmo mecanismo já usado por 'os'/'oficina'/
+    // etc. -- ver os 3 casos novos no wrap de window.render abaixo.
+    if(t==='orcamentos-aprovacoes') return window.render('orcamentos-aprovacoes');
     if(t==='whirlpool-portal') return window.render('whirlpool-portal');
-    if(STRUCTURE_ONLY_TARGETS[t])return renderStructureOnly(t,...STRUCTURE_ONLY_TARGETS[t]);
+    if(STRUCTURE_ONLY_TARGETS[t])return window.render('structure:'+t);
     toast('Função registrada para evolução/homologação da V0.8.12.');
   }
 
@@ -108,7 +120,7 @@
       <div><h3 style="margin:18px 4px 8px;font-size:14px;color:#23364e">ORÇAMENTOS <small style="font-weight:400;color:#60728a">(${orcamentos.length} aguardando análise)</small></h3>${ordersTable(orcamentos)}</div>
       <div><h3 style="margin:22px 4px 8px;font-size:14px;color:#23364e">APROVAÇÕES <small style="font-weight:400;color:#60728a">(${aprovacoes.length} aguardando aprovação do cliente)</small></h3>${ordersTable(aprovacoes)}</div>
     </div>`;
-    document.getElementById('vxOrcaBack').onclick=()=>window.render(state.view||'dashboard');
+    document.getElementById('vxOrcaBack').onclick=()=>{const v=state.__vxOrcaPrevView||'dashboard';state.__vxOrcaPrevView=null;window.render(v)};
   }
   async function renderOperational(view,label){await baseRender(view);state.view='op:'+view;renderTabs(label);const title=document.querySelector('#title');if(title)title.textContent=label;}
   function lowerTabs(){return `<div class="module-lower-tabs"><button class="active">Oportunidades do Dia</button><button>Casos de Atenção</button><button data-target="agenda-operacional">Minhas Tarefas</button><button data-target="agenda-operacional">Agenda / Compromissos</button><button data-target="estoque-operacional">Pedidos de Peças</button><button>Produtividade / Bonificação</button></div><div class="module-lower-content">Ambiente de homologação — dados fictícios.</div>`}
@@ -251,6 +263,25 @@
     if(view==='estoque'){state.view='estoque';addTab('estoque','Loja');renderTabs('Loja');document.querySelector('#title').textContent='Loja';document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view==='estoque'));loja();return;}
     if(view==='testes'){state.view='testes';addTab('testes','Relatórios');renderTabs('Relatórios');document.querySelector('#title').textContent='Relatórios';document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view==='testes'));relatorios();return;}
     if(view==='usuarios'){state.view='usuarios';addTab('usuarios','Configurações');renderTabs('Configurações');document.querySelector('#title').textContent='Configurações';document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view==='usuarios'));configuracoes();return;}
+    // Achado do usuário (2026-09-15): estas duas telas eram chamadas por
+    // função direta a partir de openTarget(), nunca por window.render --
+    // ficavam invisíveis pro histórico do navegador (mobile-back-nav-
+    // v1.js só registra entrada quando window.render roda e state.view
+    // muda), então o botão/gesto de voltar do Android pulava a tela
+    // inteira. state.__vx*PrevView (mesmo padrão de
+    // state.__vxBonusPrevView em bonus-technician-view-v0912.js) guarda
+    // de onde veio -- só na PRIMEIRA vez (nunca sobrescreve se o usuário
+    // ficar entrando/saindo várias vezes sem soltar a referência).
+    if(view==='orcamentos-aprovacoes'){if(!state.__vxOrcaPrevView)state.__vxOrcaPrevView=state.view;state.view=view;renderOrcamentosAprovacoes();return;}
+    if(view.startsWith('structure:')){
+      const key=view.slice('structure:'.length);
+      if(STRUCTURE_ONLY_TARGETS[key]){
+        if(!state.__vxStructPrevView)state.__vxStructPrevView=state.view;
+        state.view=view;
+        renderStructureOnly(key,...STRUCTURE_ONLY_TARGETS[key]);
+        return;
+      }
+    }
     return baseRender(view);
   };
 })();

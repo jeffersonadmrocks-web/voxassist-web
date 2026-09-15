@@ -58,17 +58,24 @@
         ${isGestor?'<small>Assim que o robô estiver gravando OS (service_orders.source=\'WHIRLPOOL\', mesmo padrão do bridge FG Electrolux), este é o único arquivo a estender -- nenhum outro módulo precisa mudar.</small>':''}
       </div>
     </div>`;
-    document.getElementById('vxWpPortalBack').onclick=()=>window.render(state.view||'dashboard');
+    // state.__vxWpPrevView guarda de onde o usuário veio (mesmo padrão
+    // de state.__vxBonusPrevView em bonus-technician-view-v0912.js) --
+    // nunca state.view aqui, que agora É 'whirlpool-portal' (setado em
+    // renderPage), senão Voltar reabriria a própria tela num loop.
+    document.getElementById('vxWpPortalBack').onclick=()=>{const v=state.__vxWpPrevView||'dashboard';state.__vxWpPrevView=null;window.render(v)};
   }
 
   async function renderPage(){
-    // Nunca seta state.view=VIEW aqui -- esta tela é um drill-down a
-    // partir do card WP/SEG (Atendimento), não um destino de topo do
-    // sidebar (mesmo motivo de renderStructureOnly em
-    // all-menus-layout.js não setar state.view: o botão Voltar usa
-    // state.view||'dashboard' pra saber pra onde voltar -- sobrescrever
-    // aqui faria Voltar reabrir a própria tela WP/SEG num loop).
+    // Achado do usuário (2026-09-15): setar state.view aqui é necessário
+    // pro botão/gesto de voltar do Android funcionar (mobile-back-nav-
+    // v1.js só registra uma entrada de histórico quando state.view muda
+    // de verdade dentro de um window.render) -- só NÃO pode ser lido de
+    // volta pelo botão "← Voltar" em tela (por isso o botão usa
+    // state.__vxWpPrevView, guardado ANTES de sobrescrever, nunca
+    // state.view em si).
     installStyle();
+    if(!state.__vxWpPrevView)state.__vxWpPrevView=state.view;
+    state.view=VIEW;
     const title=document.querySelector('#title');if(title)title.textContent='WP / Seguradora';
     renderHome();
   }
