@@ -177,7 +177,7 @@ async function markExistingSidebarMatches(page,texts,frameFilter){
 // do item real do submenu flutuante. RecentObjects também é bloqueado
 // explicitamente, mesmo sem containerId, por ser um achado concreto (não
 // suposição) de onde o clique errado foi parar.
-async function clickSidebarText(page,texts,frameFilter,containerId){
+async function clickSidebarText(page,texts,frameFilter,containerId,options){
   const frames=frameFilter?(await visibleFrames(page)).filter(frameFilter):await visibleFrames(page);
   const marker="vx"+Math.random().toString(36).slice(2,10);
   for(const frame of frames){
@@ -237,16 +237,94 @@ async function clickSidebarText(page,texts,frameFilter,containerId){
       },{targets:texts,marker,containerId:containerId||null});
     }catch{picked=null;}
     if(!picked)continue;
+    const locator=frame.locator(`[data-vx-click-target="${marker}"]`);
     try{
-      await frame.locator(`[data-vx-click-target="${marker}"]`).click({timeout:5000});
+      // Aproxima a interação humana: hover real antes do clique -- alguns
+      // itens de árvore/menu do SAP só reagem (expandem submenu) a um
+      // mouseover de verdade antes do clique em si, não a um clique
+      // isolado sem o ponteiro ter "passado por cima" primeiro.
+      if(options?.hoverFirst){
+        await locator.hover({timeout:5000}).catch(()=>{});
+        await delay(400);
+      }
+      await locator.click({timeout:5000});
       await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
-      return {clicked:true,target:picked};
+      return {clicked:true,target:picked,frame};
     }catch(e){
       await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
-      return {clicked:false,target:picked,error:String(e?.message||e).slice(0,200)};
+      return {clicked:false,target:picked,frame,error:String(e?.message||e).slice(0,200)};
     }
   }
-  return {clicked:false,target:null};
+  return {clicked:false,target:null,frame:null};
+}
+// Lista rasa (tag+id) de todo elemento com bounding box não-vazia dentro
+// do frame -- usada só como "antes" pra comparar com um "depois" e achar
+// o que realmente surgiu no DOM depois de uma interação (hover/clique).
+async function snapshotVisibleElements(frame){
+  try{
+    return await frame.evaluate(()=>[...document.querySelectorAll("*")].map(node=>{
+      const rect=node.getBoundingClientRect();
+      if(!rect.width||!rect.height)return null;
+      return {tag:node.tagName.toLowerCase(),id:String(node.id||"").slice(0,60)};
+    }).filter(Boolean));
+  }catch{return [];}
+}
+// Diagnóstico só usado quando "Ordens de serviço" não é achado depois de
+// abrir "Pesquisas" -- nunca adivinha um novo container às cegas de novo:
+// registra os atributos reais do próprio link "Pesquisas" (href/onclick/
+// class/lsdata/lsevents -- nenhum é dado sensível, são só handlers de
+// navegação do SAP), o HTML do <li> pai (truncado), tudo que ficou
+// visível DEPOIS da interação que não estava visível ANTES, e toda
+// ocorrência exata (visível ou não) do texto "Ordens de serviço" na
+// página, com tag/id/class/bbox/ancestrais -- pra próxima correção ser
+// baseada em evidência, não em suposição.
+async function captureSubmenuDiagnostics(frame,pesquisasId,beforeSnapshot){
+  try{
+    return await frame.evaluate(({pesquisasId,beforeSnapshot})=>{
+      const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+      const el=pesquisasId?document.getElementById(pesquisasId):null;
+      const pesquisasElement=el?{
+        href:el.getAttribute("href")||null,
+        onclick:el.getAttribute("onclick")||(typeof el.onclick==="function"?"[handler JS vinculado]":null),
+        class:el.getAttribute("class")||null,
+        role:el.getAttribute("role")||null,
+        lsdata:el.getAttribute("lsdata")||null,
+        lsevents:el.getAttribute("lsevents")||null,
+        ariaExpanded:el.getAttribute("aria-expanded")||null
+      }:null;
+      const parentLi=el?.closest("li")||null;
+      const parentLiHtml=parentLi?parentLi.outerHTML.slice(0,1500):null;
+      const afterSnapshot=[...document.querySelectorAll("*")].map(node=>{
+        const rect=node.getBoundingClientRect();
+        if(!rect.width||!rect.height)return null;
+        return {tag:node.tagName.toLowerCase(),id:String(node.id||"").slice(0,60)};
+      }).filter(Boolean);
+      const beforeSet=new Set((beforeSnapshot||[]).map(x=>x.tag+"#"+x.id));
+      const seen=new Set();
+      const newlyVisible=[];
+      for(const x of afterSnapshot){
+        const key=x.tag+"#"+x.id;
+        if(seen.has(key))continue;
+        seen.add(key);
+        if(!beforeSet.has(key))newlyVisible.push(x);
+      }
+      const wanted=["ordens de servico","service orders"];
+      const ordensServicoOccurrences=[...document.querySelectorAll('a,button,[role="button"],[role="menuitem"],span,td,div,li')]
+        .map(node=>{
+          const label=norm(node.innerText||node.textContent||node.title||node.getAttribute("aria-label")||"");
+          if(!wanted.includes(label))return null;
+          const rect=node.getBoundingClientRect();
+          const ancestors=[];
+          let anc=node.parentElement;
+          for(let i=0;i<4&&anc;i++){
+            ancestors.push({tag:(anc.tagName||"").toLowerCase(),id:String(anc.id||"").slice(0,60)});
+            anc=anc.parentElement;
+          }
+          return {tag:node.tagName.toLowerCase(),id:String(node.id||"").slice(0,60),class:String(node.getAttribute("class")||"").slice(0,80),visible:!!(rect.width&&rect.height),left:Math.round(rect.left),top:Math.round(rect.top),width:Math.round(rect.width),height:Math.round(rect.height),ancestors};
+        }).filter(Boolean).slice(0,15);
+      return {pesquisasElement,parentLiHtml,newlyVisible:newlyVisible.slice(0,40),ordensServicoOccurrences};
+    },{pesquisasId,beforeSnapshot});
+  }catch{return null;}
 }
 async function findSearchLimit(page,frameFilter){
   const frames=frameFilter?(await visibleFrames(page)).filter(frameFilter):await visibleFrames(page);
@@ -289,6 +367,8 @@ async function openSearch(page){
   let crmFrame=null;
   let decoysMarked=false;
   let menuContainerId=null;
+  let pesquisasFrame=null;
+  let beforeSubmenuSnapshot=null;
   // Diagnóstico sanitizado (nunca usuário/senha/cookies/tokens) -- cobre
   // exatamente os pontos pedidos: CRMApplicationFrame achado? host? menu
   // Pesquisas acionado? submenu de OS localizado? campo de limite
@@ -329,11 +409,16 @@ async function openSearch(page){
     }
     const now=Date.now();
     if(!searchMenuOpenedAt||now-searchMenuOpenedAt>8000){
-      const rp=await clickSidebarText(page,["Pesquisas","Search"],inCrmFrame);
+      // Snapshot do que já está visível ANTES de tocar em "Pesquisas" --
+      // só na primeira tentativa -- pra depois conseguir comparar e achar
+      // exatamente o que o clique fez aparecer de novo no DOM.
+      if(!beforeSubmenuSnapshot)beforeSubmenuSnapshot=await snapshotVisibleElements(crmFrame);
+      const rp=await clickSidebarText(page,["Pesquisas","Search"],inCrmFrame,null,{hoverFirst:true});
       if(rp.clicked){
         searchMenuOpenedAt=now;
         diag.pesquisasClicked=true;
         diag.pesquisasTarget=rp.target;
+        pesquisasFrame=rp.frame;
         // O <ul> de menu mais próximo onde "Pesquisas" foi encontrado --
         // achado real: sem restringir a busca seguinte a essa mesma
         // árvore, "Ordens de serviço" foi clicado num widget completamente
@@ -366,6 +451,16 @@ async function openSearch(page){
   // navegou -- nunca confundir "tentativa de clique" com "navegação
   // concluída".
   if(diag.ordensServicoClicked&&!diag.maxHitsSeen)diag.classification="SUBMENU_CLICK_DID_NOT_NAVIGATE";
+  // "Pesquisas" foi clicado mas o submenu de "Ordens de serviço" nunca foi
+  // localizado -- em vez de adivinhar um novo container às cegas de novo,
+  // registra evidência real: atributos do próprio link "Pesquisas", o
+  // <li> pai, o que ficou visível depois da interação que não estava
+  // antes, e toda ocorrência exata (visível ou não) de "Ordens de
+  // serviço" na página.
+  if(diag.pesquisasClicked&&!diag.ordensServicoClicked){
+    diag.classification="SUBMENU_NOT_FOUND_AFTER_PESQUISAS";
+    diag.submenuDiagnostics=await captureSubmenuDiagnostics(pesquisasFrame||crmFrame,diag.pesquisasTarget?.id,beforeSubmenuSnapshot);
+  }
   const snapshot=await safeNavigationSnapshot(page);
   throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico: "+JSON.stringify(diag)+" Frames: "+snapshot),{code:"NAVIGATION_FAILURE"});
 }
