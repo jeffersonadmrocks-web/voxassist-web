@@ -180,18 +180,27 @@ async function markExistingSidebarMatches(page,texts,frameFilter){
 async function clickSidebarText(page,texts,frameFilter,containerId,options){
   const frames=frameFilter?(await visibleFrames(page)).filter(frameFilter):await visibleFrames(page);
   const marker="vx"+Math.random().toString(36).slice(2,10);
+  const idSuffixes=options?.idSuffixes||[];
   for(const frame of frames){
     let picked;
     try{
-      picked=await frame.evaluate(({targets,marker,containerId})=>{
+      picked=await frame.evaluate(({targets,marker,containerId,idSuffixes})=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
         const wanted=targets.map(norm);
         const container=containerId?document.getElementById(containerId):null;
         const choices=[...document.querySelectorAll('a,button,[role="button"],[role="menuitem"],span,td,div')]
           .map(node=>{
             const label=node.innerText||node.textContent||node.title||node.getAttribute("aria-label")||"";
-            if(!wanted.includes(norm(label)))return null;
             const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
+            // Achado real (submenuDiagnostics do run #32/#33): o item real
+            // de "Ordens de serviço" tem um id SAP estável e conhecido
+            // (sufixo "_SRV-ORD-SR", igual à própria chave de ação do
+            // onclick htmlbSubmitLib do elemento) -- quando informado,
+            // aceita o candidato por esse id mesmo que o texto normalizado
+            // não bata exatamente, sem abrir mão de nenhuma das checagens
+            // de visibilidade/contêiner abaixo.
+            const idMatch=idSuffixes.some(suf=>(action.id||"").endsWith(suf));
+            if(!wanted.includes(norm(label))&&!idMatch)return null;
             if(action.getAttribute("data-vx-preexisting")==="1")return null;
             // Achado real (2026-09-16): o widget "Objetos recentes" do SAP
             // (RecentObjects) tem uma linha de tabela cujo título também
@@ -234,7 +243,7 @@ async function clickSidebarText(page,texts,frameFilter,containerId,options){
         }
         const label=(chosen.action.innerText||chosen.action.textContent||"").replace(/\s+/g," ").trim().slice(0,60);
         return {tag:(chosen.action.tagName||"").toLowerCase(),id:String(chosen.action.id||"").slice(0,60),text:label,left:Math.round(chosen.left),top:Math.round(chosen.top),width:Math.round(chosen.width),height:Math.round(chosen.height),ancestors};
-      },{targets:texts,marker,containerId:containerId||null});
+      },{targets:texts,marker,containerId:containerId||null,idSuffixes});
     }catch{picked=null;}
     if(!picked)continue;
     const locator=frame.locator(`[data-vx-click-target="${marker}"]`);
@@ -243,9 +252,23 @@ async function clickSidebarText(page,texts,frameFilter,containerId,options){
       // itens de árvore/menu do SAP só reagem (expandem submenu) a um
       // mouseover de verdade antes do clique em si, não a um clique
       // isolado sem o ponteiro ter "passado por cima" primeiro.
-      if(options?.hoverFirst){
+      if(options?.hoverFirst||options?.hoverOnly){
         await locator.hover({timeout:5000}).catch(()=>{});
         await delay(400);
+      }
+      // Achado real (submenuDiagnostics completo do run #32/#33, sem
+      // corte): o próprio link "Pesquisas" (C7_W31_V32_ZSEARCH) tem
+      // onclick com o MESMO id de ação ('SLS-ACT-SR') do seu primeiro
+      // filho "Atividades" (C7_W31_V32_SLS-ACT-SR) -- clicar em
+      // "Pesquisas" nunca abre o menu, apenas repete a ação de
+      // "Atividades" (por isso a tela nunca saía de "Pesquisa:
+      // atividades" mesmo com o clique "bem-sucedido"). Só o hover real
+      // é necessário/correto pra revelar o item real de "Ordens de
+      // serviço" dentro do menu flutuante -- clicar em "Pesquisas" nunca
+      // deve acontecer.
+      if(options?.hoverOnly){
+        await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
+        return {clicked:true,hoveredOnly:true,target:picked,frame};
       }
       await locator.click({timeout:5000});
       await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
@@ -413,7 +436,15 @@ async function openSearch(page){
       // só na primeira tentativa -- pra depois conseguir comparar e achar
       // exatamente o que o clique fez aparecer de novo no DOM.
       if(!beforeSubmenuSnapshot)beforeSubmenuSnapshot=await snapshotVisibleElements(crmFrame);
-      const rp=await clickSidebarText(page,["Pesquisas","Search"],inCrmFrame,null,{hoverFirst:true});
+      // Achado real (submenuDiagnostics completo do run #32/#33): o
+      // próprio link "Pesquisas" tem onclick com o MESMO id de ação do
+      // seu primeiro filho "Atividades" -- clicar nele nunca abre o
+      // menu, só repete a ação de "Atividades" (por isso a tela nunca
+      // saía de "Pesquisa: atividades" mesmo com o clique "bem-sucedido"
+      // segundo o diagnóstico anterior). Por isso agora é só hover (sem
+      // clique) em "Pesquisas" -- o clique real vai só no item do
+      // submenu de verdade.
+      const rp=await clickSidebarText(page,["Pesquisas","Search"],inCrmFrame,null,{hoverOnly:true});
       if(rp.clicked){
         searchMenuOpenedAt=now;
         diag.pesquisasClicked=true;
@@ -432,7 +463,12 @@ async function openSearch(page){
       }
     }
     if(searchMenuOpenedAt){
-      const ro=await clickSidebarText(page,["Ordens de serviço","Service Orders"],inCrmFrame,menuContainerId);
+      // Hover real primeiro também aqui: o item só existe visível
+      // enquanto o "Pesquisas" pai permanece em hover (classe "-hov" via
+      // mouseenter/mouseleave no <li>) -- mover o ponteiro de verdade até
+      // o item antes de clicar evita que o clique caia num alvo que
+      // ficou fora da árvore atualmente hovered.
+      const ro=await clickSidebarText(page,["Ordens de serviço","Service Orders"],inCrmFrame,menuContainerId,{hoverFirst:true,idSuffixes:["_SRV-ORD-SR"]});
       if(ro.clicked){
         diag.ordensServicoClicked=true;
         diag.ordensServicoTarget=ro.target;
