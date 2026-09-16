@@ -201,7 +201,7 @@ async function clickSidebarText(page,texts,frameFilter,containerId,options){
   for(const frame of frames){
     let picked;
     try{
-      picked=await frame.evaluate(({targets,marker,containerId,idSuffixes})=>{
+      picked=await frame.evaluate(({targets,marker,containerId,idSuffixes,arrowSiblingSelector})=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
         const wanted=targets.map(norm);
         const container=containerId?document.getElementById(containerId):null;
@@ -251,7 +251,21 @@ async function clickSidebarText(page,texts,frameFilter,containerId,options){
           }).filter(Boolean).sort((a,b)=>a.priority-b.priority||a.left-b.left||a.top-b.top||a.area-b.area);
         if(!choices.length)return null;
         const chosen=choices[0];
-        chosen.action.setAttribute("data-vx-click-target",marker);
+        // Achado real do usuário (print da tela real): "Pesquisas" é na
+        // prática DOIS alvos clicáveis lado a lado -- o texto em si (ação
+        // padrão, vai direto pra "Atividades", mesmo id de ação
+        // 'SLS-ACT-SR') e uma setinha separada (<div class="th-menu2-arrow">,
+        // irmã do link dentro do mesmo <li>) que é quem de fato abre o
+        // submenu com "Ordens de serviço". Quando arrowSiblingSelector é
+        // informado, o clique real precisa ir nessa seta -- nunca no
+        // próprio texto/link -- mesmo container/<li> do candidato achado
+        // por texto.
+        let clickTarget=chosen.action;
+        if(arrowSiblingSelector){
+          const arrow=chosen.action.closest("li")?.querySelector(arrowSiblingSelector);
+          if(arrow)clickTarget=arrow;
+        }
+        clickTarget.setAttribute("data-vx-click-target",marker);
         const ancestors=[];
         let anc=chosen.action.parentElement;
         for(let i=0;i<4&&anc;i++){
@@ -259,8 +273,8 @@ async function clickSidebarText(page,texts,frameFilter,containerId,options){
           anc=anc.parentElement;
         }
         const label=(chosen.action.innerText||chosen.action.textContent||"").replace(/\s+/g," ").trim().slice(0,60);
-        return {tag:(chosen.action.tagName||"").toLowerCase(),id:String(chosen.action.id||"").slice(0,60),text:label,left:Math.round(chosen.left),top:Math.round(chosen.top),width:Math.round(chosen.width),height:Math.round(chosen.height),ancestors};
-      },{targets:texts,marker,containerId:containerId||null,idSuffixes});
+        return {tag:(chosen.action.tagName||"").toLowerCase(),id:String(chosen.action.id||"").slice(0,60),text:label,left:Math.round(chosen.left),top:Math.round(chosen.top),width:Math.round(chosen.width),height:Math.round(chosen.height),ancestors,clickedArrow:clickTarget!==chosen.action,arrowMissing:!!arrowSiblingSelector&&clickTarget===chosen.action};
+      },{targets:texts,marker,containerId:containerId||null,idSuffixes,arrowSiblingSelector:options?.arrowSiblingSelector||null});
     }catch{picked=null;}
     if(!picked)continue;
     const locator=frame.locator(`[data-vx-click-target="${marker}"]`);
@@ -276,14 +290,14 @@ async function clickSidebarText(page,texts,frameFilter,containerId,options){
       // Achado real (submenuDiagnostics completo do run #32/#33, sem
       // corte): o próprio link "Pesquisas" (C7_W31_V32_ZSEARCH) tem
       // onclick com o MESMO id de ação ('SLS-ACT-SR') do seu primeiro
-      // filho "Atividades" (C7_W31_V32_SLS-ACT-SR) -- clicar em
-      // "Pesquisas" nunca abre o menu, apenas repete a ação de
-      // "Atividades" (por isso a tela nunca saía de "Pesquisa:
-      // atividades" mesmo com o clique "bem-sucedido"). Só o hover real
-      // é necessário/correto pra revelar o item real de "Ordens de
-      // serviço" dentro do menu flutuante -- clicar em "Pesquisas" nunca
-      // deve acontecer.
-      if(options?.hoverOnly){
+      // filho "Atividades" (C7_W31_V32_SLS-ACT-SR) -- clicar nele NUNCA
+      // abre o menu, só repete a ação de "Atividades" (comprovado pelo
+      // print real do usuário: os dois hit-targets são distintos, e o
+      // texto sempre vai pra Atividades). Quando arrowSiblingSelector foi
+      // pedido e a seta não foi encontrada, jamais cair para clicar no
+      // próprio texto -- isso reproduziria exatamente a navegação errada.
+      // Melhor deixar só o hover e falhar depois com diagnóstico claro.
+      if(options?.hoverOnly||picked?.arrowMissing){
         await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
         return {clicked:true,hoveredOnly:true,target:picked,frame};
       }
@@ -455,13 +469,16 @@ async function openSearch(page,maxHits=1000){
       if(!beforeSubmenuSnapshot)beforeSubmenuSnapshot=await snapshotVisibleElements(crmFrame);
       // Achado real (submenuDiagnostics completo do run #32/#33): o
       // próprio link "Pesquisas" tem onclick com o MESMO id de ação do
-      // seu primeiro filho "Atividades" -- clicar nele nunca abre o
-      // menu, só repete a ação de "Atividades" (por isso a tela nunca
-      // saía de "Pesquisa: atividades" mesmo com o clique "bem-sucedido"
-      // segundo o diagnóstico anterior). Por isso agora é só hover (sem
-      // clique) em "Pesquisas" -- o clique real vai só no item do
-      // submenu de verdade.
-      const rp=await clickSidebarText(page,["Pesquisas","Search"],inCrmFrame,null,{hoverOnly:true});
+      // seu primeiro filho "Atividades" -- clicar OU dar hover nele nunca
+      // abre o menu, só repete a ação de "Atividades" (por isso a tela
+      // nunca saía de "Pesquisa: atividades", e o item do submenu
+      // continuava com width/height=0 mesmo com hover confirmado no
+      // <li>). Achado real do usuário (print da tela de produção,
+      // 2026-09-16): "Pesquisas" é DOIS alvos lado a lado -- o texto
+      // (ação padrão) e uma setinha separada (div.th-menu2-arrow, irmã
+      // do link) que é quem de fato abre o submenu com "Ordens de
+      // serviço". O clique real precisa ir na seta, nunca no texto.
+      const rp=await clickSidebarText(page,["Pesquisas","Search"],inCrmFrame,null,{arrowSiblingSelector:".th-menu2-arrow",hoverFirst:true});
       if(rp.clicked){
         searchMenuOpenedAt=now;
         diag.pesquisasClicked=true;
