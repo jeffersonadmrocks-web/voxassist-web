@@ -20,12 +20,15 @@
    (tela de administração/credenciais em Configurações > Integrações,
    que este arquivo nunca duplica nem substitui).
 
-   "Sincronizar agora" chama whirlpool_request_manual_sync, que só zera
-   next_retry_at (nunca ignora CREDENCIAIS_INVALIDAS/PAUSADO/worker em
-   lock) -- não existe forma de disparar o worker instantaneamente
-   (ele só roda via cron do GitHub Actions a cada ~15min), então a
-   cópia da tela é honesta sobre isso: "libera a próxima tentativa",
-   nunca "sincronizando agora". */
+   "Sincronizar agora" (2026-09-16): chama a edge function
+   whirlpool-manual-sync (nunca a RPC direto) -- ela roda
+   whirlpool_request_manual_sync como o próprio usuário (mesma validação
+   de sempre: nunca ignora CREDENCIAIS_INVALIDAS/PAUSADO/worker em lock)
+   e, só se aceita, dispara de verdade um workflow_dispatch no GitHub
+   Actions -- a mesma execução do cron, na hora, sem esperar os ~15min.
+   Se o token do GitHub ainda não estiver configurado no Supabase, a
+   function ainda libera a janela (dispatched:false) e a tela avisa que
+   o disparo real falhou, em vez de fingir sucesso. */
 (function(){
   const VIEW='whirlpool-portal';
   try{ if(typeof navMap!=='undefined') navMap[VIEW]='WP / Seguradora'; }catch(_e){}
@@ -107,7 +110,7 @@
           <div><span>Tentativas de reconexão</span><b>${Number(row.portal_retry_count||0)}</b></div>
           <div><span>Próxima tentativa automática</span><b>${dtFull(row.next_retry_at)}</b></div>
         </div>
-        <div class="vx-wpp-hint">O robô roda pelo cron do GitHub Actions a cada ~15 minutos. "Sincronizar agora" libera essa janela imediatamente em vez de esperar o intervalo de nova tentativa -- não força uma execução instantânea.</div>
+        <div class="vx-wpp-hint">O robô roda pelo cron do GitHub Actions a cada ~15 minutos. "Sincronizar agora" dispara uma execução real imediatamente, sem esperar o próximo ciclo.</div>
       </div>`;
   }
 
@@ -139,8 +142,12 @@
         if(syncBtn.disabled)return;
         syncBtn.disabled=true;
         try{
-          const res=await api('rpc/whirlpool_request_manual_sync',{method:'POST',body:JSON.stringify({p_connection_id:row.id})});
-          toast?.(res?.already_running?'Uma sincronização já está em andamento.':'Solicitação registrada -- a próxima tentativa automática deve ocorrer em minutos.');
+          const r=await fetch(CFG.url+'/functions/v1/whirlpool-manual-sync',{method:'POST',headers:authHeaders(),body:JSON.stringify({connection_id:row.id})});
+          const res=await r.json().catch(()=>({}));
+          if(!r.ok||res?.ok===false)throw new Error(res?.error||'Falha ao disparar a sincronização.');
+          if(res.already_running)toast?.('Uma sincronização já está em andamento.');
+          else if(res.dispatched)toast?.('Execução disparada agora no GitHub Actions.');
+          else toast?.('Próxima tentativa liberada, mas o disparo imediato falhou ('+(res.dispatch_error||'motivo desconhecido')+').','err');
           await renderHome();
         }catch(e){toast?.(e.message,'err');syncBtn.disabled=false;}
       };

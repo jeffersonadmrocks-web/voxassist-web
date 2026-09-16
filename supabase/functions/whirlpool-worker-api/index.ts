@@ -47,6 +47,12 @@ Deno.serve(async req=>{
       const {data,error}=await admin.rpc("whirlpool_worker_claim",{p_connection_id:cid,p_worker_id:String(input.worker_id),p_lease_seconds:Math.min(Number(input.lease_seconds)||900,900)});
       if(error)throw error;return json({...data,connection_id:cid});
     }
+    if(action==="ingest_catalog"){
+      const items=input.items;
+      if(!Array.isArray(items))throw new Error("ITENS_INVALIDOS");
+      const {data,error}=await admin.rpc("whirlpool_ingest_catalog",{p_filial:String(input.filial||""),p_items:items,p_full_scan:Boolean(input.full_scan),p_limit_reached:Boolean(input.limit_reached)});
+      if(error)throw error;return json(data);
+    }
     if(action==="pending"){
       const limit=Math.min(Math.max(Number(input.limit)||3,1),3);
       const {data:q,error}=await admin.from("whirlpool_import_queue").select("id,external_order_id,created_at").eq("state","PENDENTE").eq("queue_reason","ATIVA_NOVA").order("created_at").limit(limit);
