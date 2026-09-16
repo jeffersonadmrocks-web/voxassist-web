@@ -462,7 +462,16 @@ async function openSearch(page){
     diag.submenuDiagnostics=await captureSubmenuDiagnostics(pesquisasFrame||crmFrame,diag.pesquisasTarget?.id,beforeSubmenuSnapshot);
   }
   const snapshot=await safeNavigationSnapshot(page);
-  throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico: "+JSON.stringify(diag)+" Frames: "+snapshot),{code:"NAVIGATION_FAILURE"});
+  // O diagnóstico completo (em especial submenuDiagnostics.parentLiHtml e
+  // ordensServicoOccurrences) pode passar do limite de tamanho de uma
+  // linha de log do GitHub Actions e sair cortado no console -- por isso
+  // é sempre gravado por inteiro em arquivo (sobe junto no artifact de
+  // diagnósticos), e só um resumo enxuto (sem submenuDiagnostics) vai na
+  // mensagem de erro/console.
+  await writeDiagnosticsJson("openSearch-diag",{diag,frames:snapshot}).catch(()=>{});
+  const diagForLog={...diag};
+  if(diagForLog.submenuDiagnostics)diagForLog.submenuDiagnostics="[gravado em arquivo diagnostics -- ver .artifacts/diagnostics/*-diag.json]";
+  throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico: "+JSON.stringify(diagForLog)+" Frames: "+snapshot),{code:"NAVIGATION_FAILURE"});
 }
 
 async function crmTargetFromStartPage(page){
@@ -605,6 +614,22 @@ async function captureDiagnostics(tag){
   }).catch(()=>null);
   if(html)await writeFile(path.join(dir,`${stamp}-${tag}.html`),html);
  }catch{}
+}
+// Diagnósticos ricos (ex.: submenuDiagnostics, com o HTML do <li> pai e
+// todas as ocorrências de "Ordens de serviço") podem ultrapassar o limite
+// de tamanho de uma linha de log do GitHub Actions e/ou o corte de 1600
+// caracteres aplicado à mensagem de erro antes do relatório final --
+// nenhum dos dois é um problema de ferramenta de leitura de log, é
+// truncamento real do próprio worker. Por isso o diagnóstico completo é
+// sempre gravado por inteiro aqui (sobe junto no artifact de
+// diagnósticos), nunca só embutido no texto do erro. Mesma lista de
+// campos sensíveis nunca aparece aqui (são só ids/classes/handlers de
+// navegação do SAP, nunca usuário/senha/cookies/tokens).
+async function writeDiagnosticsJson(tag,data){
+ const dir=path.join(ARTIFACT_DIR,"diagnostics");
+ await mkdir(dir,{recursive:true});
+ const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+ await writeFile(path.join(dir,`${stamp}-${tag}.json`),JSON.stringify(data,null,2));
 }
 async function loginIfNeeded(page,claim){
  await page.goto(PORTAL_URL,{waitUntil:"domcontentloaded",timeout:120000});
