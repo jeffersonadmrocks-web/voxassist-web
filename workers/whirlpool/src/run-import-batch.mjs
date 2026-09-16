@@ -29,16 +29,16 @@ async function workerRequest(action,payload={}){
 }
 async function pendingOrders(){return workerRequest("pending",{limit:LIMIT});}
 const norm=(v="")=>v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
-// O CRM SAP mant\u00e9m mais de uma \u00e1rvore de frames carregada ao mesmo tempo
-// (idiomas/janelas antigas ficam para tr\u00e1s em vez de serem descartadas).
-// getBoundingClientRect() dentro de um frame reflete s\u00f3 o layout LOCAL
-// daquele documento -- um elemento pode ter largura/altura v\u00e1lidas mesmo
-// dentro de um <iframe> que est\u00e1 oculto (display:none/visibility:hidden)
+// O CRM SAP mantém mais de uma árvore de frames carregada ao mesmo tempo
+// (idiomas/janelas antigas ficam para trás em vez de serem descartadas).
+// getBoundingClientRect() dentro de um frame reflete só o layout LOCAL
+// daquele documento -- um elemento pode ter largura/altura válidas mesmo
+// dentro de um <iframe> que está oculto (display:none/visibility:hidden)
 // no documento pai. Sem checar a cadeia de ancestrais, clickText/
-// clickSidebarText podiam clicar de verdade dentro de uma \u00e1rvore CRM
-// invis\u00edvel: a Promise resolvia true, mas a tela que o usu\u00e1rio via nunca
-// mudava. isFrameChainVisible sobe de frame em frame at\u00e9 a main frame
-// confirmando que cada <iframe> da cadeia est\u00e1 de fato vis\u00edvel.
+// clickSidebarText podiam clicar de verdade dentro de uma árvore CRM
+// invisível: a Promise resolvia true, mas a tela que o usuário via nunca
+// mudava. isFrameChainVisible sobe de frame em frame até a main frame
+// confirmando que cada <iframe> da cadeia está de fato visível.
 async function isFrameChainVisible(frame){
   let current=frame;
   for(;;){
@@ -130,13 +130,13 @@ async function waitForTextClick(page,texts,timeout=30000,frameFilter){
   while(Date.now()<end){if(await clickText(page,texts,frameFilter))return true;await delay(500);}
   return false;
 }
-// Marca (data-vx-preexisting) qualquer elemento que j\u00e1 bate com `texts` e
-// j\u00e1 est\u00e1 vis\u00edvel/acion\u00e1vel NESTE momento -- chamado uma vez, antes de
+// Marca (data-vx-preexisting) qualquer elemento que já bate com `texts` e
+// já está visível/acionável NESTE momento -- chamado uma vez, antes de
 // abrir o menu "Pesquisas", pra registrar decoys que existem o tempo
-// todo (ex.: uma caixa lateral "Ordens de servi\u00e7o" fora do submenu real).
-// O item de submenu genu\u00edno s\u00f3 fica vis\u00edvel DEPOIS de abrir "Pesquisas",
-// ent\u00e3o nunca carrega essa marca -- clickSidebarText despreza qualquer
-// candidato marcado, n\u00e3o importa a posi\u00e7\u00e3o/prioridade.
+// todo (ex.: uma caixa lateral "Ordens de serviço" fora do submenu real).
+// O item de submenu genuíno só fica visível DEPOIS de abrir "Pesquisas",
+// então nunca carrega essa marca -- clickSidebarText despreza qualquer
+// candidato marcado, não importa a posição/prioridade.
 async function markExistingSidebarMatches(page,texts,frameFilter){
   const frames=frameFilter?(await visibleFrames(page)).filter(frameFilter):await visibleFrames(page);
   for(const frame of frames){
@@ -155,11 +155,26 @@ async function markExistingSidebarMatches(page,texts,frameFilter){
     }catch{}
   }
 }
+// Acha o candidato certo em JS (mesma lógica de sempre), mas NUNCA clica
+// via element.click() dentro do evaluate -- esse clique é um evento
+// SINTÉTICO (isTrusted=false). O achado do LOGON_BUTTON já mostrou que o
+// SAP pode exigir o pipeline real de clique do navegador pra disparar a
+// navegação de verdade: o clique sintético "funciona" (nenhum erro, o
+// elemento existe e é clicável) mas o SAP simplesmente ignora, e a tela
+// nunca muda -- exatamente o sintoma confirmado visualmente em produção
+// (permanece em "Pesquisa: atividades" mesmo com o clique "bem-sucedido"
+// no log). Por isso: marca o elemento escolhido com um atributo
+// temporário único, devolve diagnóstico sanitizado (tag/id/texto/bbox/
+// ancestrais) de qual elemento foi escolhido, e quem realmente clica é o
+// Playwright (frame.locator(...).click()), que dispara um clique
+// real/confiável.
 async function clickSidebarText(page,texts,frameFilter){
   const frames=frameFilter?(await visibleFrames(page)).filter(frameFilter):await visibleFrames(page);
+  const marker="vx"+Math.random().toString(36).slice(2,10);
   for(const frame of frames){
+    let picked;
     try{
-      const hit=await frame.evaluate(targets=>{
+      picked=await frame.evaluate(({targets,marker})=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
         const wanted=targets.map(norm);
         const choices=[...document.querySelectorAll('a,button,[role="button"],[role="menuitem"],span,td,div')]
@@ -168,10 +183,10 @@ async function clickSidebarText(page,texts,frameFilter){
             if(!wanted.includes(norm(label)))return null;
             const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
             if(action.getAttribute("data-vx-preexisting")==="1")return null;
-            // Um container que engloba a p\u00e1gina inteira (ex.: rootAreaDiv)
-            // n\u00e3o deve ser tratado como item de menu clic\u00e1vel mesmo se seu
+            // Um container que engloba a página inteira (ex.: rootAreaDiv)
+            // não deve ser tratado como item de menu clicável mesmo se seu
             // texto agregado bater por acidente -- um item real de sidebar
-            // n\u00e3o tem dezenas de elementos dentro dele.
+            // não tem dezenas de elementos dentro dele.
             if(action.querySelectorAll("*").length>40)return null;
             const rect=action.getBoundingClientRect();
             if(!rect.width||!rect.height||rect.left>280)return null;
@@ -187,15 +202,32 @@ async function clickSidebarText(page,texts,frameFilter){
             // vez do item de menu real quando os dois batem por texto
             // (mesmo padrão já usado em clickText).
             const interactive=/^(A|BUTTON)$/.test(action.tagName)||["menuitem","button"].includes(action.getAttribute("role")||"");
-            return {action,priority:interactive?0:1,left:rect.left,top:rect.top,area:rect.width*rect.height};
+            return {action,priority:interactive?0:1,left:rect.left,top:rect.top,width:rect.width,height:rect.height,area:rect.width*rect.height};
           }).filter(Boolean).sort((a,b)=>a.priority-b.priority||a.left-b.left||a.top-b.top||a.area-b.area);
-        if(!choices.length)return false;
-        choices[0].action.click();return true;
-      },texts);
-      if(hit)return true;
-    }catch{}
+        if(!choices.length)return null;
+        const chosen=choices[0];
+        chosen.action.setAttribute("data-vx-click-target",marker);
+        const ancestors=[];
+        let anc=chosen.action.parentElement;
+        for(let i=0;i<4&&anc;i++){
+          ancestors.push({tag:(anc.tagName||"").toLowerCase(),id:String(anc.id||"").slice(0,60)});
+          anc=anc.parentElement;
+        }
+        const label=(chosen.action.innerText||chosen.action.textContent||"").replace(/\s+/g," ").trim().slice(0,60);
+        return {tag:(chosen.action.tagName||"").toLowerCase(),id:String(chosen.action.id||"").slice(0,60),text:label,left:Math.round(chosen.left),top:Math.round(chosen.top),width:Math.round(chosen.width),height:Math.round(chosen.height),ancestors};
+      },{targets:texts,marker});
+    }catch{picked=null;}
+    if(!picked)continue;
+    try{
+      await frame.locator(`[data-vx-click-target="${marker}"]`).click({timeout:5000});
+      await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
+      return {clicked:true,target:picked};
+    }catch(e){
+      await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
+      return {clicked:false,target:picked,error:String(e?.message||e).slice(0,200)};
+    }
   }
-  return false;
+  return {clicked:false,target:null};
 }
 async function findSearchLimit(page,frameFilter){
   const frames=frameFilter?(await visibleFrames(page)).filter(frameFilter):await visibleFrames(page);
@@ -277,17 +309,21 @@ async function openSearch(page){
     }
     const now=Date.now();
     if(!searchMenuOpenedAt||now-searchMenuOpenedAt>8000){
-      if(await clickSidebarText(page,["Pesquisas","Search"],inCrmFrame)){
+      const rp=await clickSidebarText(page,["Pesquisas","Search"],inCrmFrame);
+      if(rp.clicked){
         searchMenuOpenedAt=now;
         diag.pesquisasClicked=true;
+        diag.pesquisasTarget=rp.target;
         diag.stage="menu Pesquisas acionado -- abrindo submenu Ordens de serviço";
         await delay(1200);
         continue;
       }
     }
     if(searchMenuOpenedAt){
-      if(await clickSidebarText(page,["Ordens de serviço","Service Orders"],inCrmFrame)){
+      const ro=await clickSidebarText(page,["Ordens de serviço","Service Orders"],inCrmFrame);
+      if(ro.clicked){
         diag.ordensServicoClicked=true;
+        diag.ordensServicoTarget=ro.target;
         diag.stage="submenu Ordens de serviço acionado -- aguardando campo Nº máximo resultados";
         await delay(1500);
         continue;
@@ -295,6 +331,14 @@ async function openSearch(page){
     }
     await delay(750);
   }
+  // Clicar (mesmo com clique real/confiável) não é prova de navegação --
+  // só o campo btqsrvord_max_hits comprova a tela certa (nunca um texto
+  // genérico como "Nº máximo resultados"/"Procurar", que também existe em
+  // "Pesquisa: atividades"). Se o submenu foi clicado mas o campo nunca
+  // apareceu, classifica explicitamente: o clique ocorreu mas a SAP não
+  // navegou -- nunca confundir "tentativa de clique" com "navegação
+  // concluída".
+  if(diag.ordensServicoClicked&&!diag.maxHitsSeen)diag.classification="SUBMENU_CLICK_DID_NOT_NAVIGATE";
   const snapshot=await safeNavigationSnapshot(page);
   throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico: "+JSON.stringify(diag)+" Frames: "+snapshot),{code:"NAVIGATION_FAILURE"});
 }
