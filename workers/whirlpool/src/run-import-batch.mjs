@@ -749,14 +749,20 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits){
     if(!changed)break;
   }
   if(scannedPages===0){
-    await writeDiagnosticsJson("grade-nao-encontrada",{
+    const gridDiag={
       frames:await Promise.all((await visibleFrames(page)).filter(inCrmFrame).map(async f=>{
         const tables=await f.evaluate(()=>[...document.querySelectorAll("table")].map(t=>String(t.id||"").slice(0,90)).filter(Boolean).slice(0,20)).catch(()=>[]);
         let host="";try{host=new URL(f.url()).hostname;}catch{}
         return {host,tables};
       }))
-    });
-    throw Object.assign(new Error("Grade de resultados da pesquisa de OS não carregou em nenhuma página."),{code:"NAVIGATION_FAILURE"});
+    };
+    await writeDiagnosticsJson("grade-nao-encontrada",gridDiag);
+    // Este diagnóstico é pequeno e limitado (só id de tabela por frame,
+    // no máx. 20 por frame) -- ao contrário do submenuDiagnostics gigante
+    // que motivou gravar só em arquivo (run #58), cabe com folga no corte
+    // de 1600 chars da mensagem de erro no console -- inclui direto pra
+    // não depender de baixar o artefato só pra ver o que aconteceu.
+    throw Object.assign(new Error("Grade de resultados da pesquisa de OS não carregou em nenhuma página. Diagnóstico: "+JSON.stringify(gridDiag)),{code:"NAVIGATION_FAILURE"});
   }
   const today=new Date();today.setHours(0,0,0,0);
   const cutoff=new Date(today);cutoff.setDate(cutoff.getDate()-30);
