@@ -713,8 +713,21 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits){
   let ignoredAutEspecial=0;
   let unclassifiedRows=0;
   let scannedPages=0;
+  // Achado real de produção (run #46, 2026-09-16): depois de "Procurar"
+  // ser clicado com sucesso (openSearch() retornou sem lançar erro), a
+  // grade de resultados ainda não tinha renderizado no SAP real -- o
+  // delay fixo de 2.5s do openSearch() nunca foi suficiente pra rede/
+  // backend real. A transição "Avançar" já espera até 30s por uma
+  // mudança de fingerprint; a primeira carga da grade nunca tinha nenhuma
+  // tentativa extra além desse delay fixo. Aplica a mesma janela de
+  // espera aqui, só pra primeira página.
+  let firstResult=await findCatalogResultFrame(page,inCrmFrame);
+  for(let attempt=0;!firstResult&&attempt<30;attempt++){
+    await delay(1000);
+    firstResult=await findCatalogResultFrame(page,inCrmFrame);
+  }
   for(let pageNumber=1;pageNumber<=100;pageNumber++){
-    const result=await findCatalogResultFrame(page,inCrmFrame);
+    const result=pageNumber===1?firstResult:await findCatalogResultFrame(page,inCrmFrame);
     if(!result)break;
     scannedPages++;
     for(const row of result.rows){
@@ -736,6 +749,13 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits){
     if(!changed)break;
   }
   if(scannedPages===0){
+    await writeDiagnosticsJson("grade-nao-encontrada",{
+      frames:await Promise.all((await visibleFrames(page)).filter(inCrmFrame).map(async f=>{
+        const tables=await f.evaluate(()=>[...document.querySelectorAll("table")].map(t=>String(t.id||"").slice(0,90)).filter(Boolean).slice(0,20)).catch(()=>[]);
+        let host="";try{host=new URL(f.url()).hostname;}catch{}
+        return {host,tables};
+      }))
+    });
     throw Object.assign(new Error("Grade de resultados da pesquisa de OS não carregou em nenhuma página."),{code:"NAVIGATION_FAILURE"});
   }
   const today=new Date();today.setHours(0,0,0,0);
