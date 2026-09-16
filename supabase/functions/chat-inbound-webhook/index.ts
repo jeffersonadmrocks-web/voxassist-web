@@ -47,7 +47,7 @@ const GATEWAY_SERVICE_TOKEN = Deno.env.get("CHAT_GATEWAY_SERVICE_TOKEN");
 // ausência e as mensagens do Robô de Atendimento, nenhum segredo novo.
 const GATEWAY_URL = Deno.env.get("CHAT_GATEWAY_URL");
 
-type ConnectionRow = { id: string; company_id: string; status: string };
+type ConnectionRow = { id: string; company_id: string; status: string; paused_at: string | null; external_provider_active: boolean };
 type ConversationRow = { id: string; status: string; last_away_sent_at: string | null; unread_count: number | null };
 // deno-lint-ignore no-explicit-any
 type SupaAdmin = any;
@@ -231,6 +231,20 @@ Deno.serve(async (req) => {
     // abaixo) resolve o eco sozinho -- nenhuma lógica nova de
     // deduplicação foi criada.
     const fromMe = body?.fromMe === true;
+    // P0 de segurança (REALTIME vs IMPORT, incidente 2026-09-16): o
+    // gateway pode entregar mensagens de duas origens bem diferentes --
+    // uma mensagem chegando agora de verdade (Baileys messages.upsert com
+    // type:"notify") ou uma vinda de importação/backfill de histórico
+    // (qualquer outro type, ex.: messaging-history.set). Só a primeira
+    // pode disparar automação (robô/mensagem de ausência) -- histórico
+    // nunca dispara nada, mesmo que pareça "nova" por ainda não estar no
+    // banco. Reaproveita o valor 'IMPORT' que já existe em chat_messages.
+    // origin (chat_import_foundation) e já tem suporte de UI (selo
+    // "Histórico") -- nenhum valor novo de enum. Enquanto o gateway ainda
+    // não manda esse campo, ausência/valor desconhecido cai em REALTIME
+    // -- comportamento visual intocado pra quem ainda não tem a
+    // atualização do gateway.
+    const sourceType = typeof body?.sourceType === "string" && body.sourceType === "IMPORT" ? "IMPORT" : "REALTIME";
     if (!connectionId) {
       // Achado do usuário em 2026-09-02 (pacote P0): nenhum dos dois
       // 400 abaixo logava nada, então uma rejeição real nunca deixava
@@ -260,7 +274,11 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    const { data: connection } = await admin.from("chat_connections").select("id, company_id, status").eq("id", connectionId).maybeSingle<ConnectionRow>();
+    const { data: connection } = await admin
+      .from("chat_connections")
+      .select("id, company_id, status, paused_at, external_provider_active")
+      .eq("id", connectionId)
+      .maybeSingle<ConnectionRow>();
     if (!connection) return json({ ok: false, error: "connection_not_found" }, 404);
 
     // Achado do usuário em 2026-09-03: casar conversa só por remote_jid
@@ -403,7 +421,7 @@ Deno.serve(async (req) => {
       conversation_id: conversationId,
       direction: fromMe ? "OUTBOUND" : "INBOUND",
       from_me: fromMe,
-      origin: "REALTIME",
+      origin: sourceType,
       body: text || null,
       external_message_id: externalMessageId,
       status: "ENVIADA",
@@ -462,7 +480,18 @@ Deno.serve(async (req) => {
     // o atendente falando com o cliente, nunca o cliente pedindo
     // atendimento -- ausência/robô nunca fazem sentido pra ela (não
     // existe "fora do horário" nem triagem pra responder a si mesmo).
-    if (!fromMe) try {
+    //
+    // P0 de segurança (incidente 2026-09-16): três travas adicionais,
+    // qualquer uma delas sozinha já desliga toda automação pra esta
+    // mensagem -- nunca dispara robô/ausência (a) pra mensagem de
+    // importação/histórico (sourceType !== "REALTIME", ver acima), (b)
+    // enquanto a CONEXÃO está em pausa de emergência, ou (c) enquanto
+    // marcada com um provedor externo (ex.: Digisac) ativo. A mensagem
+    // continua sendo gravada normalmente acima -- só a automação é que
+    // fica de fora, pelo mesmo motivo de sempre (nunca perder a
+    // visibilidade da mensagem real do cliente pro atendente humano).
+    const automationAllowed = sourceType === "REALTIME" && !connection.paused_at && !connection.external_provider_active;
+    if (!fromMe && automationAllowed) try {
       const canSend = connection.status === "CONECTADO" && !!GATEWAY_URL && !!GATEWAY_SERVICE_TOKEN;
       const { data: publishedFlowRaw } = await admin
         .from("chat_bot_flow_versions")

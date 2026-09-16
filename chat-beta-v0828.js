@@ -126,6 +126,8 @@
     gateway_unauthorized:'O gateway recusou a autenticação de serviço — não é um problema da sua sessão, é uma configuração pendente (contate o suporte técnico).',
     gateway_unreachable:'Não foi possível contatar o gateway no momento.',
     connection_not_found:'Conexão não encontrada.',
+    connection_paused:'Esta conexão está em pausa de emergência -- retome-a antes de conectar.',
+    external_provider_conflict:'Esta conexão está marcada com um provedor externo (ex.: Digisac) ativo -- resolva o conflito antes de conectar.',
   };
   async function gatewayAction(action,payload){
     const res=await fetch(CFG.url+'/functions/v1/chat-gateway-proxy',{
@@ -382,8 +384,17 @@
   function connectionCard(c){
     const label=STATUS_LABEL[c.status]||{text:c.status,cls:'neutral'};
     const lastConn=c.last_connected_at?new Date(c.last_connected_at).toLocaleString('pt-BR'):'Nunca conectou';
-    const showConnect=c.status==='DESCONECTADO';
-    const showReconnect=c.status==='ERRO'||c.status==='SESSION_INVALID';
+    // P0 de segurança (incidente real 2026-09-16 -- a mesma linha ficou
+    // conectada ao mesmo tempo na Digisac e no gateway Baileys, causando
+    // uma restrição de 10h do WhatsApp): enquanto pausada ou marcada com
+    // outro sistema ativo, connect/reconnect nunca chegam a alcançar o
+    // gateway (bloqueio real em chat-gateway-proxy) -- aqui é só reflexo
+    // visual disso, nunca a única trava.
+    const isPaused=!!c.paused_at;
+    const hasConflict=!!c.external_provider_active;
+    const blocked=isPaused||hasConflict;
+    const showConnect=c.status==='DESCONECTADO'&&!blocked;
+    const showReconnect=(c.status==='ERRO'||c.status==='SESSION_INVALID')&&!blocked;
     const showDisconnect=['CONECTANDO','QR_REQUIRED','CONECTADO','RECONNECTING'].includes(c.status);
     return `<div class="vx-conn-card" data-conn="${E(c.id)}">
       <div class="vx-conn-card-head">
@@ -395,11 +406,15 @@
         <div><span>Número</span><b>${E(c.phone_number||'—')}</b></div>
         <div><span>Última conexão</span><b>${E(lastConn)}</b></div>
       </div>
+      ${isPaused?`<p class="vx-conn-warn">⏸ <b>Pausada</b>${c.pause_reason?': '+E(c.pause_reason):''} -- não conecta nem dispara robô/ausência até você retomar.</p>`:''}
+      ${hasConflict?`<p class="vx-conn-warn">⚠ <b>Conflito com outro sistema</b>${c.external_provider_name?' ('+E(c.external_provider_name)+')':''} -- não conecta nem dispara robô/ausência até você resolver.</p>`:''}
       <div class="vx-conn-card-actions">
         ${showConnect?`<button class="primary" data-action="connect" data-id="${E(c.id)}">Conectar</button>`:''}
         ${showReconnect?`<button class="primary" data-action="reconnect" data-id="${E(c.id)}">Reconectar</button>`:''}
         ${showDisconnect?`<button data-action="disconnect" data-id="${E(c.id)}">Desconectar</button>`:''}
         <button data-action="import" data-id="${E(c.id)}">Importações</button>
+        ${isGestor()?`<button data-action="toggle-pause" data-id="${E(c.id)}" data-paused="${isPaused?'1':'0'}">${isPaused?'▶ Retomar conexão':'⏸ Pausar conexão'}</button>`:''}
+        ${isGestor()?`<button data-action="toggle-conflict" data-id="${E(c.id)}" data-conflict="${hasConflict?'1':'0'}">${hasConflict?'✓ Resolver conflito':'⚠ Marcar conflito com outro sistema'}</button>`:''}
       </div>
     </div>`;
   }
@@ -435,7 +450,7 @@
     </div>`;
     document.getElementById('conexoesBack').onclick=openConversasScreen;
     document.getElementById('novaConexaoForm').onsubmit=handleCreateConexao;
-    document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>handleConnAction(b.dataset.action,b.dataset.id));
+    document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>handleConnAction(b.dataset.action,b.dataset.id,b));
   }
 
   async function handleCreateConexao(e){
@@ -457,8 +472,41 @@
     }
   }
 
-  async function handleConnAction(action,connectionId){
+  async function handleConnAction(action,connectionId,btn){
     if(action==='import'){ await openImportScreen(connectionId); return; }
+    // P0 de segurança (incidente 2026-09-16): pausar/marcar conflito são
+    // um PATCH direto na conexão (mesma policy "Somente GESTOR administra
+    // conexões de chat" já existente, mesmo padrão já usado pra pausar o
+    // Robô de Atendimento) -- nunca fala com o gateway, então funcionam
+    // mesmo com ele desligado/fora do ar.
+    if(action==='toggle-pause'){
+      const pausing=btn?.dataset.paused!=='1';
+      if(pausing&&!confirm('Pausar esta conexão? Ela para de conectar e de disparar robô/mensagem de ausência até você retomar -- use isto se houver risco de duplicidade com outro sistema (ex.: Digisac) atendendo o mesmo número.'))return;
+      const reason=pausing?(prompt('Motivo da pausa (opcional, ajuda quem for retomar depois):')||null):null;
+      try{
+        await api(`chat_connections?id=eq.${connectionId}`,{method:'PATCH',body:JSON.stringify({paused_at:pausing?new Date().toISOString():null,pause_reason:reason})});
+        toast?.(pausing?'Conexão pausada.':'Conexão retomada.');
+        await loadConexoesData();
+        renderConexoesScreen();
+      }catch(err){
+        toast?.('Falha ao pausar/retomar: '+err.message,'err');
+      }
+      return;
+    }
+    if(action==='toggle-conflict'){
+      const marking=btn?.dataset.conflict!=='1';
+      if(marking&&!confirm('Marcar esta conexão como em conflito com outro sistema (ex.: Digisac ainda ativo pro mesmo número)? Ela para de conectar e de disparar robô/mensagem de ausência até você resolver o conflito.'))return;
+      const providerName=marking?(prompt('Qual sistema está ativo pro mesmo número? (ex.: Digisac)')||'OUTRO_SISTEMA'):null;
+      try{
+        await api(`chat_connections?id=eq.${connectionId}`,{method:'PATCH',body:JSON.stringify({external_provider_active:marking,external_provider_name:providerName})});
+        toast?.(marking?'Conflito marcado.':'Conflito resolvido.');
+        await loadConexoesData();
+        renderConexoesScreen();
+      }catch(err){
+        toast?.('Falha ao marcar/resolver conflito: '+err.message,'err');
+      }
+      return;
+    }
     try{
       if(action==='connect'||action==='reconnect'){
         await gatewayAction(action,{connectionId});
