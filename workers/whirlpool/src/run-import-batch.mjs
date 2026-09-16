@@ -28,6 +28,23 @@ async function workerRequest(action,payload={}){
   return JSON.parse(t);
 }
 async function pendingOrders(){return workerRequest("pending",{limit:LIMIT});}
+// Envia o catálogo já classificado (nunca dados pessoais/PDF) pro gateway,
+// que chama whirlpool_ingest_catalog com o service_role -- o worker nunca
+// tem acesso direto à service role key, só ao token OIDC de sempre.
+async function ingestCatalog(filial,items,fullScan,limitReached){
+  return workerRequest("ingest_catalog",{filial,items,full_scan:fullScan,limit_reached:limitReached});
+}
+// Decide full scan (todas as páginas, limite alto) vs incremental (limite
+// menor, mais rápido) -- nunca reprocessa a varredura completa a cada
+// ~15min. Primeira execução (sem last_full_scan_at) força full scan.
+const FULL_SCAN_INTERVAL_MS=Math.max(Number(process.env.WHIRLPOOL_FULL_SCAN_INTERVAL_HOURS)||6,1)*3600000;
+function decideScanMode(claim){
+  const searchLimitFull=Number(claim.search_limit_full)||1000;
+  const searchLimitIncremental=Number(claim.search_limit_incremental)||100;
+  const lastFullScanAt=claim.last_full_scan_at?new Date(claim.last_full_scan_at).getTime():0;
+  const fullScanDue=!lastFullScanAt||(Date.now()-lastFullScanAt)>FULL_SCAN_INTERVAL_MS;
+  return {fullScan:fullScanDue,limit:fullScanDue?searchLimitFull:searchLimitIncremental};
+}
 const norm=(v="")=>v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
 // O CRM SAP mantém mais de uma árvore de frames carregada ao mesmo tempo
 // (idiomas/janelas antigas ficam para trás em vez de serem descartadas).
@@ -384,7 +401,7 @@ async function safeNavigationSnapshot(page){
   }
   return JSON.stringify(frames).slice(0,3000);
 }
-async function openSearch(page){
+async function openSearch(page,maxHits=1000){
   const deadline=Date.now()+45000;
   let searchMenuOpenedAt=0;
   let crmFrame=null;
@@ -423,10 +440,10 @@ async function openSearch(page){
     if(located){
       diag.maxHitsSeen=true;
       diag.stage="campo Nº máximo resultados (btqsrvord_max_hits) encontrado -- clicando Procurar";
-      await located.frame.evaluate(()=>{
+      await located.frame.evaluate((limit)=>{
         const max=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
-        max.value="1000";max.dispatchEvent(new Event("input",{bubbles:true}));max.dispatchEvent(new Event("change",{bubbles:true}));
-      });
+        max.value=String(limit);max.dispatchEvent(new Event("input",{bubbles:true}));max.dispatchEvent(new Event("change",{bubbles:true}));
+      },maxHits);
       if(!(await waitForTextClick(page,["Procurar","Search"],20000,inCrmFrame)))throw new Error("Botão Procurar não localizado na tela de pesquisa de OS.");
       await delay(2500);return;
     }
@@ -508,6 +525,138 @@ async function openSearch(page){
   const diagForLog={...diag};
   if(diagForLog.submenuDiagnostics)diagForLog.submenuDiagnostics="[gravado em arquivo diagnostics -- ver .artifacts/diagnostics/*-diag.json]";
   throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico: "+JSON.stringify(diagForLog)+" Frames: "+snapshot),{code:"NAVIGATION_FAILURE"});
+}
+// Regras de negócio aprovadas (varredura completa de OS Whirlpool):
+// - todo número de 10 dígitos começando com "7015" é uma OS, qualquer que
+//   seja o texto exibido em "Tipo de documento" (BR Ordem de Servico/BR OS
+//   Split/BR OS KAID já observados na prática);
+// - "BR Aut.Especial" é sempre ignorado, mesmo com número parecido;
+// - a classificação usa exclusivamente "Status do Serviço"
+//   (ZZSTATUS_ITEM_SERV), nunca "Status do usuário";
+// - Agendar/Agendado/Em processo AT => IMPORTAR_ATIVA;
+// - Cancelado com data de entrada dentro dos últimos 30 dias (calculado
+//   nesta mesma execução, nunca uma data fixa) => REVISAR_CANCELADA_30_DIAS;
+// - Cancelado mais antigo, Liquidado, ou status desconhecido/sem data
+//   válida => HISTORICO_EXTERNO (sem tratativa nova -- fica só registrado
+//   no catálogo pra auditoria/consulta manual).
+const CATALOG_ACTIVE_STATUSES=new Set(["Agendar","Em processo AT","Agendado"]);
+function isCancelledStatus(value){return norm(value)==="cancelado";}
+function parseBrazilianDateToIso(value){
+  const match=String(value||"").match(/^(\d{2})[./-](\d{2})[./-](\d{4})$/);
+  if(!match)return null;
+  const [,day,month,year]=match;
+  const parsed=new Date(Number(year),Number(month)-1,Number(day));
+  if(Number.isNaN(parsed.getTime()))return null;
+  return `${year}-${month}-${day}`;
+}
+function classifyCatalogRow(row,cutoffIso){
+  const entryDateIso=parseBrazilianDateToIso(row.entryDate);
+  const recentCancelled=isCancelledStatus(row.serviceStatus)&&entryDateIso&&entryDateIso>=cutoffIso;
+  const active=CATALOG_ACTIVE_STATUSES.has(row.serviceStatus);
+  return {
+    externalOrderId:row.externalOrderId,
+    processType:row.processType||null,
+    serviceStatus:row.serviceStatus,
+    entryDate:entryDateIso,
+    disposition:active?"IMPORTAR_ATIVA":recentCancelled?"REVISAR_CANCELADA_30_DIAS":"HISTORICO_EXTERNO",
+    queueReason:active?"ATIVA_NOVA":recentCancelled?"CANCELADA_30_DIAS":null,
+  };
+}
+// Lê a grade de resultados de "Pesquisa: ordens de serviço" -- mesma
+// estrutura de tabela SAP (table[id$="_ResultTable_TableHeader"]) e mesmas
+// colunas (OBJECT_ID/PROCESS_TYPE_TXT/POSTING_DATE/ZZSTATUS_ITEM_SERV) já
+// validadas manualmente em workers/whirlpool/src/inspect-results.mjs --
+// portada aqui verbatim (headless, sem depender de humano) pra alimentar o
+// catálogo automaticamente a cada execução do cron.
+async function readCatalogGridRows(frame){
+  return frame.evaluate(()=>{
+    const clean=(value="")=>value.replace(/\s+/g," ").trim();
+    const directCells=(tr)=>[...tr.children].filter(el=>el.tagName==="TH"||el.tagName==="TD");
+    const cellValue=(cell)=>{
+      const visible=clean(cell.innerText);
+      if(visible)return visible;
+      const text=clean(cell.textContent);
+      if(text)return text;
+      const control=cell.querySelector("input:not([type=hidden]), select, textarea");
+      if(control&&clean(control.value))return clean(control.value);
+      const titled=cell.querySelector("[title]");
+      return titled?clean(titled.getAttribute("title")):"";
+    };
+    for(const table of document.querySelectorAll('table[id$="_ResultTable_TableHeader"]')){
+      const headerRow=table.tHead?.rows?.[0];
+      if(!headerRow)continue;
+      const headers=directCells(headerRow);
+      const fieldName=(cell)=>{const match=cell.id.match(/_col_\d+-([A-Z0-9_]+)-TH$/i);return match?match[1].toUpperCase():"";};
+      const osIndex=headers.findIndex(cell=>fieldName(cell)==="OBJECT_ID");
+      const typeIndex=headers.findIndex(cell=>fieldName(cell)==="PROCESS_TYPE_TXT");
+      const entryDateIndex=headers.findIndex(cell=>fieldName(cell)==="POSTING_DATE");
+      const statusIndex=headers.findIndex(cell=>fieldName(cell)==="ZZSTATUS_ITEM_SERV");
+      if(osIndex<0||typeIndex<0||entryDateIndex<0||statusIndex<0)continue;
+      const rows=[...table.tBodies].flatMap(tbody=>[...tbody.rows].flatMap(tr=>{
+        const cells=directCells(tr);
+        if(cells.length!==headers.length)return [];
+        const externalOrderId=cellValue(cells[osIndex]);
+        if(!/^\d{10}$/.test(externalOrderId))return [];
+        return [{externalOrderId,processType:cellValue(cells[typeIndex]),entryDate:cellValue(cells[entryDateIndex]),serviceStatus:cellValue(cells[statusIndex])}];
+      }));
+      if(rows.length)return rows;
+    }
+    return [];
+  });
+}
+async function findCatalogResultFrame(page,inCrmFrame){
+  for(const frame of (await visibleFrames(page)).filter(inCrmFrame)){
+    try{const rows=await readCatalogGridRows(frame);if(rows.length)return {frame,rows};}catch{}
+  }
+  return null;
+}
+function catalogRowsFingerprint(rows){return rows.map(row=>row.externalOrderId).join("|");}
+// Varre TODAS as páginas da pesquisa de OS (nunca só a primeira), lê e
+// classifica cada linha. Nunca abre/altera nenhuma OS -- só leitura da
+// grade, igual ao modo READ_ONLY de inspect-results.mjs, mas totalmente
+// automático (sem clique humano, sem ENTER no terminal). Falha real de
+// navegação (openSearch) sobe como NAVIGATION_FAILURE, como sempre; se a
+// tela de pesquisa carregar mas a grade de resultados nunca aparecer em
+// nenhuma página, isso também é tratado como falha sistêmica (nunca um
+// "catálogo vazio" silencioso) -- exatamente o pedido de nunca reportar
+// sucesso quando a busca não aconteceu de verdade.
+async function scanServiceOrderCatalog(page,crmFrame,maxHits){
+  await openSearch(page,maxHits);
+  const inCrmFrame=f=>isWithinCrmFrame(f,crmFrame);
+  const collected=new Map();
+  let ignoredAutEspecial=0;
+  let unclassifiedRows=0;
+  let scannedPages=0;
+  for(let pageNumber=1;pageNumber<=100;pageNumber++){
+    const result=await findCatalogResultFrame(page,inCrmFrame);
+    if(!result)break;
+    scannedPages++;
+    for(const row of result.rows){
+      // "BR Aut.Especial" é sempre ignorado, mesmo quando o número também
+      // começa com 7015 -- a exclusão por tipo tem prioridade sobre a
+      // inclusão por prefixo numérico (regra explícita do usuário).
+      if(norm(row.processType).includes("aut especial")||norm(row.processType).includes("aut.especial")){ignoredAutEspecial++;continue;}
+      if(row.externalOrderId.startsWith("7015")){collected.set(row.externalOrderId,row);continue;}
+      unclassifiedRows++;
+    }
+    const before=catalogRowsFingerprint(result.rows);
+    if(!(await clickText(page,["Avançar"],inCrmFrame)))break;
+    let changed=false;
+    for(let attempt=0;attempt<60;attempt++){
+      await delay(500);
+      const next=await findCatalogResultFrame(page,inCrmFrame);
+      if(next&&catalogRowsFingerprint(next.rows)!==before){changed=true;break;}
+    }
+    if(!changed)break;
+  }
+  if(scannedPages===0){
+    throw Object.assign(new Error("Grade de resultados da pesquisa de OS não carregou em nenhuma página."),{code:"NAVIGATION_FAILURE"});
+  }
+  const today=new Date();today.setHours(0,0,0,0);
+  const cutoff=new Date(today);cutoff.setDate(cutoff.getDate()-30);
+  const cutoffIso=cutoff.toISOString().slice(0,10);
+  const items=[...collected.values()].map(row=>classifyCatalogRow(row,cutoffIso));
+  return {items,scannedPages,ignoredAutEspecial,unclassifiedRows,limitReached:collected.size+ignoredAutEspecial+unclassifiedRows>=maxHits,cutoffIso};
 }
 
 async function crmTargetFromStartPage(page){
@@ -741,6 +890,20 @@ try{
  await loginIfNeeded(page,claim);
  page=await selectCrmPage(context,page);
  await page.bringToFront().catch(()=>{});
+ // Varredura automática do catálogo (substitui o fluxo manual
+ // inspect-results.mjs -> prepare-catalog.mjs -> upload-catalog.mjs):
+ // reaproveita a MESMA sessão/lease/navegação já autenticada, sem novo
+ // worker/cron/fila. Falha real de navegação/leitura da grade sobe como
+ // NAVIGATION_FAILURE e é tratada pelo catch externo como falha sistêmica
+ // (nunca finge sucesso quando a busca não aconteceu). A OS aberta durante
+ // o scan nunca fica presa numa tela de detalhe -- é sempre a própria lista
+ // de resultados, então não há "Encerrar" pendente entre o scan e os jobs.
+ const scanMode=decideScanMode(claim);
+ const crmFrameForScan=await findCrmApplicationFrame(page);
+ if(!crmFrameForScan)throw Object.assign(new Error("CRMApplicationFrame não localizado para a varredura do catálogo."),{code:"NAVIGATION_FAILURE"});
+ const scan=await scanServiceOrderCatalog(page,crmFrameForScan,scanMode.limit);
+ const ingestResult=await ingestCatalog(claim.filial,scan.items,scanMode.fullScan,scan.limitReached);
+ console.log("CATALOGO WHIRLPOOL ATUALIZADO: "+JSON.stringify({fullScan:scanMode.fullScan,limit:scanMode.limit,scannedPages:scan.scannedPages,ignoredAutEspecial:scan.ignoredAutEspecial,unclassifiedRows:scan.unclassifiedRows,limitReached:scan.limitReached,...ingestResult}));
  const jobs=await pendingOrders();
  if(!jobs.length)console.log("Nenhuma OS ativa pendente.");
  for(const job of jobs){
