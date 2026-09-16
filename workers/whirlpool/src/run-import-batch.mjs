@@ -59,8 +59,45 @@ async function visibleFrames(page){
   const flags=await Promise.all(frames.map(f=>isFrameChainVisible(f).catch(()=>false)));
   return frames.filter((_,i)=>flags[i]);
 }
-async function clickText(page, texts) {
-  for(const frame of await visibleFrames(page)){
+// Acha o frame cujo próprio <iframe> (no documento pai) tem
+// id="CRMApplicationFrame" -- o operacional real do CRM Whirlpool,
+// confirmado por inspeção manual via DevTools (display:block,
+// visibility:visible, ~1387x911, src em larcrm7.whirlpool.com). Existe
+// também um segundo iframe auxiliar (adrum-xd-store-server-iframe, do
+// AppDynamics) que nunca deve ser usado pra navegação -- restringir pelo
+// id evita cair nele ou em qualquer outra árvore CRM visível/duplicada.
+async function findCrmApplicationFrame(page){
+  for(const frame of page.frames()){
+    let handle;
+    try{handle=await frame.frameElement();}catch{continue;}
+    if(!handle)continue;
+    let id="";
+    try{id=await handle.evaluate(el=>el.id||"");}catch{}
+    await handle.dispose().catch(()=>{});
+    if(id!=="CRMApplicationFrame")continue;
+    let host="";
+    try{host=new URL(frame.url()).hostname;}catch{}
+    if(host!=="larcrm7.whirlpool.com")continue;
+    return frame;
+  }
+  return null;
+}
+// true quando `frame` é o próprio crmFrame ou um descendente dele
+// (subindo por parentFrame()) -- usado como filtro pra nunca clicar fora
+// da árvore operacional confirmada, mesmo que outro texto igual exista
+// visível em outro lugar da página (ex.: "Ordens de serviço" também
+// aparece numa caixa lateral fora do CRM real).
+function isWithinCrmFrame(frame,crmFrame){
+  let current=frame;
+  while(current){
+    if(current===crmFrame)return true;
+    current=current.parentFrame();
+  }
+  return false;
+}
+async function clickText(page, texts, frameFilter) {
+  const frames=frameFilter?(await visibleFrames(page)).filter(frameFilter):await visibleFrames(page);
+  for(const frame of frames){
     try{
       const hit=await frame.evaluate((targets)=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
@@ -88,13 +125,39 @@ async function clickText(page, texts) {
   }
   return false;
 }
-async function waitForTextClick(page,texts,timeout=30000){
+async function waitForTextClick(page,texts,timeout=30000,frameFilter){
   const end=Date.now()+timeout;
-  while(Date.now()<end){if(await clickText(page,texts))return true;await delay(500);}
+  while(Date.now()<end){if(await clickText(page,texts,frameFilter))return true;await delay(500);}
   return false;
 }
-async function clickSidebarText(page,texts){
-  for(const frame of await visibleFrames(page)){
+// Marca (data-vx-preexisting) qualquer elemento que j\u00e1 bate com `texts` e
+// j\u00e1 est\u00e1 vis\u00edvel/acion\u00e1vel NESTE momento -- chamado uma vez, antes de
+// abrir o menu "Pesquisas", pra registrar decoys que existem o tempo
+// todo (ex.: uma caixa lateral "Ordens de servi\u00e7o" fora do submenu real).
+// O item de submenu genu\u00edno s\u00f3 fica vis\u00edvel DEPOIS de abrir "Pesquisas",
+// ent\u00e3o nunca carrega essa marca -- clickSidebarText despreza qualquer
+// candidato marcado, n\u00e3o importa a posi\u00e7\u00e3o/prioridade.
+async function markExistingSidebarMatches(page,texts,frameFilter){
+  const frames=frameFilter?(await visibleFrames(page)).filter(frameFilter):await visibleFrames(page);
+  for(const frame of frames){
+    try{
+      await frame.evaluate(targets=>{
+        const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+        const wanted=targets.map(norm);
+        for(const node of document.querySelectorAll('a,button,[role="button"],[role="menuitem"],span,td,div')){
+          const label=node.innerText||node.textContent||node.title||node.getAttribute("aria-label")||"";
+          if(!wanted.includes(norm(label)))continue;
+          const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
+          const rect=action.getBoundingClientRect();
+          if(rect.width&&rect.height)action.setAttribute("data-vx-preexisting","1");
+        }
+      },texts);
+    }catch{}
+  }
+}
+async function clickSidebarText(page,texts,frameFilter){
+  const frames=frameFilter?(await visibleFrames(page)).filter(frameFilter):await visibleFrames(page);
+  for(const frame of frames){
     try{
       const hit=await frame.evaluate(targets=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
@@ -104,6 +167,7 @@ async function clickSidebarText(page,texts){
             const label=node.innerText||node.textContent||node.title||node.getAttribute("aria-label")||"";
             if(!wanted.includes(norm(label)))return null;
             const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
+            if(action.getAttribute("data-vx-preexisting")==="1")return null;
             // Um container que engloba a p\u00e1gina inteira (ex.: rootAreaDiv)
             // n\u00e3o deve ser tratado como item de menu clic\u00e1vel mesmo se seu
             // texto agregado bater por acidente -- um item real de sidebar
@@ -117,8 +181,14 @@ async function clickSidebarText(page,texts){
               if(style.display==="none"||style.visibility==="hidden"||style.opacity==="0")return null;
               parent=parent.parentElement;
             }
-            return {action,left:rect.left,top:rect.top,area:rect.width*rect.height};
-          }).filter(Boolean).sort((a,b)=>a.left-b.left||a.top-b.top||a.area-b.area);
+            // Prioriza controle genuinamente interativo (link/botão/role
+            // semântico) sobre um span/div/td decorativo que só carrega o
+            // mesmo texto -- evita escolher uma legenda/caixa lateral em
+            // vez do item de menu real quando os dois batem por texto
+            // (mesmo padrão já usado em clickText).
+            const interactive=/^(A|BUTTON)$/.test(action.tagName)||["menuitem","button"].includes(action.getAttribute("role")||"");
+            return {action,priority:interactive?0:1,left:rect.left,top:rect.top,area:rect.width*rect.height};
+          }).filter(Boolean).sort((a,b)=>a.priority-b.priority||a.left-b.left||a.top-b.top||a.area-b.area);
         if(!choices.length)return false;
         choices[0].action.click();return true;
       },texts);
@@ -127,8 +197,9 @@ async function clickSidebarText(page,texts){
   }
   return false;
 }
-async function findSearchLimit(page){
-  for(const frame of await visibleFrames(page)){
+async function findSearchLimit(page,frameFilter){
+  const frames=frameFilter?(await visibleFrames(page)).filter(frameFilter):await visibleFrames(page);
+  for(const frame of frames){
     try{
       const found=await frame.evaluate(()=>{
         const input=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
@@ -164,26 +235,60 @@ async function safeNavigationSnapshot(page){
 async function openSearch(page){
   const deadline=Date.now()+45000;
   let searchMenuOpenedAt=0;
+  let crmFrame=null;
+  let decoysMarked=false;
+  // Diagnóstico sanitizado (nunca usuário/senha/cookies/tokens) -- cobre
+  // exatamente os pontos pedidos: CRMApplicationFrame achado? host? menu
+  // Pesquisas acionado? submenu de OS localizado? campo de limite
+  // apareceu? em qual etapa parou.
+  const diag={crmFrameFound:false,crmFrameHost:null,pesquisasClicked:false,ordensServicoClicked:false,maxHitsSeen:false,stage:"procurando CRMApplicationFrame"};
   while(Date.now()<deadline){
-    const located=await findSearchLimit(page);
+    if(!crmFrame||crmFrame.isDetached()){
+      crmFrame=await findCrmApplicationFrame(page);
+      if(crmFrame){
+        diag.crmFrameFound=true;
+        try{diag.crmFrameHost=new URL(crmFrame.url()).hostname;}catch{}
+        diag.stage="CRMApplicationFrame localizado -- abrindo menu Pesquisas";
+      }
+    }
+    if(!crmFrame){await delay(500);continue;}
+    // Só considera elementos dentro da árvore do CRMApplicationFrame --
+    // nunca a caixa lateral "Ordens de serviço" nem qualquer outra árvore
+    // CRM visível/duplicada que exista fora dele.
+    const inCrmFrame=f=>isWithinCrmFrame(f,crmFrame);
+    // Uma única vez, ANTES de tentar abrir "Pesquisas": marca qualquer
+    // "Ordens de serviço" que já esteja visível agora (decoy) -- o item
+    // real do submenu só aparece depois que "Pesquisas" é clicado, então
+    // nunca carrega essa marca e nunca é descartado por engano.
+    if(!decoysMarked){
+      await markExistingSidebarMatches(page,["Ordens de serviço","Service Orders"],inCrmFrame);
+      decoysMarked=true;
+    }
+    const located=await findSearchLimit(page,inCrmFrame);
     if(located){
+      diag.maxHitsSeen=true;
+      diag.stage="campo Nº máximo resultados (btqsrvord_max_hits) encontrado -- clicando Procurar";
       await located.frame.evaluate(()=>{
         const max=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
         max.value="1000";max.dispatchEvent(new Event("input",{bubbles:true}));max.dispatchEvent(new Event("change",{bubbles:true}));
       });
-      if(!(await waitForTextClick(page,["Procurar","Search"],20000)))throw new Error("Botão Procurar não localizado.");
+      if(!(await waitForTextClick(page,["Procurar","Search"],20000,inCrmFrame)))throw new Error("Botão Procurar não localizado na tela de pesquisa de OS.");
       await delay(2500);return;
     }
     const now=Date.now();
     if(!searchMenuOpenedAt||now-searchMenuOpenedAt>8000){
-      if(await clickSidebarText(page,["Pesquisas","Search"])){
+      if(await clickSidebarText(page,["Pesquisas","Search"],inCrmFrame)){
         searchMenuOpenedAt=now;
+        diag.pesquisasClicked=true;
+        diag.stage="menu Pesquisas acionado -- abrindo submenu Ordens de serviço";
         await delay(1200);
         continue;
       }
     }
     if(searchMenuOpenedAt){
-      if(await clickSidebarText(page,["Ordens de serviço","Service Orders"])){
+      if(await clickSidebarText(page,["Ordens de serviço","Service Orders"],inCrmFrame)){
+        diag.ordensServicoClicked=true;
+        diag.stage="submenu Ordens de serviço acionado -- aguardando campo Nº máximo resultados";
         await delay(1500);
         continue;
       }
@@ -191,7 +296,7 @@ async function openSearch(page){
     await delay(750);
   }
   const snapshot=await safeNavigationSnapshot(page);
-  throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico sanitizado: "+snapshot),{code:"NAVIGATION_FAILURE"});
+  throw Object.assign(new Error("Tela de pesquisa de OS não carregou. Diagnóstico: "+JSON.stringify(diag)+" Frames: "+snapshot),{code:"NAVIGATION_FAILURE"});
 }
 
 async function crmTargetFromStartPage(page){
