@@ -749,9 +749,42 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits){
     if(!changed)break;
   }
   if(scannedPages===0){
+    // Achado real (run #54, 2026-09-16): a tabela de resultados JÁ é
+    // encontrada pelo seletor (table[id$="_ResultTable_TableHeader"]),
+    // mas readCatalogGridRows() mesmo assim devolve 0 linhas -- o
+    // diagnóstico anterior (só a lista de ids de tabela) não bastava pra
+    // saber POR QUE. Agora, pra cada tabela que bate com esse mesmo
+    // sufixo, captura exatamente os mesmos dados que readCatalogGridRows
+    // usa pra decidir (tem thead? quais ids de coluna bateram? quantas
+    // linhas o tbody tem de fato?) -- sem adivinhar qual das quatro
+    // causas possíveis (sem thead, coluna não encontrada, contagem de
+    // células não bate, ou nenhuma linha com OBJECT_ID de 10 dígitos) é
+    // a real.
     const gridDiag={
       frames:await Promise.all((await visibleFrames(page)).filter(inCrmFrame).map(async f=>{
-        const tables=await f.evaluate(()=>[...document.querySelectorAll("table")].map(t=>String(t.id||"").slice(0,90)).filter(Boolean).slice(0,20)).catch(()=>[]);
+        const tables=await f.evaluate(()=>{
+          const directCells=tr=>[...tr.children].filter(el=>el.tagName==="TH"||el.tagName==="TD");
+          const fieldName=cell=>{const m=cell.id.match(/_col_\d+-([A-Z0-9_]+)-TH$/i);return m?m[1].toUpperCase():"";};
+          return [...document.querySelectorAll('table[id$="_ResultTable_TableHeader"]')].map(table=>{
+            const headerRow=table.tHead?.rows?.[0];
+            if(!headerRow)return {id:String(table.id||"").slice(0,90),hasThead:false};
+            const headers=directCells(headerRow);
+            const headerIds=headers.map(c=>String(c.id||"").slice(0,60));
+            const matchedFields=headers.map(fieldName).filter(Boolean);
+            const bodyRows=[...table.tBodies].flatMap(tb=>[...tb.rows]);
+            const firstRowCellCount=bodyRows[0]?directCells(bodyRows[0]).length:null;
+            return {
+              id:String(table.id||"").slice(0,90),
+              hasThead:true,
+              headerCellCount:headers.length,
+              headerIds:headerIds.slice(0,10),
+              matchedFields,
+              tbodyCount:table.tBodies.length,
+              bodyRowCount:bodyRows.length,
+              firstRowCellCount,
+            };
+          });
+        }).catch(()=>[]);
         let host="";try{host=new URL(f.url()).hostname;}catch{}
         return {host,tables};
       }))
