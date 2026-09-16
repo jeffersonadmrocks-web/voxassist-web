@@ -168,21 +168,40 @@ async function markExistingSidebarMatches(page,texts,frameFilter){
 // ancestrais) de qual elemento foi escolhido, e quem realmente clica é o
 // Playwright (frame.locator(...).click()), que dispara um clique
 // real/confiável.
-async function clickSidebarText(page,texts,frameFilter){
+//
+// `containerId`: restringe a busca a descendentes de um elemento (ex.: o
+// <ul> de menu onde "Pesquisas" foi encontrado) -- achado real em
+// produção (2026-09-16): sem essa restrição, "Ordens de serviço" foi
+// clicado no widget "Objetos recentes" (C9_W36_V37_RecentObjects__title,
+// dentro de uma <table>, nada a ver com o submenu de "Pesquisas") em vez
+// do item real do submenu flutuante. RecentObjects também é bloqueado
+// explicitamente, mesmo sem containerId, por ser um achado concreto (não
+// suposição) de onde o clique errado foi parar.
+async function clickSidebarText(page,texts,frameFilter,containerId){
   const frames=frameFilter?(await visibleFrames(page)).filter(frameFilter):await visibleFrames(page);
   const marker="vx"+Math.random().toString(36).slice(2,10);
   for(const frame of frames){
     let picked;
     try{
-      picked=await frame.evaluate(({targets,marker})=>{
+      picked=await frame.evaluate(({targets,marker,containerId})=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
         const wanted=targets.map(norm);
+        const container=containerId?document.getElementById(containerId):null;
         const choices=[...document.querySelectorAll('a,button,[role="button"],[role="menuitem"],span,td,div')]
           .map(node=>{
             const label=node.innerText||node.textContent||node.title||node.getAttribute("aria-label")||"";
             if(!wanted.includes(norm(label)))return null;
             const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
             if(action.getAttribute("data-vx-preexisting")==="1")return null;
+            // Achado real (2026-09-16): o widget "Objetos recentes" do SAP
+            // (RecentObjects) tem uma linha de tabela cujo título também
+            // bate com o texto do submenu -- nunca é um item de menu.
+            if((action.id||"").includes("RecentObjects")||action.closest('[id*="RecentObjects"]'))return null;
+            // Quando o container do menu já é conhecido (ex.: onde
+            // "Pesquisas" foi achado), só aceita candidatos que realmente
+            // pertencem a essa árvore -- nunca um widget não relacionado
+            // que por acaso tem o mesmo texto em outro lugar da página.
+            if(container&&!container.contains(action))return null;
             // Um container que engloba a página inteira (ex.: rootAreaDiv)
             // não deve ser tratado como item de menu clicável mesmo se seu
             // texto agregado bater por acidente -- um item real de sidebar
@@ -215,7 +234,7 @@ async function clickSidebarText(page,texts,frameFilter){
         }
         const label=(chosen.action.innerText||chosen.action.textContent||"").replace(/\s+/g," ").trim().slice(0,60);
         return {tag:(chosen.action.tagName||"").toLowerCase(),id:String(chosen.action.id||"").slice(0,60),text:label,left:Math.round(chosen.left),top:Math.round(chosen.top),width:Math.round(chosen.width),height:Math.round(chosen.height),ancestors};
-      },{targets:texts,marker});
+      },{targets:texts,marker,containerId:containerId||null});
     }catch{picked=null;}
     if(!picked)continue;
     try{
@@ -269,6 +288,7 @@ async function openSearch(page){
   let searchMenuOpenedAt=0;
   let crmFrame=null;
   let decoysMarked=false;
+  let menuContainerId=null;
   // Diagnóstico sanitizado (nunca usuário/senha/cookies/tokens) -- cobre
   // exatamente os pontos pedidos: CRMApplicationFrame achado? host? menu
   // Pesquisas acionado? submenu de OS localizado? campo de limite
@@ -314,13 +334,20 @@ async function openSearch(page){
         searchMenuOpenedAt=now;
         diag.pesquisasClicked=true;
         diag.pesquisasTarget=rp.target;
+        // O <ul> de menu mais próximo onde "Pesquisas" foi encontrado --
+        // achado real: sem restringir a busca seguinte a essa mesma
+        // árvore, "Ordens de serviço" foi clicado num widget completamente
+        // diferente (Objetos recentes) que só coincide no texto.
+        const menuUl=(rp.target?.ancestors||[]).find(a=>a.tag==="ul"&&a.id);
+        if(menuUl)menuContainerId=menuUl.id;
+        diag.menuContainerId=menuContainerId;
         diag.stage="menu Pesquisas acionado -- abrindo submenu Ordens de serviço";
         await delay(1200);
         continue;
       }
     }
     if(searchMenuOpenedAt){
-      const ro=await clickSidebarText(page,["Ordens de serviço","Service Orders"],inCrmFrame);
+      const ro=await clickSidebarText(page,["Ordens de serviço","Service Orders"],inCrmFrame,menuContainerId);
       if(ro.clicked){
         diag.ordensServicoClicked=true;
         diag.ordensServicoTarget=ro.target;
