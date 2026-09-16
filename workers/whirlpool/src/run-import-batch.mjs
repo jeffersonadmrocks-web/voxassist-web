@@ -415,6 +415,63 @@ async function safeNavigationSnapshot(page){
   }
   return JSON.stringify(frames).slice(0,3000);
 }
+// Achado real (print do usuário, 2026-09-16): o botão "Procurar" está
+// visivelmente presente e visível na tela "Pesquisa: ordens de serviço"
+// (confirmado por captura de tela real), mas clickText()/waitForTextClick()
+// -- que fazem match EXATO de texto e clicam via element.click() dentro do
+// evaluate (clique SINTÉTICO, isTrusted=false) -- não o encontraram em 20s.
+// Dois endurecimentos, ambos só ampliam o que já funcionava (nunca
+// restringem): (1) match por "contém", não só igualdade exata, cobre um
+// rótulo com texto extra (ex.: ícone/atalho concatenado ao texto visível);
+// (2) clique real via frame.locator(...).click() em vez de element.click()
+// -- o mesmo padrão já necessário para LOGON_BUTTON e para a seta de
+// "Pesquisas", já que o SAP pode ignorar silenciosamente um clique
+// sintético em ações de submit reais. Também restringe a busca ao frame
+// exato (`located.frame`) onde o campo de limite foi achado, em vez de
+// re-varrer todos os frames que batem com inCrmFrame.
+async function clickTrustedInFrame(frame,texts,timeout=20000){
+  const marker="vx"+Math.random().toString(36).slice(2,10);
+  const end=Date.now()+timeout;
+  while(Date.now()<end){
+    let found=false;
+    try{
+      found=await frame.evaluate(({targets,marker})=>{
+        const norm=v=>String(v||"").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+        const wanted=targets.map(norm);
+        const nodes=[...document.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"],[role="menuitem"],span,td')];
+        const choices=nodes.map(node=>{
+          const label=norm(node.innerText||node.textContent||node.value||node.title||node.getAttribute("aria-label")||"");
+          if(!wanted.some(w=>label.includes(w)))return null;
+          const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
+          const rect=action.getBoundingClientRect();
+          if(!rect.width||!rect.height)return null;
+          let parent=action;
+          while(parent){
+            const style=getComputedStyle(parent);
+            if(style.display==="none"||style.visibility==="hidden"||style.opacity==="0")return null;
+            parent=parent.parentElement;
+          }
+          return {action,priority:/^(A|BUTTON)$/.test(action.tagName)?0:1,area:rect.width*rect.height};
+        }).filter(Boolean).sort((x,y)=>x.priority-y.priority||x.area-y.area);
+        if(!choices.length)return false;
+        choices[0].action.setAttribute("data-vx-click-target",marker);
+        return true;
+      },{targets:texts,marker});
+    }catch{found=false;}
+    if(found){
+      const locator=frame.locator(`[data-vx-click-target="${marker}"]`);
+      try{
+        await locator.click({timeout:3000});
+        await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
+        return true;
+      }catch{
+        await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
+      }
+    }
+    await delay(500);
+  }
+  return false;
+}
 async function openSearch(page,maxHits=1000){
   const deadline=Date.now()+45000;
   let searchMenuOpenedAt=0;
@@ -458,7 +515,19 @@ async function openSearch(page,maxHits=1000){
         const max=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
         max.value=String(limit);max.dispatchEvent(new Event("input",{bubbles:true}));max.dispatchEvent(new Event("change",{bubbles:true}));
       },maxHits);
-      if(!(await waitForTextClick(page,["Procurar","Search"],20000,inCrmFrame)))throw new Error("Botão Procurar não localizado na tela de pesquisa de OS.");
+      if(!(await clickTrustedInFrame(located.frame,["Procurar","Search"],20000))){
+        await writeDiagnosticsJson("procurar-nao-encontrado",{diag,controlsNoFrame:await located.frame.evaluate(()=>{
+          const norm=v=>String(v||"").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+          return [...document.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"],[role="menuitem"],span,td')]
+            .map(node=>{
+              const rect=node.getBoundingClientRect();
+              return {tag:node.tagName.toLowerCase(),id:String(node.id||"").slice(0,90),label:norm(node.innerText||node.textContent||node.value||node.title||node.getAttribute("aria-label")||"").slice(0,60),left:Math.round(rect.left),top:Math.round(rect.top),width:Math.round(rect.width),height:Math.round(rect.height)};
+            })
+            .filter(x=>x.width>0&&x.height>0)
+            .slice(0,60);
+        }).catch(()=>[])});
+        throw new Error("Botão Procurar não localizado na tela de pesquisa de OS.");
+      }
       await delay(2500);return;
     }
     const now=Date.now();
