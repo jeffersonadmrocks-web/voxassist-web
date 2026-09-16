@@ -15,7 +15,7 @@
 // OPTIONS e erros) precisa dos headers de CORS.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { resolveGatewayRequest } from "../_shared/chatGatewayProxy.ts";
+import { checkConnectionSafetyGate, resolveGatewayRequest } from "../_shared/chatGatewayProxy.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -26,7 +26,7 @@ const TIMEOUT_MS = 15000;
 
 type Profile = { active_company_id: string | null };
 type UserCompany = { role: string; active: boolean };
-type ConnectionRow = { id: string; company_id: string };
+type ConnectionRow = { id: string; company_id: string; paused_at: string | null; external_provider_active: boolean };
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
@@ -95,9 +95,30 @@ Deno.serve(async (req) => {
     // porque ele mandou esse valor.
     if (action !== "create") {
       const connectionId = typeof body?.connectionId === "string" ? body.connectionId.trim() : "";
-      const { data: connection } = await admin.from("chat_connections").select("id, company_id").eq("id", connectionId).maybeSingle<ConnectionRow>();
+      const { data: connection } = await admin
+        .from("chat_connections")
+        .select("id, company_id, paused_at, external_provider_active")
+        .eq("id", connectionId)
+        .maybeSingle<ConnectionRow>();
       if (!connection || connection.company_id !== profile.active_company_id) {
         return respond({ ok: false, error: "connection_not_found" }, 404);
+      }
+      const safety = checkConnectionSafetyGate(action, {
+        pausedAt: connection.paused_at,
+        externalProviderActive: connection.external_provider_active,
+      });
+      if (!safety.ok) {
+        return respond(
+          {
+            ok: false,
+            error: safety.error,
+            message:
+              safety.error === "connection_paused"
+                ? "Esta conexão está em pausa de emergência -- retome-a antes de conectar."
+                : "Esta conexão está marcada com um provedor externo (ex.: Digisac) ativo -- resolva o conflito antes de conectar.",
+          },
+          409
+        );
       }
     }
 

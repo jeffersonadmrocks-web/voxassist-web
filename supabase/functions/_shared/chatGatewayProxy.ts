@@ -32,3 +32,24 @@ export function resolveGatewayRequest(
 
   return { ok: false, error: "invalid_action" };
 }
+
+// P0 de segurança (incidente 2026-09-16): a mesma linha ficou conectada
+// simultaneamente na Digisac (fora do VoxAssist) e no gateway Baileys,
+// motivando uma restrição de 10h aplicada pelo WhatsApp. connect/reconnect
+// nunca podem alcançar o gateway enquanto a conexão está em pausa de
+// emergência (paused_at) ou marcada com um provedor externo ativo
+// (external_provider_active) -- "disconnect"/"qr"/"create" nunca são
+// bloqueados por isto (desligar, ler QR ou criar uma conexão nova nunca
+// reproduz o incidente). Função pura (sem tocar rede/DB) pelo mesmo
+// motivo de resolveGatewayRequest acima -- testável sem Supabase real.
+export type ConnectionSafetyState = { pausedAt: string | null; externalProviderActive: boolean };
+
+export function checkConnectionSafetyGate(
+  action: string,
+  connection: ConnectionSafetyState
+): { ok: true } | { ok: false; error: "connection_paused" | "external_provider_conflict" } {
+  if (action !== "connect" && action !== "reconnect") return { ok: true };
+  if (connection.pausedAt) return { ok: false, error: "connection_paused" };
+  if (connection.externalProviderActive) return { ok: false, error: "external_provider_conflict" };
+  return { ok: true };
+}
