@@ -966,7 +966,16 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
       unclassifiedRows++;
     }
     const before=catalogRowsFingerprint(result.rows);
-    if(!(await clickText(page,["Avançar"],inCrmFrame)))break;
+    // Achado real do usuário (2026-09-17, primeira busca que já achou 100
+    // páginas de OS de verdade após a correção do botão Procurar): a
+    // varredura parou na página 1 -- "não passou as páginas". clickText()
+    // usa clique SINTÉTICO (isTrusted=false) e só o texto em português
+    // "Avançar", exatamente os dois problemas já resolvidos pro botão
+    // Procurar (o usuário confirmou por vídeo real que a tela do robô é
+    // em inglês). Reusa clickTrustedInFrame, com clique real, no frame
+    // exato da grade (result.frame) -- nunca refaz a varredura de frames
+    // pra procurar de novo o mesmo controle.
+    if(!(await clickTrustedInFrame(result.frame,["Avançar","Next"],20000)))break;
     let changed=false;
     for(let attempt=0;attempt<60;attempt++){
       await delay(500);
