@@ -1312,6 +1312,13 @@ try{
  const scan=await scanServiceOrderCatalog(page,crmFrameForScan,scanMode.limit,claim.external_partner_id||null);
  const ingestResult=await ingestCatalog(claim.filial,scan.items,scanMode.fullScan,scan.limitReached);
  console.log("CATALOGO WHIRLPOOL ATUALIZADO: "+JSON.stringify({fullScan:scanMode.fullScan,limit:scanMode.limit,scannedPages:scan.scannedPages,ignoredAutEspecial:scan.ignoredAutEspecial,unclassifiedRows:scan.unclassifiedRows,limitReached:scan.limitReached,...ingestResult}));
+ // Achado real do usuário (2026-09-17): uma única OS com status/
+ // classificação fora do esperado não deve travar o lote inteiro --
+ // whirlpool_ingest_catalog agora pula só o item ruim e devolve
+ // "rejected" (nunca descarta silenciosamente). Aqui só dá visibilidade
+ // pra isso -- nunca dado pessoal, só os mesmos campos estruturais já
+ // enviados pro gateway (número da OS, status/classificação recusados).
+ if(ingestResult?.rejected?.length)console.error("WORKER WHIRLPOOL INGEST_REJECTED_ITEMS: "+JSON.stringify(ingestResult.rejected).slice(0,2000));
  const jobs=await pendingOrders();
  if(!jobs.length)console.log("Nenhuma OS ativa pendente.");
  for(const job of jobs){
