@@ -550,6 +550,22 @@ async function collectSearchFormFields(frame){
 // avançada); (2) o contexto LOCAL (linha/li mais próxima, não o
 // documento inteiro) de cada campo btqsrvord_parameters já renderizado
 // -- muito mais denso em informação por caractere que um dump contíguo.
+// Achado real por vídeo do usuário (2026-09-17, CRM_17-09_01.mp4): numa
+// busca em branco de verdade, "ID do parceiro de negócios",
+// "Função parceiro" e "Tipo de ordem de serviço" NÃO existem na tela
+// antes de clicar Procurar -- só aparecem DEPOIS, junto com os
+// resultados reais, injetados pelo próprio SAP (o usuário nunca os
+// preenche manualmente; o parceiro é identificado no login). O
+// diagnóstico anterior (paramContexts cru) desperdiçava o limite de 15
+// itens nos vários sub-widgets de uma ÚNICA linha (FIELD, FIELD__items,
+// FIELD-btn, FIELD__key, OPERATOR, OPERATOR__items, OPERATOR-btn --
+// só uma linha já usa 7). Agora agrupa por ÍNDICE da linha e extrai o
+// nome real do critério do atributo title/aria-label do combobox FIELD
+// ("Choose the field of criterion X") -- uma correspondência exata,
+// nunca adivinhada. Também captura "Saved Searches" (o robô já mostrou
+// linhas dinâmicas diferentes das do usuário antes mesmo de clicar
+// Procurar -- pode ser uma pesquisa padrão diferente carregada por
+// trás, mesmo sem nenhum dos dois mexer nela manualmente).
 async function collectAdvancedSearchDiagnostics(frame){
   return frame.evaluate(()=>{
     const isHidden=(el)=>{
@@ -566,16 +582,30 @@ async function collectAdvancedSearchDiagnostics(frame){
       visible:!isHidden(el),
       onclick:String(el.getAttribute("onclick")||"").slice(0,300),
     })).slice(0,20);
-    const paramNodes=[...document.querySelectorAll('[id*="btqsrvord_parameters"]')];
-    const paramContexts=paramNodes.map(node=>{
-      const row=node.closest('tr,li,[role="row"]')||node.parentElement;
-      return {
-        id:String(node.id||"").slice(0,100),
-        rowHtml:row?row.outerHTML.replace(/\s+/g," ").slice(0,400):null,
-      };
-    }).slice(0,15);
-    return {toggles,paramContexts};
-  }).catch(()=>({toggles:[],paramContexts:[]}));
+    const byIndex=new Map();
+    for(const node of document.querySelectorAll('[id*="btqsrvord_parameters"]')){
+      const m=node.id.match(/btqsrvord_parameters\[(\d+)\]\.(FIELD|OPERATOR|VALUE1)(?:$|[^A-Za-z])/);
+      if(!m)continue;
+      const idx=m[1],part=m[2];
+      if(!byIndex.has(idx))byIndex.set(idx,{index:Number(idx)});
+      const entry=byIndex.get(idx);
+      if(part==="FIELD"&&!entry.fieldId){
+        const label=node.getAttribute("title")||node.getAttribute("aria-label")||"";
+        const fm=label.match(/criterion (.+)$/i);
+        entry.fieldName=(fm?fm[1]:label).slice(0,60);
+        entry.fieldId=String(node.id||"").slice(0,100);
+      }
+      if(part==="VALUE1"&&!entry.valueId){
+        entry.valueId=String(node.id||"").slice(0,100);
+        entry.valueTag=node.tagName.toLowerCase();
+      }
+    }
+    const rows=[...byIndex.values()].sort((a,b)=>a.index-b.index).slice(0,20);
+    let savedSearch=null;
+    const ssEl=document.querySelector('[id*="SavedSearches"]');
+    if(ssEl)savedSearch={id:String(ssEl.id||"").slice(0,100),value:String(ssEl.value||ssEl.textContent||"").slice(0,80)};
+    return {toggles,rows,savedSearch};
+  }).catch(()=>({toggles:[],rows:[],savedSearch:null}));
 }
 async function fillPartnerIdField(frame,partnerId){
   const fields=await collectSearchFormFields(frame);
@@ -640,7 +670,7 @@ async function openSearch(page,maxHits=1000,partnerId=null){
       diag.searchFields=partnerDiag.searchFields;
       diag.partnerIdField=partnerDiag.partnerIdField;
       diag.partnerIdFilled=partnerDiag.partnerIdFilled;
-      diag.advancedSearch=await collectAdvancedSearchDiagnostics(located.frame);
+      diag.advancedSearchBefore=await collectAdvancedSearchDiagnostics(located.frame);
       diag.stage="filtros preenchidos -- clicando Procurar";
       // Achado do usuário (2026-09-17): uma busca em branco (só o limite
       // de resultados) tem que trazer no mínimo os primeiros resultados
@@ -672,7 +702,15 @@ async function openSearch(page,maxHits=1000,partnerId=null){
         throw new Error("Botão Procurar não localizado na tela de pesquisa de OS.");
       }
       await delay(2500);
-      return {searchFields:partnerDiag.searchFields,partnerIdField:partnerDiag.partnerIdField,partnerIdFilled:partnerDiag.partnerIdFilled,advancedSearch:diag.advancedSearch};
+      // Achado real por vídeo do usuário (2026-09-17): no navegador dele,
+      // "ID do parceiro de negócios"/"Função parceiro"/"Tipo de ordem de
+      // serviço" só aparecem DEPOIS de clicar Procurar, injetados pelo
+      // SAP junto com os resultados -- nunca antes. Captura o estado da
+      // busca avançada de novo aqui (pós-clique) pra comparar com o
+      // "before" e confirmar se o mesmo mecanismo dispara (ou não) pra
+      // sessão do robô.
+      diag.advancedSearchAfter=await collectAdvancedSearchDiagnostics(located.frame);
+      return {searchFields:partnerDiag.searchFields,partnerIdField:partnerDiag.partnerIdField,partnerIdFilled:partnerDiag.partnerIdFilled,advancedSearchBefore:diag.advancedSearchBefore,advancedSearchAfter:diag.advancedSearchAfter};
     }
     const now=Date.now();
     if(!searchMenuOpenedAt||now-searchMenuOpenedAt>8000){
@@ -908,7 +946,8 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
       partnerIdField:searchDiag?.partnerIdField||null,
       partnerIdFilled:searchDiag?.partnerIdFilled||false,
       searchFields:searchDiag?.searchFields||[],
-      advancedSearch:searchDiag?.advancedSearch||{toggles:[],paramContexts:[]},
+      advancedSearchBefore:searchDiag?.advancedSearchBefore||{toggles:[],rows:[],savedSearch:null},
+      advancedSearchAfter:searchDiag?.advancedSearchAfter||{toggles:[],rows:[],savedSearch:null},
       frames:await Promise.all((await visibleFrames(page)).filter(inCrmFrame).map(async f=>{
         const tables=await f.evaluate(()=>{
           const directCells=tr=>[...tr.children].filter(el=>el.tagName==="TH"||el.tagName==="TD");
@@ -947,7 +986,8 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
     // advancedSearch agora sai numa linha de console PRÓPRIA (nunca passa
     // pelo .slice do catch externo, que só trunca e.message) -- a
     // mensagem do erro em si volta a ser pequena e estável.
-    console.error("WORKER WHIRLPOOL ADVANCED_SEARCH: "+JSON.stringify(gridDiag.advancedSearch).slice(0,4000));
+    console.error("WORKER WHIRLPOOL ADVANCED_SEARCH_BEFORE: "+JSON.stringify(gridDiag.advancedSearchBefore).slice(0,3000));
+    console.error("WORKER WHIRLPOOL ADVANCED_SEARCH_AFTER: "+JSON.stringify(gridDiag.advancedSearchAfter).slice(0,3000));
     const compactDiag={
       partnerIdField:gridDiag.partnerIdField,
       partnerIdFilled:gridDiag.partnerIdFilled,
@@ -1190,7 +1230,16 @@ try{
  browser=await chromium.launch({channel:"chromium",headless:true,args:["--disable-dev-shm-usage","--no-sandbox","--disable-popup-blocking"]});
  let storageState;
  try{if(claim.session_state)storageState=JSON.parse(claim.session_state);}catch{}
- context=await browser.newContext({storageState,acceptDownloads:true,viewport:{width:1600,height:1000}});
+ // Achado real (pedido do usuário, 2026-09-17): comparar visualmente a
+ // sessão do robô com a sessão manual dele (só assim descobrimos que os
+ // critérios de parceiro são injetados pelo SAP depois do Procurar, não
+ // preenchidos por ele). Grava a sessão inteira em vídeo dentro da
+ // mesma pasta de diagnósticos já publicada como artifact (upload
+ // "always()", nunca só em falha) -- nunca inclui usuário/senha
+ // visíveis (o campo de senha já renderiza mascarado na tela real).
+ const videoDir=path.join(ARTIFACT_DIR,"diagnostics","video");
+ await mkdir(videoDir,{recursive:true});
+ context=await browser.newContext({storageState,acceptDownloads:true,viewport:{width:1600,height:1000},recordVideo:{dir:videoDir,size:{width:1600,height:1000}}});
  page=await context.newPage();
  await loginIfNeeded(page,claim);
  page=await selectCrmPage(context,page);
