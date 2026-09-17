@@ -472,7 +472,68 @@ async function clickTrustedInFrame(frame,texts,timeout=20000){
   }
   return false;
 }
-async function openSearch(page,maxHits=1000){
+// Achado real (prints do usuário, 2026-09-17): a varredura roda com todos
+// os filtros em branco e a grade sempre volta com 0 linhas (thead e
+// colunas corretos -- não é bug de leitura, ver gridDiag em
+// scanServiceOrderCatalog); uma busca preenchendo "ID do parceiro de
+// negócios" (coluna external_partner_id, já existente em
+// whirlpool_connections desde a fundação) devolveu a grade cheia. Em vez
+// de adivinhar o id interno do campo no SAP (nenhum diagnóstico real
+// ainda mostrou esse id), localiza por rótulo/label -- mesmo tipo de
+// correspondência por texto já usado em clickTrustedInFrame/
+// clickSidebarText -- e só preenche quando o rótulo bate com confiança
+// (nunca escreve num campo errado por adivinhação). Preenchimento real
+// via locator.fill() (não value+dispatchEvent sintético), igual ao
+// login. Sempre devolve os rótulos/ids encontrados (sanitizados -- só
+// estrutura do formulário, nunca dado de OS) para diagnóstico, mesmo
+// quando o preenchimento não acontece -- é exatamente essa evidência que
+// falta hoje para tratar com certeza os outros campos vistos no print
+// (Função parceiro, Tipo de ordem de serviço) numa próxima correção.
+async function collectSearchFormFields(frame){
+  return frame.evaluate(()=>{
+    const clean=(v="")=>String(v).replace(/\s+/g," ").trim();
+    const seen=new Set();
+    const fields=[];
+    for(const label of document.querySelectorAll("label")){
+      const text=clean(label.textContent);
+      if(!text)continue;
+      let input=null;
+      const forId=label.getAttribute("for");
+      if(forId)input=document.getElementById(forId);
+      if(!input){
+        const row=label.closest("tr");
+        if(row)input=row.querySelector("input:not([type=hidden]),select,textarea");
+      }
+      if(!input)continue;
+      const key=(input.id||"")+"|"+(input.name||"");
+      if(seen.has(key))continue;
+      seen.add(key);
+      fields.push({label:text.slice(0,60),id:String(input.id||"").slice(0,80),name:String(input.name||"").slice(0,80),tag:input.tagName.toLowerCase()});
+    }
+    return fields.slice(0,40);
+  }).catch(()=>[]);
+}
+async function fillPartnerIdField(frame,partnerId){
+  const fields=await collectSearchFormFields(frame);
+  const match=fields.find(f=>{
+    const n=norm(f.label);
+    return n.includes("parceiro de negoc")||n==="id do parceiro"||n.includes("id do parceiro de negoc");
+  });
+  if(!match||(!match.id&&!match.name))return {searchFields:fields,partnerIdField:match||null,partnerIdFilled:false};
+  // XPath (não CSS.escape, indisponível em Node) -- os ids do SAP nunca
+  // têm aspas, então a interpolação direta via JSON.stringify é segura.
+  const selector=match.id?`xpath=//*[@id=${JSON.stringify(match.id)}]`:`xpath=//*[@name=${JSON.stringify(match.name)}]`;
+  const locator=frame.locator(selector).first();
+  if(!(await locator.count().catch(()=>0)))return {searchFields:fields,partnerIdField:match,partnerIdFilled:false};
+  try{
+    await locator.fill(String(partnerId),{force:true});
+    await locator.dispatchEvent("change").catch(()=>{});
+    return {searchFields:fields,partnerIdField:match,partnerIdFilled:true};
+  }catch{
+    return {searchFields:fields,partnerIdField:match,partnerIdFilled:false};
+  }
+}
+async function openSearch(page,maxHits=1000,partnerId=null){
   const deadline=Date.now()+45000;
   let searchMenuOpenedAt=0;
   let crmFrame=null;
@@ -510,7 +571,12 @@ async function openSearch(page,maxHits=1000){
     const located=await findSearchLimit(page,inCrmFrame);
     if(located){
       diag.maxHitsSeen=true;
-      diag.stage="campo Nº máximo resultados (btqsrvord_max_hits) encontrado -- clicando Procurar";
+      diag.stage="campo Nº máximo resultados (btqsrvord_max_hits) encontrado -- preenchendo filtros";
+      const partnerDiag=partnerId?await fillPartnerIdField(located.frame,partnerId):{searchFields:await collectSearchFormFields(located.frame),partnerIdField:null,partnerIdFilled:false};
+      diag.searchFields=partnerDiag.searchFields;
+      diag.partnerIdField=partnerDiag.partnerIdField;
+      diag.partnerIdFilled=partnerDiag.partnerIdFilled;
+      diag.stage="filtros preenchidos -- clicando Procurar";
       await located.frame.evaluate((limit)=>{
         const max=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
         max.value=String(limit);max.dispatchEvent(new Event("input",{bubbles:true}));max.dispatchEvent(new Event("change",{bubbles:true}));
@@ -528,7 +594,8 @@ async function openSearch(page,maxHits=1000){
         }).catch(()=>[])});
         throw new Error("Botão Procurar não localizado na tela de pesquisa de OS.");
       }
-      await delay(2500);return;
+      await delay(2500);
+      return {searchFields:partnerDiag.searchFields,partnerIdField:partnerDiag.partnerIdField,partnerIdFilled:partnerDiag.partnerIdFilled};
     }
     const now=Date.now();
     if(!searchMenuOpenedAt||now-searchMenuOpenedAt>8000){
@@ -706,8 +773,8 @@ function catalogRowsFingerprint(rows){return rows.map(row=>row.externalOrderId).
 // nenhuma página, isso também é tratado como falha sistêmica (nunca um
 // "catálogo vazio" silencioso) -- exatamente o pedido de nunca reportar
 // sucesso quando a busca não aconteceu de verdade.
-async function scanServiceOrderCatalog(page,crmFrame,maxHits){
-  await openSearch(page,maxHits);
+async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
+  const searchDiag=await openSearch(page,maxHits,partnerId);
   const inCrmFrame=f=>isWithinCrmFrame(f,crmFrame);
   const collected=new Map();
   let ignoredAutEspecial=0;
@@ -761,6 +828,9 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits){
     // células não bate, ou nenhuma linha com OBJECT_ID de 10 dígitos) é
     // a real.
     const gridDiag={
+      partnerIdField:searchDiag?.partnerIdField||null,
+      partnerIdFilled:searchDiag?.partnerIdFilled||false,
+      searchFields:searchDiag?.searchFields||[],
       frames:await Promise.all((await visibleFrames(page)).filter(inCrmFrame).map(async f=>{
         const tables=await f.evaluate(()=>{
           const directCells=tr=>[...tr.children].filter(el=>el.tagName==="TH"||el.tagName==="TD");
@@ -795,7 +865,11 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits){
     // que motivou gravar só em arquivo (run #58), cabe com folga no corte
     // de 1600 chars da mensagem de erro no console -- inclui direto pra
     // não depender de baixar o artefato só pra ver o que aconteceu.
-    throw Object.assign(new Error("Grade de resultados da pesquisa de OS não carregou em nenhuma página. Diagnóstico: "+JSON.stringify(gridDiag)),{code:"NAVIGATION_FAILURE"});
+    // searchFields pode ter até 40 entradas (rótulo completo do
+    // formulário) -- cabe inteiro só no arquivo; a mensagem de erro leva
+    // uma amostra (8) pra nunca estourar o corte de 1600 chars.
+    const compactDiag={...gridDiag,searchFields:gridDiag.searchFields.slice(0,8),searchFieldsTotal:gridDiag.searchFields.length};
+    throw Object.assign(new Error("Grade de resultados da pesquisa de OS não carregou em nenhuma página. Diagnóstico: "+JSON.stringify(compactDiag)),{code:"NAVIGATION_FAILURE"});
   }
   const today=new Date();today.setHours(0,0,0,0);
   const cutoff=new Date(today);cutoff.setDate(cutoff.getDate()-30);
@@ -1046,7 +1120,7 @@ try{
  const scanMode=decideScanMode(claim);
  const crmFrameForScan=await findCrmApplicationFrame(page);
  if(!crmFrameForScan)throw Object.assign(new Error("CRMApplicationFrame não localizado para a varredura do catálogo."),{code:"NAVIGATION_FAILURE"});
- const scan=await scanServiceOrderCatalog(page,crmFrameForScan,scanMode.limit);
+ const scan=await scanServiceOrderCatalog(page,crmFrameForScan,scanMode.limit,claim.external_partner_id||null);
  const ingestResult=await ingestCatalog(claim.filial,scan.items,scanMode.fullScan,scan.limitReached);
  console.log("CATALOGO WHIRLPOOL ATUALIZADO: "+JSON.stringify({fullScan:scanMode.fullScan,limit:scanMode.limit,scannedPages:scan.scannedPages,ignoredAutEspecial:scan.ignoredAutEspecial,unclassifiedRows:scan.unclassifiedRows,limitReached:scan.limitReached,...ingestResult}));
  const jobs=await pendingOrders();
