@@ -642,10 +642,22 @@ async function openSearch(page,maxHits=1000,partnerId=null){
       diag.partnerIdFilled=partnerDiag.partnerIdFilled;
       diag.advancedSearch=await collectAdvancedSearchDiagnostics(located.frame);
       diag.stage="filtros preenchidos -- clicando Procurar";
-      await located.frame.evaluate((limit)=>{
-        const max=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
-        max.value=String(limit);max.dispatchEvent(new Event("input",{bubbles:true}));max.dispatchEvent(new Event("change",{bubbles:true}));
-      },maxHits);
+      // Achado do usuário (2026-09-17): uma busca em branco (só o limite
+      // de resultados) tem que trazer no mínimo os primeiros resultados
+      // até esse limite -- não depende de nenhum critério preenchido.
+      // Isso descarta "faltam critérios" como causa raiz de 0 linhas e
+      // aponta de volta pro próprio preenchimento do limite: value=+
+      // dispatchEvent é sintético (isTrusted=false), o mesmo tipo de
+      // interação que já se provou insuficiente duas vezes nesta mesma
+      // tela (login e o botão Procurar só funcionaram com
+      // locator.click()/fill() reais). Troca pro mesmo preenchimento
+      // real (.fill()) já usado no login, via xpath (nunca CSS.escape,
+      // indisponível em Node) pelo id/name reais já confirmados por
+      // findSearchLimit.
+      const maxHitsSelector=located.found.id?`xpath=//*[@id=${JSON.stringify(located.found.id)}]`:`xpath=//*[@name=${JSON.stringify(located.found.name)}]`;
+      const maxHitsLocator=located.frame.locator(maxHitsSelector).first();
+      await maxHitsLocator.fill(String(maxHits),{force:true});
+      await maxHitsLocator.dispatchEvent("change").catch(()=>{});
       if(!(await clickTrustedInFrame(located.frame,["Procurar","Search"],20000))){
         await writeDiagnosticsJson("procurar-nao-encontrado",{diag,controlsNoFrame:await located.frame.evaluate(()=>{
           const norm=v=>String(v||"").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+/g," ").trim().toLowerCase();
