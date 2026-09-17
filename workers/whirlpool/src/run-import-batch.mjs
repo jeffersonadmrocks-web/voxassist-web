@@ -926,24 +926,21 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
       }))
     };
     await writeDiagnosticsJson("grade-nao-encontrada",gridDiag);
-    // Este diagnóstico é pequeno e limitado (só id de tabela por frame,
-    // no máx. 20 por frame) -- ao contrário do submenuDiagnostics gigante
-    // que motivou gravar só em arquivo (run #58), cabe com folga no corte
-    // de 1600 chars da mensagem de erro no console -- inclui direto pra
-    // não depender de baixar o artefato só pra ver o que aconteceu.
-    // searchFields/advancedSearch podem ter dezenas de entradas -- cabem
-    // inteiros só no arquivo; a mensagem de erro leva uma amostra de cada.
-    // "frames" continua embutido (nunca só no arquivo -- baixar o
-    // artefato depende de blob storage bloqueado neste ambiente).
+    // Achado real (run 35243525866, 2026-09-17): o catch externo aplica
+    // .slice(0,1600) na mensagem do erro antes de imprimir -- não é só
+    // uma estimativa de rodapé de log, é um corte de verdade no próprio
+    // código (linha "WORKER WHIRLPOOL: "+outcome+...+.slice(0,1600)).
+    // Com advancedSearch dentro da mensagem, o JSON estourava esse corte
+    // e "paramContexts" (o dado que mais falta) nunca chegava ao log.
+    // advancedSearch agora sai numa linha de console PRÓPRIA (nunca passa
+    // pelo .slice do catch externo, que só trunca e.message) -- a
+    // mensagem do erro em si volta a ser pequena e estável.
+    console.error("WORKER WHIRLPOOL ADVANCED_SEARCH: "+JSON.stringify(gridDiag.advancedSearch).slice(0,4000));
     const compactDiag={
       partnerIdField:gridDiag.partnerIdField,
       partnerIdFilled:gridDiag.partnerIdFilled,
       searchFields:gridDiag.searchFields.slice(0,8),
       searchFieldsTotal:gridDiag.searchFields.length,
-      advancedSearch:{
-        toggles:gridDiag.advancedSearch.toggles.slice(0,10),
-        paramContexts:gridDiag.advancedSearch.paramContexts.slice(0,6).map(p=>({...p,rowHtml:p.rowHtml?p.rowHtml.slice(0,250):null})),
-      },
       frames:gridDiag.frames,
     };
     throw Object.assign(new Error("Grade de resultados da pesquisa de OS não carregou em nenhuma página. Diagnóstico: "+JSON.stringify(compactDiag)),{code:"NAVIGATION_FAILURE"});
