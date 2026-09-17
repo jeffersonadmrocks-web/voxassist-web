@@ -536,22 +536,46 @@ async function collectSearchFormFields(frame){
 // Achado real (run em produção 35231482782, 2026-09-17): mesmo com a
 // varredura por linha de tabela, só 3 dos ~10 critérios apareceram no
 // diagnóstico, com rótulo "No tokens" (não o nome do campo) e ids reais
-// no padrão `btqsrvord_parameters[N].VALUE1` -- ou seja, a 1ª célula da
-// linha nem sempre é o nome do campo (aqui é um widget de token/tag
-// vazio). Em vez de continuar adivinhando qual célula é o nome, captura
-// o HTML bruto (sanitizado -- só estrutura, nunca dado de OS) do menor
-// ancestral comum de todos os elementos com id contendo
-// "btqsrvord_parameters", pra ver a marcação real de uma vez em vez de
-// mais uma rodada de tentativa e erro em produção.
-async function collectCriteriaHtmlSample(frame){
+// no padrão `btqsrvord_parameters[N].VALUE1`. Um dump bruto do ancestral
+// comum (run 35238136581) mostrou que ele é a área de configuração
+// inteira da busca avançada (id "*_configarea", classe "th-conf-ar"),
+// cheia de boilerplate do widget SAP -- inclusive um link oculto
+// "*_advs0sample_exp_open_link" (cujo onclick chama uma função de
+// RECOLHER, sugerindo que o painel está hoje FECHADO e existe um par
+// "_exp_close_link" ou parecido, visível, que EXPANDE). Um dump
+// contíguo de 500-1200 chars nunca alcança a parte útil em meio a tanto
+// boilerplate. Em vez disso, extração cirúrgica e sanitizada (nunca
+// dado de OS): (1) todo link "*_exp_*" com seu estado de visibilidade
+// real e o onclick (pra achar o toggle certo de abrir a busca
+// avançada); (2) o contexto LOCAL (linha/li mais próxima, não o
+// documento inteiro) de cada campo btqsrvord_parameters já renderizado
+// -- muito mais denso em informação por caractere que um dump contíguo.
+async function collectAdvancedSearchDiagnostics(frame){
   return frame.evaluate(()=>{
-    const nodes=[...document.querySelectorAll('[id*="btqsrvord_parameters"]')];
-    if(!nodes.length)return null;
-    let common=nodes[0];
-    while(common&&!nodes.every(n=>common.contains(n)))common=common.parentElement;
-    if(!common)return null;
-    return common.outerHTML.slice(0,6000);
-  }).catch(()=>null);
+    const isHidden=(el)=>{
+      let node=el;
+      while(node){
+        const style=getComputedStyle(node);
+        if(style.display==="none"||style.visibility==="hidden")return true;
+        node=node.parentElement;
+      }
+      return false;
+    };
+    const toggles=[...document.querySelectorAll('a[id*="_exp_"],[id*="_exp_open"],[id*="_exp_close"]')].map(el=>({
+      id:String(el.id||"").slice(0,100),
+      visible:!isHidden(el),
+      onclick:String(el.getAttribute("onclick")||"").slice(0,300),
+    })).slice(0,20);
+    const paramNodes=[...document.querySelectorAll('[id*="btqsrvord_parameters"]')];
+    const paramContexts=paramNodes.map(node=>{
+      const row=node.closest('tr,li,[role="row"]')||node.parentElement;
+      return {
+        id:String(node.id||"").slice(0,100),
+        rowHtml:row?row.outerHTML.replace(/\s+/g," ").slice(0,400):null,
+      };
+    }).slice(0,15);
+    return {toggles,paramContexts};
+  }).catch(()=>({toggles:[],paramContexts:[]}));
 }
 async function fillPartnerIdField(frame,partnerId){
   const fields=await collectSearchFormFields(frame);
@@ -616,7 +640,7 @@ async function openSearch(page,maxHits=1000,partnerId=null){
       diag.searchFields=partnerDiag.searchFields;
       diag.partnerIdField=partnerDiag.partnerIdField;
       diag.partnerIdFilled=partnerDiag.partnerIdFilled;
-      diag.criteriaHtmlSample=await collectCriteriaHtmlSample(located.frame);
+      diag.advancedSearch=await collectAdvancedSearchDiagnostics(located.frame);
       diag.stage="filtros preenchidos -- clicando Procurar";
       await located.frame.evaluate((limit)=>{
         const max=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
@@ -636,7 +660,7 @@ async function openSearch(page,maxHits=1000,partnerId=null){
         throw new Error("Botão Procurar não localizado na tela de pesquisa de OS.");
       }
       await delay(2500);
-      return {searchFields:partnerDiag.searchFields,partnerIdField:partnerDiag.partnerIdField,partnerIdFilled:partnerDiag.partnerIdFilled,criteriaHtmlSample:diag.criteriaHtmlSample};
+      return {searchFields:partnerDiag.searchFields,partnerIdField:partnerDiag.partnerIdField,partnerIdFilled:partnerDiag.partnerIdFilled,advancedSearch:diag.advancedSearch};
     }
     const now=Date.now();
     if(!searchMenuOpenedAt||now-searchMenuOpenedAt>8000){
@@ -872,7 +896,7 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
       partnerIdField:searchDiag?.partnerIdField||null,
       partnerIdFilled:searchDiag?.partnerIdFilled||false,
       searchFields:searchDiag?.searchFields||[],
-      criteriaHtmlSample:searchDiag?.criteriaHtmlSample||null,
+      advancedSearch:searchDiag?.advancedSearch||{toggles:[],paramContexts:[]},
       frames:await Promise.all((await visibleFrames(page)).filter(inCrmFrame).map(async f=>{
         const tables=await f.evaluate(()=>{
           const directCells=tr=>[...tr.children].filter(el=>el.tagName==="TH"||el.tagName==="TD");
@@ -907,10 +931,21 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
     // que motivou gravar só em arquivo (run #58), cabe com folga no corte
     // de 1600 chars da mensagem de erro no console -- inclui direto pra
     // não depender de baixar o artefato só pra ver o que aconteceu.
-    // searchFields pode ter até 60 entradas e criteriaHtmlSample até 6000
-    // chars -- cabem inteiros só no arquivo; a mensagem de erro leva uma
-    // amostra de cada pra nunca estourar o corte de 1600 chars.
-    const compactDiag={...gridDiag,searchFields:gridDiag.searchFields.slice(0,5),searchFieldsTotal:gridDiag.searchFields.length,criteriaHtmlSample:gridDiag.criteriaHtmlSample?gridDiag.criteriaHtmlSample.slice(0,500):null};
+    // searchFields/advancedSearch podem ter dezenas de entradas -- cabem
+    // inteiros só no arquivo; a mensagem de erro leva uma amostra de cada.
+    // "frames" continua embutido (nunca só no arquivo -- baixar o
+    // artefato depende de blob storage bloqueado neste ambiente).
+    const compactDiag={
+      partnerIdField:gridDiag.partnerIdField,
+      partnerIdFilled:gridDiag.partnerIdFilled,
+      searchFields:gridDiag.searchFields.slice(0,8),
+      searchFieldsTotal:gridDiag.searchFields.length,
+      advancedSearch:{
+        toggles:gridDiag.advancedSearch.toggles.slice(0,10),
+        paramContexts:gridDiag.advancedSearch.paramContexts.slice(0,6).map(p=>({...p,rowHtml:p.rowHtml?p.rowHtml.slice(0,250):null})),
+      },
+      frames:gridDiag.frames,
+    };
     throw Object.assign(new Error("Grade de resultados da pesquisa de OS não carregou em nenhuma página. Diagnóstico: "+JSON.stringify(compactDiag)),{code:"NAVIGATION_FAILURE"});
   }
   const today=new Date();today.setHours(0,0,0,0);
