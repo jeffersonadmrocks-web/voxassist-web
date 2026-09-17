@@ -429,20 +429,56 @@ async function safeNavigationSnapshot(page){
 // sintético em ações de submit reais. Também restringe a busca ao frame
 // exato (`located.frame`) onde o campo de limite foi achado, em vez de
 // re-varrer todos os frames que batem com inCrmFrame.
+//
+// Achado real (vídeo do usuário, 2026-09-17): o "contém" acima é amplo
+// demais -- a tela "Identificar conta" (que o SAP mantém na mesma
+// árvore do frame, sem desmontar, junto com "Pesquisa: ordens de
+// serviço") tem um botão "Procurar conta", que também contém a
+// substring "procurar". O clique real (isTrusted=true, por isso nenhum
+// erro subia) estava acontecendo nesse botão errado, nunca no Procurar
+// da busca de OS -- explica por que a varredura sempre via a grade
+// carregar mas com 0 linhas: a busca de verdade nunca era submetida.
+// A correspondência agora exige que, depois do texto buscado, o rótulo
+// termine OU continue só com caracteres que não sejam letra (ex.: um
+// atalho "(Alt+/)") -- nunca outra palavra colada (como "conta").
+function matchesClickTarget(label,wanted){
+  return wanted.some(w=>{
+    const idx=label.indexOf(w);
+    if(idx<0)return false;
+    const rest=label.slice(idx+w.length).replace(/^\s+/,"");
+    return rest.length===0||!/^[a-z]/i.test(rest);
+  });
+}
+// Achado real (vídeo da própria sessão do robô, run 35254799387,
+// 2026-09-17): o painel de navegação à esquerda da tela "Search: Service
+// Orders" tem um item "Search" (role="menuitem", igual aos itens do menu
+// superior e do submenu -- é a mesma árvore de navegação, só que já
+// mostrando a seção atual em destaque). Esse item bate com o mesmo texto
+// procurado pra achar o botão de submit ("Procurar"/"Search"), e como o
+// clique nele é real (isTrusted=true), clickTrustedInFrame retornava
+// sucesso sem lançar erro -- mas reclicar num item de menu que já está
+// ativo não faz nada, exatamente o congelamento de tela visto no vídeo
+// (nenhuma mudança por 35s+ após preencher o número máximo de
+// resultados) e relatado pelo usuário ("não clica em procurar"). Menu/
+// navegação já tem sua própria função dedicada (clickSidebarText) --
+// clickTrustedInFrame só é usado pra clicar o botão de submit da busca,
+// então itens role="menuitem" nunca são um alvo válido aqui.
 async function clickTrustedInFrame(frame,texts,timeout=20000){
   const marker="vx"+Math.random().toString(36).slice(2,10);
   const end=Date.now()+timeout;
   while(Date.now()<end){
     let found=false;
     try{
-      found=await frame.evaluate(({targets,marker})=>{
+      found=await frame.evaluate(({targets,marker,matchesClickTargetSrc})=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+/g," ").trim().toLowerCase();
         const wanted=targets.map(norm);
-        const nodes=[...document.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"],[role="menuitem"],span,td')];
+        const matchesClickTarget=new Function("return "+matchesClickTargetSrc)();
+        const nodes=[...document.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"],span,td')];
         const choices=nodes.map(node=>{
+          if(node.getAttribute("role")==="menuitem"||node.closest('[role="menuitem"]'))return null;
           const label=norm(node.innerText||node.textContent||node.value||node.title||node.getAttribute("aria-label")||"");
-          if(!wanted.some(w=>label.includes(w)))return null;
-          const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
+          if(!matchesClickTarget(label,wanted))return null;
+          const action=node.closest('a,button,[role="button"]')||node;
           const rect=action.getBoundingClientRect();
           if(!rect.width||!rect.height)return null;
           let parent=action;
@@ -456,7 +492,7 @@ async function clickTrustedInFrame(frame,texts,timeout=20000){
         if(!choices.length)return false;
         choices[0].action.setAttribute("data-vx-click-target",marker);
         return true;
-      },{targets:texts,marker});
+      },{targets:texts,marker,matchesClickTargetSrc:matchesClickTarget.toString()});
     }catch{found=false;}
     if(found){
       const locator=frame.locator(`[data-vx-click-target="${marker}"]`);
@@ -582,9 +618,18 @@ async function collectAdvancedSearchDiagnostics(frame){
       visible:!isHidden(el),
       onclick:String(el.getAttribute("onclick")||"").slice(0,300),
     })).slice(0,20);
+    // Achado real (run 35254799387, 2026-09-17): a regex anterior
+    // ("(?:$|[^A-Za-z])") também batia com ".FIELD__items" (o container
+    // da lista suspensa, um <div> vazio sem title) e ".FIELD-btn" (botão
+    // do combobox) -- como o primeiro elemento a bater vencia
+    // (!entry.fieldId), o real ".FIELD" (o <input role="combobox"> com o
+    // title "Choose the field of criterion X") quase nunca era
+    // considerado, e fieldName sempre saía vazio. Agora exige
+    // correspondência EXATA no fim do id (nunca sufixos como __items/
+    // __key/-btn), tanto pra FIELD quanto pra VALUE1.
     const byIndex=new Map();
     for(const node of document.querySelectorAll('[id*="btqsrvord_parameters"]')){
-      const m=node.id.match(/btqsrvord_parameters\[(\d+)\]\.(FIELD|OPERATOR|VALUE1)(?:$|[^A-Za-z])/);
+      const m=node.id.match(/btqsrvord_parameters\[(\d+)\]\.(FIELD|OPERATOR|VALUE1)$/);
       if(!m)continue;
       const idx=m[1],part=m[2];
       if(!byIndex.has(idx))byIndex.set(idx,{index:Number(idx)});
