@@ -533,6 +533,26 @@ async function collectSearchFormFields(frame){
     return fields.slice(0,60);
   }).catch(()=>[]);
 }
+// Achado real (run em produção 35231482782, 2026-09-17): mesmo com a
+// varredura por linha de tabela, só 3 dos ~10 critérios apareceram no
+// diagnóstico, com rótulo "No tokens" (não o nome do campo) e ids reais
+// no padrão `btqsrvord_parameters[N].VALUE1` -- ou seja, a 1ª célula da
+// linha nem sempre é o nome do campo (aqui é um widget de token/tag
+// vazio). Em vez de continuar adivinhando qual célula é o nome, captura
+// o HTML bruto (sanitizado -- só estrutura, nunca dado de OS) do menor
+// ancestral comum de todos os elementos com id contendo
+// "btqsrvord_parameters", pra ver a marcação real de uma vez em vez de
+// mais uma rodada de tentativa e erro em produção.
+async function collectCriteriaHtmlSample(frame){
+  return frame.evaluate(()=>{
+    const nodes=[...document.querySelectorAll('[id*="btqsrvord_parameters"]')];
+    if(!nodes.length)return null;
+    let common=nodes[0];
+    while(common&&!nodes.every(n=>common.contains(n)))common=common.parentElement;
+    if(!common)return null;
+    return common.outerHTML.slice(0,6000);
+  }).catch(()=>null);
+}
 async function fillPartnerIdField(frame,partnerId){
   const fields=await collectSearchFormFields(frame);
   const match=fields.find(f=>{
@@ -596,6 +616,7 @@ async function openSearch(page,maxHits=1000,partnerId=null){
       diag.searchFields=partnerDiag.searchFields;
       diag.partnerIdField=partnerDiag.partnerIdField;
       diag.partnerIdFilled=partnerDiag.partnerIdFilled;
+      diag.criteriaHtmlSample=await collectCriteriaHtmlSample(located.frame);
       diag.stage="filtros preenchidos -- clicando Procurar";
       await located.frame.evaluate((limit)=>{
         const max=[...document.querySelectorAll("input")].find(x=>/btqsrvord_max_hits$/i.test(x.id||x.name||""));
@@ -615,7 +636,7 @@ async function openSearch(page,maxHits=1000,partnerId=null){
         throw new Error("Botão Procurar não localizado na tela de pesquisa de OS.");
       }
       await delay(2500);
-      return {searchFields:partnerDiag.searchFields,partnerIdField:partnerDiag.partnerIdField,partnerIdFilled:partnerDiag.partnerIdFilled};
+      return {searchFields:partnerDiag.searchFields,partnerIdField:partnerDiag.partnerIdField,partnerIdFilled:partnerDiag.partnerIdFilled,criteriaHtmlSample:diag.criteriaHtmlSample};
     }
     const now=Date.now();
     if(!searchMenuOpenedAt||now-searchMenuOpenedAt>8000){
@@ -851,6 +872,7 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
       partnerIdField:searchDiag?.partnerIdField||null,
       partnerIdFilled:searchDiag?.partnerIdFilled||false,
       searchFields:searchDiag?.searchFields||[],
+      criteriaHtmlSample:searchDiag?.criteriaHtmlSample||null,
       frames:await Promise.all((await visibleFrames(page)).filter(inCrmFrame).map(async f=>{
         const tables=await f.evaluate(()=>{
           const directCells=tr=>[...tr.children].filter(el=>el.tagName==="TH"||el.tagName==="TD");
@@ -885,10 +907,10 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
     // que motivou gravar só em arquivo (run #58), cabe com folga no corte
     // de 1600 chars da mensagem de erro no console -- inclui direto pra
     // não depender de baixar o artefato só pra ver o que aconteceu.
-    // searchFields pode ter até 40 entradas (rótulo completo do
-    // formulário) -- cabe inteiro só no arquivo; a mensagem de erro leva
-    // uma amostra (8) pra nunca estourar o corte de 1600 chars.
-    const compactDiag={...gridDiag,searchFields:gridDiag.searchFields.slice(0,8),searchFieldsTotal:gridDiag.searchFields.length};
+    // searchFields pode ter até 60 entradas e criteriaHtmlSample até 6000
+    // chars -- cabem inteiros só no arquivo; a mensagem de erro leva uma
+    // amostra de cada pra nunca estourar o corte de 1600 chars.
+    const compactDiag={...gridDiag,searchFields:gridDiag.searchFields.slice(0,5),searchFieldsTotal:gridDiag.searchFields.length,criteriaHtmlSample:gridDiag.criteriaHtmlSample?gridDiag.criteriaHtmlSample.slice(0,500):null};
     throw Object.assign(new Error("Grade de resultados da pesquisa de OS não carregou em nenhuma página. Diagnóstico: "+JSON.stringify(compactDiag)),{code:"NAVIGATION_FAILURE"});
   }
   const today=new Date();today.setHours(0,0,0,0);
