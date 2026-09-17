@@ -510,7 +510,27 @@ async function collectSearchFormFields(frame){
       seen.add(key);
       fields.push({label:text.slice(0,60),id:String(input.id||"").slice(0,80),name:String(input.name||"").slice(0,80),tag:input.tagName.toLowerCase()});
     }
-    return fields.slice(0,40);
+    // Achado real (print do usuário, 2026-09-17): a grade de critérios da
+    // tela "Pesquisa: ordens de serviço" ("ID do parceiro de negócios",
+    // "Função parceiro" etc.) NUNCA usa <label> -- cada critério é uma
+    // <tr> com o nome do campo em texto puro na 1ª célula, um <select> de
+    // operador ("é") na 2ª e o campo de valor na 3ª. Sem isso, nenhum dos
+    // campos de critério real aparecia no diagnóstico (só os controles
+    // genéricos da barra de busca, que têm <label>). O valor é sempre o
+    // primeiro input de TEXTO da linha -- nunca o <select> do operador.
+    for(const row of document.querySelectorAll("tr")){
+      const cells=[...row.children].filter(el=>el.tagName==="TD"||el.tagName==="TH");
+      if(cells.length<2)continue;
+      const firstCellText=clean(cells[0].innerText||cells[0].textContent||"");
+      if(!firstCellText||firstCellText.length>60)continue;
+      const valueInput=row.querySelector('input[type="text"],input:not([type])');
+      if(!valueInput)continue;
+      const key=(valueInput.id||"")+"|"+(valueInput.name||"");
+      if(seen.has(key))continue;
+      seen.add(key);
+      fields.push({label:firstCellText,id:String(valueInput.id||"").slice(0,80),name:String(valueInput.name||"").slice(0,80),tag:valueInput.tagName.toLowerCase()});
+    }
+    return fields.slice(0,60);
   }).catch(()=>[]);
 }
 async function fillPartnerIdField(frame,partnerId){
