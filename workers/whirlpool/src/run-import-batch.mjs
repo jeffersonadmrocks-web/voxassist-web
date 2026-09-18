@@ -1109,23 +1109,54 @@ async function selectCrmPage(context,initialPage){
   })).catch(()=>null);
   throw Object.assign(new Error("Janela operacional do CRM não foi aberta. Diagnóstico sanitizado: "+JSON.stringify({pages:context.pages().length,start,frames:JSON.parse(diagnostic)}).slice(0,1400)),{code:"NAVIGATION_FAILURE"});
 }
+// Achado real por print do usuário (2026-09-18, run 35350395721): abrir
+// uma OS específica da fila (após o scan já paginar certo) levou a uma
+// página de erro do próprio SAP ICM ("Service cannot be reached", HTTP
+// 404 -- nunca gerado pelo nosso código, é o SAP recusando a chamada).
+// A única ação de clique nesse fluxo que ainda restava sintética
+// (element.click() dentro do evaluate, isTrusted=false) era abrir a
+// linha da OS na grade -- o código achava a linha, "clicava" e
+// retornava OPENED como se tivesse navegado, mas o SAP nunca processava
+// esse clique de verdade -- deixando a aba/sessão num estado quebrado
+// que a próxima chamada real (a do botão "Visualização") via como um
+// serviço indisponível. Mesmo padrão já corrigido em login/Procurar/
+// menu/paginação: marca o elemento e clica de verdade via
+// frame.locator().click(), fora do evaluate.
 async function inspectAndOpen(frame,id){
- return frame.evaluate((target)=>{
+ const marker="vx"+Math.random().toString(36).slice(2,10);
+ const found=await frame.evaluate(({target,marker})=>{
   const clean=v=>String(v||"").replace(/\s+/g," ").trim();
   for(const table of document.querySelectorAll('table[id$="_ResultTable_TableHeader"]')){
    const h=table.tHead?.rows?.[0];if(!h)continue;
    const idx=[...h.cells].findIndex(c=>/-OBJECT_ID-TH$/i.test(c.id));if(idx<0)continue;
    for(const body of table.tBodies)for(const row of body.rows){
     const cell=row.cells[idx];if(clean(cell?.innerText||cell?.textContent)!==target)continue;
-    const action=cell.querySelector("a,button");if(!action)return "NO_ACTION";action.click();return "OPENED";
+    const action=cell.querySelector("a,button");if(!action)return "NO_ACTION";
+    action.setAttribute("data-vx-click-target",marker);return "OPENED";
    }
   }return "NOT_FOUND";
- },id);
+ },{target:id,marker});
+ if(found==="OPENED"){
+  try{
+   await frame.locator(`[data-vx-click-target="${marker}"]`).click({timeout:3000});
+  }catch{
+   await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
+   return "NO_ACTION";
+  }
+ }
+ return found;
 }
 async function openOrder(page,id){
  for(let n=1;n<=100;n++){
   for(const frame of await visibleFrames(page)){try{const r=await inspectAndOpen(frame,id);if(r==="OPENED"){await delay(2000);return;}if(r==="NO_ACTION")throw new Error("OS sem link.");}catch(e){if(e.message==="OS sem link.")throw e;}}
-  if(!(await clickText(page,["Avançar"])))break;
+  // Mesma correção já validada em scanServiceOrderCatalog: o rótulo real
+  // de paginação na tela em inglês é "Forward" (confirmado por print do
+  // usuário), nunca só "Avançar", e só responde a clique confiável.
+  let advanced=false;
+  for(const frame of await visibleFrames(page)){
+   if(await clickTrustedInFrame(frame,["Avançar","Forward","Next"],300)){advanced=true;break;}
+  }
+  if(!advanced)break;
   await delay(1200);
  }
  throw new Error(`OS ${id} não localizada.`);
