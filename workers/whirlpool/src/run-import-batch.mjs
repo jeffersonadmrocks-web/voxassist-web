@@ -10,6 +10,30 @@ const workerApiUrl = process.env.WHIRLPOOL_WORKER_API_URL || "https://dgasmtvpgi
 if (new URL(workerApiUrl).hostname !== "dgasmtvpgifceyqufcfg.supabase.co") throw new Error("Gateway Supabase não autorizado.");
 assertWhirlpoolUrl(PORTAL_URL);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Achado real do usuário (2026-09-18, run 35374529545): depois do scan
+// completar as 100 páginas e logar "CATALOGO WHIRLPOOL ATUALIZADO", o
+// vídeo mostra o navegador parado na última página sem fazer mais nada
+// -- o job inteiro foi cancelado pelo timeout-minutes:20 do workflow em
+// silêncio total, sem nenhum log ou erro. Todo request pro gateway
+// (pending/ingest_catalog/upload_import/report) passava por um
+// fetch() sem timeout algum -- se o edge function/RPC do lado do
+// Supabase travar ou demorar demais, o await fica preso pra sempre, sem
+// deixar rastro (nada acontece na tela porque o scan já terminou). Um
+// AbortController com prazo aqui transforma isso num erro visível e
+// diagnosticável em vez de um travamento silencioso indefinido.
+const WORKER_REQUEST_TIMEOUT_MS = 60000;
+async function fetchWithTimeout(url,options,timeoutMs){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    return await fetch(url,{...options,signal:controller.signal});
+  }catch(e){
+    if(e?.name==="AbortError")throw new Error(`Requisição excedeu ${Math.round(timeoutMs/1000)}s sem resposta.`);
+    throw e;
+  }finally{
+    clearTimeout(timer);
+  }
+}
 let oidcToken;
 async function githubOidcToken(){
   if(oidcToken)return oidcToken;
@@ -17,13 +41,13 @@ async function githubOidcToken(){
   const requestToken=process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
   if(!base||!requestToken)throw new Error("Identidade temporária do executor não disponível.");
   const url=new URL(base);url.searchParams.set("audience","voxassist-whirlpool");
-  const r=await fetch(url,{headers:{authorization:"Bearer "+requestToken}});
+  const r=await fetchWithTimeout(url,{headers:{authorization:"Bearer "+requestToken}},WORKER_REQUEST_TIMEOUT_MS);
   const data=await r.json();if(!r.ok||!data.value)throw new Error("Não foi possível obter identidade temporária.");
   oidcToken=data.value;return oidcToken;
 }
 async function workerRequest(action,payload={}){
   const token=await githubOidcToken();
-  const r=await fetch(workerApiUrl,{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json"},body:JSON.stringify({action,...payload})});
+  const r=await fetchWithTimeout(workerApiUrl,{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json"},body:JSON.stringify({action,...payload})},WORKER_REQUEST_TIMEOUT_MS);
   const t=await r.text();if(!r.ok)throw new Error("Gateway Whirlpool falhou (HTTP "+r.status+"): "+t.slice(0,160));
   return JSON.parse(t);
 }
