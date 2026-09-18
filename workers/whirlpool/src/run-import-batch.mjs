@@ -508,6 +508,62 @@ async function clickTrustedInFrame(frame,texts,timeout=20000){
   }
   return false;
 }
+// Achado real por print do usuário (2026-09-18, OS 7015737715, botão
+// "Visualização" e depois "Formulário de impressão de ordem de serviço"
+// dentro da janela de pré-visualização que ele abre): mesma exigência de
+// clique real (isTrusted) já confirmada em todo outro controle de
+// submissão desta tela SAP -- clickText()/waitForTextClick() (clique
+// sintético) nunca funcionavam aqui, por isso "Botão Visualização não
+// localizado" sempre subia mesmo com o botão visivelmente presente.
+// Diferente de clickTrustedInFrame (que exclui role="menuitem" -- só
+// serve pro botão de submit da busca), aqui o alvo é um item de barra de
+// ferramentas/lista de relatório -- nunca um item de navegação lateral
+// -- então a exclusão de menuitem não se aplica; usa correspondência
+// EXATA de texto (como o clickText original), só troca o clique
+// sintético pelo real.
+async function clickTextTrustedInFrame(frame,texts,timeout=20000){
+  const marker="vx"+Math.random().toString(36).slice(2,10);
+  const end=Date.now()+timeout;
+  while(Date.now()<end){
+    let found=false;
+    try{
+      found=await frame.evaluate(({targets,marker})=>{
+        const norm=v=>String(v||"").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+        const wanted=targets.map(norm);
+        const nodes=[...document.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"],[role="menuitem"],span,td')];
+        const choices=nodes.map(node=>{
+          const label=norm(node.innerText||node.textContent||node.value||node.title||node.getAttribute("aria-label")||"");
+          if(!wanted.includes(label))return null;
+          const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
+          const rect=action.getBoundingClientRect();
+          if(!rect.width||!rect.height)return null;
+          let parent=action;
+          while(parent){
+            const style=getComputedStyle(parent);
+            if(style.display==="none"||style.visibility==="hidden"||style.opacity==="0")return null;
+            parent=parent.parentElement;
+          }
+          return {action,priority:/^(A|BUTTON)$/.test(action.tagName)?0:1,area:rect.width*rect.height};
+        }).filter(Boolean).sort((x,y)=>x.priority-y.priority||x.area-y.area);
+        if(!choices.length)return false;
+        choices[0].action.setAttribute("data-vx-click-target",marker);
+        return true;
+      },{targets:texts,marker});
+    }catch{found=false;}
+    if(found){
+      const locator=frame.locator(`[data-vx-click-target="${marker}"]`);
+      try{
+        await locator.click({timeout:3000});
+        await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
+        return true;
+      }catch{
+        await frame.evaluate(m=>{document.querySelector(`[data-vx-click-target="${m}"]`)?.removeAttribute("data-vx-click-target");},marker).catch(()=>{});
+      }
+    }
+    await delay(500);
+  }
+  return false;
+}
 // Achado real (prints do usuário, 2026-09-17): a varredura roda com todos
 // os filtros em branco e a grade sempre volta com 0 linhas (thead e
 // colunas corretos -- não é bug de leitura, ver gridDiag em
@@ -1176,9 +1232,30 @@ async function capturePdf(context,page,id){
   }catch{}
  };
  context.on("response",handler);
- if(!(await waitForTextClick(page,["Visualização"],20000))){clearTimeout(timer);context.off("response",handler);throw new Error("Botão Visualização não localizado.");}
- await delay(800);
- await clickText(page,["PDF","Imprimir","Visualizar PDF"]);
+ // Achado real por print do usuário (2026-09-18, OS 7015737715 -- a
+ // mesma que travava com "Botão Visualização não localizado"): clicar
+ // em "Visualização" abre uma JANELA nova de verdade (confirmado por
+ // print -- tem sua própria barra de título/endereço, não é um modal
+ // dentro da mesma página), com uma lista "Ação" de relatórios. É
+ // preciso clicar em "Formulário de impressão de ordem de serviço"
+ // NESSA janela nova pra disparar o PDF -- nunca existiu
+ // "PDF"/"Imprimir"/"Visualizar PDF" em lugar nenhum dessa tela, por
+ // isso esse clique antigo (clickText, texto errado, clique sintético)
+ // nunca fazia nada. Usa clique real (mesmo padrão já validado em
+ // login/Procurar/paginação) em vez do clickText/waitForTextClick
+ // antigos (clique sintético).
+ const popupPromise=context.waitForEvent("page",{timeout:20000}).catch(()=>null);
+ let visualizacaoClicked=false;
+ for(const frame of await visibleFrames(page)){
+  if(await clickTextTrustedInFrame(frame,["Visualização"],3000)){visualizacaoClicked=true;break;}
+ }
+ if(!visualizacaoClicked){clearTimeout(timer);context.off("response",handler);throw new Error("Botão Visualização não localizado.");}
+ const popup=await popupPromise;
+ if(!popup){clearTimeout(timer);context.off("response",handler);throw new Error("Janela de impressão (Visualização) não abriu.");}
+ await popup.waitForLoadState("domcontentloaded").catch(()=>{});
+ await delay(500);
+ const reportClicked=await clickTextTrustedInFrame(popup.mainFrame(),["Formulário de impressão de ordem de serviço"],20000);
+ if(!reportClicked){clearTimeout(timer);context.off("response",handler);throw new Error("Formulário de impressão de ordem de serviço não localizado.");}
  const bytes=await done;
  await writeFile(path.join(pdfDir,`${id}.pdf`),bytes);
  return bytes;
