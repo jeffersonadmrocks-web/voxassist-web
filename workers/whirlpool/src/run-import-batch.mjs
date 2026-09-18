@@ -1220,7 +1220,7 @@ async function openOrder(page,id){
 async function capturePdf(context,page,id){
  const pdfDir=path.join(ARTIFACT_DIR,"pdfs");await mkdir(pdfDir,{recursive:true});
  let resolvePdf,rejectPdf;const done=new Promise((res,rej)=>{resolvePdf=res;rejectPdf=rej});
- const timer=setTimeout(()=>rejectPdf(new Error("PDF não apareceu em 45 segundos.")),45000);
+ const timer=setTimeout(()=>rejectPdf(new Error("PDF não apareceu em 90 segundos.")),90000);
  const handler=async response=>{
   try{
    const u=new URL(response.url()),ct=(response.headers()["content-type"]||"").toLowerCase();
@@ -1244,10 +1244,17 @@ async function capturePdf(context,page,id){
  // nunca fazia nada. Usa clique real (mesmo padrão já validado em
  // login/Procurar/paginação) em vez do clickText/waitForTextClick
  // antigos (clique sintético).
+ // Print do usuário (mesma OS) provou que o popup ABRE de verdade, mas
+ // o código perdia o evento "page": cada frame SEM "Visualização" custava
+ // até 3s de busca antes de passar pro próximo, e com vários frames na
+ // tela isso podia consumir quase todo o waitForEvent(20s) antes mesmo
+ // do clique acontecer. Mesmo padrão de busca rápida por frame já usado
+ // em openOrder (300ms) -- aqui 500ms por segurança -- pra sobrar tempo
+ // de verdade pro popup abrir e ser detectado.
  const popupPromise=context.waitForEvent("page",{timeout:20000}).catch(()=>null);
  let visualizacaoClicked=false;
  for(const frame of await visibleFrames(page)){
-  if(await clickTextTrustedInFrame(frame,["Visualização"],3000)){visualizacaoClicked=true;break;}
+  if(await clickTextTrustedInFrame(frame,["Visualização"],500)){visualizacaoClicked=true;break;}
  }
  if(!visualizacaoClicked){clearTimeout(timer);context.off("response",handler);throw new Error("Botão Visualização não localizado.");}
  const popup=await popupPromise;
