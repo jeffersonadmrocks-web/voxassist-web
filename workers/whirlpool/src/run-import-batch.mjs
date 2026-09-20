@@ -997,6 +997,90 @@ async function readCatalogGridRows(frame){
     return [];
   });
 }
+// Diagnóstico PURAMENTE ADITIVO, pedido pelo usuário (2026-09-20) --
+// nunca muda o que readCatalogGridRows() devolve nem a classificação de
+// status. Achado real (run 35395614161): o vídeo mostra a coluna de
+// status em português ("Cancelado"), mas o valor que chega em
+// ingestCatalog é inglês ("Canceled"), rejeitado pela whitelist da RPC.
+// Antes de mudar qualquer regra, registra pra linhas específicas (uma
+// "Cancelado" e uma com outro status) exatamente o que cellValue() vê
+// na célula de status: innerText, textContent, tag, outerHTML, controle
+// interno (select/input) e seu value, texto da option selecionada (se
+// for select), e qual fonte o algoritmo atual efetivamente escolheu --
+// pra confirmar se o valor em inglês vem de control.value (dropdown com
+// value interno em inglês e label em português) antes de tocar em
+// qualquer filtro/fila/import. Só ids de OS e HTML de grade do SAP --
+// nunca usuário/senha/cookies/tokens.
+async function diagnoseStatusCells(frame,externalOrderIds){
+  return frame.evaluate((wantedIds)=>{
+    const clean=(value="")=>String(value||"").replace(/\s+/g," ").trim();
+    const directCells=(tr)=>[...tr.children].filter(el=>el.tagName==="TH"||el.tagName==="TD");
+    const fieldName=(cell)=>{const match=cell.id.match(/_col_\d+-([A-Z0-9_]+)-TH$/i);return match?match[1].toUpperCase():"";};
+    const diagCell=(cell)=>{
+      const innerText=clean(cell.innerText);
+      const textContent=clean(cell.textContent);
+      const control=cell.querySelector("input:not([type=hidden]), select, textarea");
+      const controlTag=control?control.tagName:null;
+      const controlValue=control?clean(control.value):null;
+      let selectedOptionText=null;
+      if(control&&control.tagName==="SELECT"){
+        const opt=control.options[control.selectedIndex];
+        selectedOptionText=opt?clean(opt.textContent):null;
+      }
+      const titledEl=cell.querySelector("[title]");
+      const titleAttr=titledEl?clean(titledEl.getAttribute("title")):null;
+      let chosenSource,finalStatus;
+      if(innerText){chosenSource="innerText";finalStatus=innerText;}
+      else if(textContent){chosenSource="textContent";finalStatus=textContent;}
+      else if(control&&controlValue){chosenSource="control.value";finalStatus=controlValue;}
+      else if(titleAttr){chosenSource="title";finalStatus=titleAttr;}
+      else{chosenSource="none";finalStatus="";}
+      // Pedido do usuário (2026-09-20): monta o par código-interno/rótulo
+      // pra construir o mapa real dos códigos SAP -- nunca inventado, só o
+      // que a própria célula realmente contém. source_status_code é o
+      // candidato a código ESTÁVEL (value de dropdown, sempre que existir);
+      // source_status_label é o texto exibido ao usuário (option
+      // selecionada, senão o texto visível da célula).
+      const source_status_code=controlValue||null;
+      const source_status_label=selectedOptionText||innerText||textContent||titleAttr||null;
+      return {
+        cellTag:cell.tagName,
+        innerText,
+        textContent,
+        outerHTML:String(cell.outerHTML||"").slice(0,1500),
+        controlTag,
+        controlValue,
+        selectedOptionText,
+        titleAttr,
+        chosenSource,
+        finalStatus,
+        source_status_code,
+        source_status_label,
+      };
+    };
+    const out=[];
+    for(const table of document.querySelectorAll('table[id$="_ResultTable_TableHeader"]')){
+      const headerRow=table.tHead?.rows?.[0];
+      if(!headerRow)continue;
+      const headers=directCells(headerRow);
+      const osIndex=headers.findIndex(cell=>fieldName(cell)==="OBJECT_ID");
+      const statusIndex=headers.findIndex(cell=>fieldName(cell)==="ZZSTATUS_ITEM_SERV");
+      if(osIndex<0||statusIndex<0)continue;
+      for(const tbody of table.tBodies){
+        for(const tr of tbody.rows){
+          const cells=directCells(tr);
+          if(cells.length!==headers.length)continue;
+          const externalOrderId=clean(cells[osIndex].innerText||cells[osIndex].textContent||"");
+          if(!/^\d{10}$/.test(externalOrderId))continue;
+          if(wantedIds.length&&!wantedIds.includes(externalOrderId))continue;
+          out.push({externalOrderId,statusColumn:diagCell(cells[statusIndex])});
+        }
+      }
+      if(out.length)return out;
+    }
+    return out;
+  },externalOrderIds);
+}
 async function findCatalogResultFrame(page,inCrmFrame){
   for(const frame of (await visibleFrames(page)).filter(inCrmFrame)){
     try{const rows=await readCatalogGridRows(frame);if(rows.length)return {frame,rows};}catch{}
@@ -1020,6 +1104,16 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
   let ignoredAutEspecial=0;
   let unclassifiedRows=0;
   let scannedPages=0;
+  // Diagnóstico aditivo pedido pelo usuário (2026-09-20) -- nunca lido
+  // por nenhuma outra parte do código, só gravado no artifact no final.
+  // Nunca influencia collected/ignoredAutEspecial/unclassifiedRows nem
+  // qualquer decisão de paginação. Coleta UMA amostra por status DISTINTO
+  // (pelo texto já lido por readCatalogGridRows) visto em qualquer página
+  // -- não só "Cancelado" -- pra montar o mapa real código-interno/rótulo
+  // pedido pelo usuário, sem adivinhar quais status existem.
+  const statusDiagnosticSamples=[];
+  const statusDiagnosticSeenLabels=new Set();
+  const STATUS_DIAGNOSTIC_MAX_DISTINCT=40;
   // Achado real de produção (run #46, 2026-09-16): depois de "Procurar"
   // ser clicado com sucesso (openSearch() retornou sem lançar erro), a
   // grade de resultados ainda não tinha renderizado no SAP real -- o
@@ -1037,6 +1131,22 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
     const result=pageNumber===1?firstResult:await findCatalogResultFrame(page,inCrmFrame);
     if(!result)break;
     scannedPages++;
+    if(statusDiagnosticSeenLabels.size<STATUS_DIAGNOSTIC_MAX_DISTINCT){
+      try{
+        const newIds=[];
+        for(const row of result.rows){
+          const label=row.serviceStatus;
+          if(!label||statusDiagnosticSeenLabels.has(label))continue;
+          if(statusDiagnosticSeenLabels.size+newIds.length>=STATUS_DIAGNOSTIC_MAX_DISTINCT)break;
+          statusDiagnosticSeenLabels.add(label);
+          newIds.push(row.externalOrderId);
+        }
+        if(newIds.length){
+          const samples=await diagnoseStatusCells(result.frame,newIds);
+          statusDiagnosticSamples.push(...samples);
+        }
+      }catch{}
+    }
     for(const row of result.rows){
       // "BR Aut.Especial" é sempre ignorado, mesmo quando o número também
       // começa com 7015 -- a exclusão por tipo tem prioridade sobre a
@@ -1065,6 +1175,29 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
     }
     if(!changed)break;
   }
+  // Grava sempre (mesmo vazio, pra provar que nenhuma linha bateu) --
+  // puramente informativo, nunca lido de volta por nenhuma lógica. O
+  // "map" abaixo é só uma vista resumida dos mesmos samples (código
+  // interno + rótulo visível), pra revisão humana direta -- não
+  // substitui os samples completos, que continuam com todos os campos
+  // brutos gravados (innerText/textContent/outerHTML/etc).
+  const statusDiagnosticMap=[];
+  const statusDiagnosticMapSeen=new Set();
+  for(const sample of statusDiagnosticSamples){
+    const code=sample.statusColumn?.source_status_code;
+    const label=sample.statusColumn?.source_status_label;
+    const key=`${code ?? ""}\u0000${label ?? ""}`;
+    if(statusDiagnosticMapSeen.has(key))continue;
+    statusDiagnosticMapSeen.add(key);
+    statusDiagnosticMap.push({
+      source_status_code:code,
+      source_status_label:label,
+      chosenSourceHoje:sample.statusColumn?.chosenSource,
+      finalStatusHoje:sample.statusColumn?.finalStatus,
+      exemploOS:sample.externalOrderId,
+    });
+  }
+  await writeDiagnosticsJson("status-coluna-diagnostico",{map:statusDiagnosticMap,samples:statusDiagnosticSamples}).catch(()=>{});
   if(scannedPages===0){
     // Achado real (run #54, 2026-09-16): a tabela de resultados JÁ é
     // encontrada pelo seletor (table[id$="_ResultTable_TableHeader"]),
