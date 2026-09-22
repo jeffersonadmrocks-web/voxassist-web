@@ -32,16 +32,10 @@ import {
   FOLLOW_UP_WINDOW_DAYS,
 } from "../_shared/npsClassification.ts";
 import { parseNpsResponse, type ElectroluxNpsDetail } from "../_shared/electrolux.ts";
+import { resolveElectroluxCredential } from "../_shared/electroluxCredential.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-// Mesma origem já usada por sync-electrolux-agenda/get-electrolux-appointment-detail
-// -- reconciliação de resposta de NPS bate no mesmo endpoint de detalhe, nunca
-// um endpoint paralelo (achado do usuário 2026-09-03: a API já devolve os
-// campos de NPS, ninguém nunca tinha consultado isso).
-const ELECTROLUX_API_URL = Deno.env.get("ELECTROLUX_API_URL")!;
-const ELECTROLUX_API_USER = Deno.env.get("ELECTROLUX_API_USER")!;
-const ELECTROLUX_API_PASSWORD = Deno.env.get("ELECTROLUX_API_PASSWORD")!;
 // SVO encerrada continua disponível na origem por ~60 dias (achado do
 // usuário) -- depois disso não vale mais a pena consultar.
 const RECONCILIATION_WINDOW_DAYS = 60;
@@ -69,7 +63,7 @@ type ConcludedAppointment = {
   connection_id: string | null;
 };
 
-type ElectroluxConnection = { id: string; filial: "VITORIA" | "SERRA" };
+type ElectroluxConnection = { id: string; filial: "VITORIA" | "SERRA"; company_id: string | null };
 
 type HistoryRow = {
   previous_data: { appointment_date?: string | null };
@@ -106,10 +100,12 @@ Deno.serve(async (req) => {
     // um valor fixo em código. defaultConnection só entra como fallback
     // pra atendimentos antigos sem connection_id ainda carimbado, e só
     // quando existe exatamente uma conexão ativa (sem ambiguidade).
-    const { data: connectionsRaw } = await supabase.from("electrolux_connections").select("id, filial").eq("active", true);
+    const { data: connectionsRaw } = await supabase.from("electrolux_connections").select("id, filial, company_id").eq("active", true);
     const connections = (connectionsRaw || []) as ElectroluxConnection[];
     const filialByConnectionId = new Map(connections.map((c) => [c.id, c.filial]));
     const defaultConnection = connections.length === 1 ? connections[0] : null;
+    const credential = await resolveElectroluxCredential(supabase, defaultConnection?.company_id ?? null);
+    const ELECTROLUX_API_URL = credential.apiUrl;
 
     const { data: existingCaseLinks } = await supabase.from("nps_cases").select("external_appointment_id");
     const alreadyTracked = new Set((existingCaseLinks || []).map((c: { external_appointment_id: string }) => c.external_appointment_id));
@@ -264,7 +260,7 @@ Deno.serve(async (req) => {
       external_appointments: { external_id: string; concluded_at: string | null } | { external_id: string; concluded_at: string | null }[];
     };
     const reconcileCandidates = (reconcileCandidatesRaw || []) as ReconcileCandidate[];
-    const basicAuth = "Basic " + btoa(`${ELECTROLUX_API_USER}:${ELECTROLUX_API_PASSWORD}`);
+    const basicAuth = "Basic " + btoa(`${credential.username}:${credential.password}`);
 
     for (const candidate of reconcileCandidates) {
       const ea = Array.isArray(candidate.external_appointments) ? candidate.external_appointments[0] : candidate.external_appointments;

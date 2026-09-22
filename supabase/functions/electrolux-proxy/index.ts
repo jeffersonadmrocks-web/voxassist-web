@@ -12,12 +12,11 @@
 // navegador.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { resolveElectroluxCredential } from "../_shared/electroluxCredential.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const ELECTROLUX_API_URL = Deno.env.get("ELECTROLUX_API_URL")!;
-const ELECTROLUX_API_USER = Deno.env.get("ELECTROLUX_API_USER")!;
-const ELECTROLUX_API_PASSWORD = Deno.env.get("ELECTROLUX_API_PASSWORD")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Allowlist explícita de caminhos -- nunca um proxy aberto pra
 // qualquer URL que o navegador mandar. Mesmos 4 usados hoje por
@@ -69,12 +68,21 @@ Deno.serve(async (req) => {
     if (!allowedPatterns.some((re) => re.test(path))) {
       return respond({ ok: false, error: "path_not_allowed" }, 400);
     }
-    if (!ELECTROLUX_API_URL || !ELECTROLUX_API_USER || !ELECTROLUX_API_PASSWORD) {
-      return respond({ ok: false, error: "electrolux_not_configured" }, 500);
-    }
 
-    const basicAuth = "Basic " + btoa(`${ELECTROLUX_API_USER}:${ELECTROLUX_API_PASSWORD}`);
-    const upstream = await fetch(`${ELECTROLUX_API_URL}${path}`, {
+    // Credencial por empresa (achado do usuário, 2026-09-22: cada empresa
+    // tem seu próprio usuário/senha Electrolux, configurado pelo GESTOR
+    // via electrolux_save_credentials) -- cai pro secret global só se a
+    // empresa do usuário logado ainda não tiver credencial própria salva.
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { data: profile } = await admin.from("profiles").select("active_company_id").eq("id", user.id).maybeSingle();
+    const companyId = profile?.active_company_id;
+    if (!companyId) {
+      return respond({ ok: false, error: "empresa_nao_identificada" }, 400);
+    }
+    const credential = await resolveElectroluxCredential(admin, companyId);
+
+    const basicAuth = "Basic " + btoa(`${credential.username}:${credential.password}`);
+    const upstream = await fetch(`${credential.apiUrl}${path}`, {
       method: req.method,
       headers: { Authorization: basicAuth },
     }).catch((e) => {
