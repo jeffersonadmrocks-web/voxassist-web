@@ -90,7 +90,15 @@
     // pra empresa toda. Agora vem de electrolux_panel_settings
     // (migration 20260903030000), uma linha por empresa, visível pra
     // todo mundo, editável só por GESTOR.
-    apiUrl:null,apiUrlLoaded:false};
+    apiUrl:null,apiUrlLoaded:false,
+    // Achado do usuário 2026-09-22: a config acima é só o endereço,
+    // nunca pediu nem guardou usuário/senha reais -- a credencial real
+    // vivia só em secret global da Edge Function, fora do alcance de
+    // qualquer GESTOR. `connection` é o estado real (electrolux_connections
+    // + electrolux_save_credentials, migration 20260922180000): cada
+    // empresa com sua própria credencial, configurada uma vez pelo
+    // GESTOR, nunca pedida aos demais usuários.
+    connection:null};
 
   /* Filtro ativado pelos 5 cards de resumo do hub — fica na tela inicial (não navega pro
      board) e recalcula a contagem dos 9 cards de menu abaixo. */
@@ -109,7 +117,24 @@
     return {};
   }
 
-  function apiBase(){return (elx.apiUrl||'').trim().replace(/\/+$/,'');}
+  // Prioriza o endereço da conexão real (electrolux_connections, migration
+  // 20260922180000) assim que existir -- só cai pro valor cosmético antigo
+  // (electrolux_panel_settings) enquanto o GESTOR ainda não tiver salvo a
+  // credencial real pela tela nova.
+  function apiBase(){
+    const real=(elx.connection?.api_url||'').trim().replace(/\/+$/,'');
+    if(real)return real;
+    return (elx.apiUrl||'').trim().replace(/\/+$/,'');
+  }
+  async function rpc(name,body){return api('rpc/'+name,{method:'POST',body:JSON.stringify(body)});}
+  async function loadConnectionStatus(){
+    try{
+      const rows=await rpc('electrolux_get_my_connection',{});
+      elx.connection=Array.isArray(rows)?(rows[0]||null):(rows||null);
+    }catch{
+      elx.connection=null;
+    }
+  }
   async function loadApiUrlSetting(){
     try{
       const rows=await api('electrolux_panel_settings?select=api_url&limit=1');
@@ -118,19 +143,6 @@
       elx.apiUrl='';
     }
     elx.apiUrlLoaded=true;
-  }
-  async function saveApiUrlSetting(value){
-    const companyId=state.profile.active_company_id;
-    const existing=await api(`electrolux_panel_settings?company_id=eq.${companyId}&select=company_id&limit=1`).catch(()=>[]);
-    const body=JSON.stringify({company_id:companyId,api_url:value,updated_at:new Date().toISOString(),updated_by:state.session?.user?.id||null});
-    if(existing?.length)await api(`electrolux_panel_settings?company_id=eq.${companyId}`,{method:'PATCH',body});
-    else await api('electrolux_panel_settings',{method:'POST',body});
-    elx.apiUrl=value;
-  }
-  async function clearApiUrlSetting(){
-    const companyId=state.profile.active_company_id;
-    await api(`electrolux_panel_settings?company_id=eq.${companyId}`,{method:'DELETE'});
-    elx.apiUrl='';
   }
   // Achado do usuário em 2026-09-04: a tela pedia login/senha do painel
   // Electrolux (Vox Analytics) de novo em cada dispositivo/navegador --
@@ -490,40 +502,58 @@
     elx.pollTimer=setInterval(()=>{if(state.view!==VIEW){stopPoll();return;}refresh();},POLL_MS);
   }
 
-  // Achado do usuário 2026-09-03: só GESTOR pode configurar (RLS de
-  // electrolux_panel_settings já bloqueia escrita pra outros perfis --
-  // esconder o formulário pra eles é só clareza de UI, não a proteção
-  // real, que já está no banco).
+  // Achado do usuário 2026-09-22: até aqui, o GESTOR só conseguia editar
+  // um endereço cosmético (electrolux_panel_settings) -- a credencial
+  // real (usuário/senha) vivia só em secret global da Edge Function,
+  // fora do alcance de qualquer tela. Este bloco passa a editar a
+  // conexão real (electrolux_connections + electrolux_save_credentials,
+  // migration 20260922180000): cada empresa com seu próprio usuário/
+  // senha, configurado uma vez pelo GESTOR -- os demais usuários nunca
+  // veem nem digitam credencial nenhuma (RLS/RPC já bloqueiam escrita e
+  // leitura pra quem não é GESTOR; esconder o formulário é só clareza
+  // de UI, a proteção real já está no banco).
   function apiConfigBlock(){
-    const base=apiBase();
     if(String(state?.profile?.role||'').toUpperCase()!=='GESTOR'){
-      return `<div class="vx-elx-config"><span>API Electrolux:</span><span style="color:#516375">${base?esc(base):'Nenhum endereço configurado ainda -- peça a um Gestor pra configurar.'}</span><a href="${SOURCE_REPO}" target="_blank" rel="noopener" style="margin-left:auto;color:#174f86;font-size:10.5px">Projeto no GitHub ↗</a></div>`;
+      const configured=!!apiBase();
+      return `<div class="vx-elx-config"><span>API Electrolux:</span><span style="color:#516375">${configured?'Integração configurada.':'Nenhuma credencial configurada ainda -- peça a um Gestor pra configurar.'}</span><a href="${SOURCE_REPO}" target="_blank" rel="noopener" style="margin-left:auto;color:#174f86;font-size:10.5px">Projeto no GitHub ↗</a></div>`;
     }
-    return `<div class="vx-elx-config">
-      <span>API Electrolux (empresa toda):</span>
-      <input type="url" id="vxElxApiInput" placeholder="https://endereco-do-backend-electrolux" value="${esc(base)}">
+    const conn=elx.connection;
+    if(!conn){
+      return `<div class="vx-elx-config"><span style="color:#516375">Nenhuma conexão Electrolux provisionada pra esta empresa ainda -- fale com o time VoxAssist.</span></div>`;
+    }
+    const hasCredential=!!conn.credential_configured;
+    // Usuário/senha sempre em branco e sempre exigidos pra salvar (mesmo
+    // padrão já usado em settings-whirlpool-v1.js) -- nunca relidos do
+    // banco, então não há como pré-preencher nem "manter a atual" parcial.
+    return `<div class="vx-elx-config" style="flex-wrap:wrap">
+      <span>API Electrolux (${esc(conn.name||conn.filial||'conexão')}):</span>
+      <input type="url" id="vxElxApiInput" placeholder="https://endereco-do-backend-electrolux" value="${esc(conn.api_url||'')}">
+      <input type="text" id="vxElxUserInput" placeholder="Usuário Electrolux" autocomplete="off">
+      <input type="password" id="vxElxPassInput" placeholder="Senha Electrolux" autocomplete="new-password">
       <button id="vxElxApiSave">Salvar</button>
-      ${base?`<button class="secondary" id="vxElxApiClear">Remover</button>`:''}
+      <span style="color:#516375;font-size:11px">${hasCredential?'Credencial configurada':'Credencial ainda não configurada'}</span>
       <a href="${SOURCE_REPO}" target="_blank" rel="noopener" style="margin-left:auto;color:#174f86;font-size:10.5px">Projeto no GitHub ↗</a>
     </div>`;
   }
   function bindApiConfig(){
     const input=document.getElementById('vxElxApiInput');
-    if(!input)return; // não-GESTOR: bloco é só leitura, nada pra ligar
-    input.onclick=e=>e.stopPropagation();
+    if(!input)return; // não-GESTOR (ou sem conexão provisionada): bloco é só leitura, nada pra ligar
+    const userInput=document.getElementById('vxElxUserInput');
+    const passInput=document.getElementById('vxElxPassInput');
+    [input,userInput,passInput].forEach(el=>el.onclick=e=>e.stopPropagation());
     document.getElementById('vxElxApiSave').onclick=async()=>{
-      const value=(input.value||'').trim().replace(/\/+$/,'');
-      if(!/^https?:\/\//.test(value)){toast?.('Informe um endereço http(s) válido.','err');return;}
+      const apiUrl=(input.value||'').trim().replace(/\/+$/,'');
+      const username=(userInput.value||'').trim();
+      const password=passInput.value;
+      if(!/^https?:\/\//.test(apiUrl)){toast?.('Informe um endereço http(s) válido.','err');return;}
+      if(!username||!password){toast?.('Informe usuário e senha pra salvar -- os dois são exigidos a cada atualização.','err');return;}
       try{
-        await saveApiUrlSetting(value);
-        toast?.('Endereço salvo -- vale pra empresa toda, em qualquer dispositivo.');
+        await rpc('electrolux_save_credentials',{p_connection_id:elx.connection.id,p_api_url:apiUrl,p_username:username,p_password:password});
+        userInput.value='';passInput.value='';
+        toast?.('Credencial salva com segurança -- vale só pra esta empresa, os demais usuários nunca precisam informar.');
+        await loadConnectionStatus();
         elx.orders=[];elx.error=null;renderHome();refresh();startPoll();
-      }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');}
-    };
-    const clearBtn=document.getElementById('vxElxApiClear');
-    if(clearBtn)clearBtn.onclick=async()=>{
-      try{await clearApiUrlSetting();stopPoll();elx.orders=[];renderHome();}
-      catch(err){toast?.('Não foi possível remover: '+err.message,'err');}
+      }catch(err){passInput.value='';toast?.('Não foi possível salvar: '+err.message,'err');}
     };
   }
 
@@ -891,7 +921,7 @@
     // do sistema, não do navegador) -- carrega antes do primeiro render
     // pra não piscar "configure abaixo" indevidamente pra quem já tem
     // endereço salvo por outro dispositivo/usuário.
-    await loadApiUrlSetting();
+    await Promise.all([loadApiUrlSetting(),loadConnectionStatus()]);
     renderHome();
     if(apiBase()){startPoll();}
   }

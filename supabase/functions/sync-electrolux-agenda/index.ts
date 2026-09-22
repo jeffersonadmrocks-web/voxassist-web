@@ -6,12 +6,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { mapOrderToRow, resolveConcludedAt, isForaDeGarantia, type ElectroluxOrder } from "../_shared/electrolux.ts";
 import { matchOrCreateTechnician } from "../_shared/technicianMatch.ts";
+import { resolveElectroluxCredential } from "../_shared/electroluxCredential.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ELECTROLUX_API_URL = Deno.env.get("ELECTROLUX_API_URL")!;
-const ELECTROLUX_API_USER = Deno.env.get("ELECTROLUX_API_USER")!;
-const ELECTROLUX_API_PASSWORD = Deno.env.get("ELECTROLUX_API_PASSWORD")!;
 // profiles é escopado por RLS via user_companies — sem isso, um técnico
 // provisório criado pelo sync existe no banco mas fica invisível em
 // qualquer tela carregada pela sessão de um usuário normal.
@@ -38,7 +36,7 @@ type ExistingRow = {
   connection_id: string | null;
 };
 
-type ElectroluxConnection = { id: string; filial: "VITORIA" | "SERRA" };
+type ElectroluxConnection = { id: string; filial: "VITORIA" | "SERRA"; company_id: string | null };
 
 Deno.serve(async (req) => {
   const authHeader = req.headers.get("Authorization");
@@ -54,7 +52,6 @@ Deno.serve(async (req) => {
   const startedAt = new Date().toISOString();
   let processed = 0;
   let defaultConnectionId: string | null = null;
-  const basicAuth = "Basic " + btoa(`${ELECTROLUX_API_USER}:${ELECTROLUX_API_PASSWORD}`);
 
   try {
     // Carimba qual conexão Electrolux sincronizou cada atendimento --
@@ -62,10 +59,19 @@ Deno.serve(async (req) => {
     // electrolux_connections_20260831.sql). Hoje só existe Serra, então
     // defaultConnection cobre todos os registros; sem ambiguidade
     // enquanto for a única conexão ativa.
-    const { data: connectionsRaw } = await supabase.from("electrolux_connections").select("id, filial").eq("active", true);
+    const { data: connectionsRaw } = await supabase.from("electrolux_connections").select("id, filial, company_id").eq("active", true);
     const connections = (connectionsRaw || []) as ElectroluxConnection[];
     const defaultConnection = connections.length === 1 ? connections[0] : null;
     defaultConnectionId = defaultConnection?.id ?? null;
+
+    // Credencial por empresa (achado do usuário, 2026-09-22: cada empresa
+    // configura seu próprio usuário/senha via electrolux_save_credentials)
+    // -- cai pro secret global só enquanto a conexão não tiver credencial
+    // própria salva ainda, ou se houver 0/mais de uma conexão ativa (caso
+    // hoje sem tratamento explícito, mesma limitação que já existia).
+    const credential = await resolveElectroluxCredential(supabase, defaultConnection?.company_id ?? null);
+    const ELECTROLUX_API_URL = credential.apiUrl;
+    const basicAuth = "Basic " + btoa(`${credential.username}:${credential.password}`);
 
     const res = await fetch(`${ELECTROLUX_API_URL}/api/dashboard/service-orders`, {
       headers: { Authorization: basicAuth },
