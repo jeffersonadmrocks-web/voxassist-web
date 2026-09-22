@@ -34,16 +34,26 @@ async function fetchWithTimeout(url,options,timeoutMs){
     clearTimeout(timer);
   }
 }
-let oidcToken;
+// Achado real (run 35732822271, 2026-09-22): RELATÓRIO WHIRLPOOL FALHOU
+// com TOKEN_NAO_AUTORIZADO (HTTP 401) no fim de um lote que levou ~9min
+// (scan + 3 OS processadas). O token OIDC do GitHub Actions era buscado
+// uma única vez e reaproveitado (cache em `oidcToken`) por todo o
+// processo -- esses tokens são de curta duração (a GitHub recomenda
+// buscar um novo a cada uso, nunca reaproveitar por um job inteiro).
+// O gateway (whirlpool-worker-api/index.ts) rejeita com exp<now assim
+// que o token expira, e como isso só acontece perto do fim de lotes
+// longos, o "claim"/"ingest_catalog" do início sempre funcionavam --
+// só o "report" (e potencialmente "job_failed", que engole erro em
+// silêncio) no fim do lote quebrava. Busca um token novo em toda
+// chamada em vez de reaproveitar.
 async function githubOidcToken(){
-  if(oidcToken)return oidcToken;
   const base=process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
   const requestToken=process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
   if(!base||!requestToken)throw new Error("Identidade temporária do executor não disponível.");
   const url=new URL(base);url.searchParams.set("audience","voxassist-whirlpool");
   const r=await fetchWithTimeout(url,{headers:{authorization:"Bearer "+requestToken}},WORKER_REQUEST_TIMEOUT_MS);
   const data=await r.json();if(!r.ok||!data.value)throw new Error("Não foi possível obter identidade temporária.");
-  oidcToken=data.value;return oidcToken;
+  return data.value;
 }
 async function workerRequest(action,payload={}){
   const token=await githubOidcToken();
