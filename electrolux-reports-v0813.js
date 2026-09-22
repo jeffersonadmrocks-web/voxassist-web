@@ -470,7 +470,18 @@
     const box=document.getElementById('vxElxHomeSearchResults');
     return !!(input&&document.activeElement===input)||!!(box&&!box.hidden);
   }
-  function rerender(){if(elx.screen==='board')renderDynamic();else if(elx.screen!=='closed'&&!searchInUse())renderHome();}
+  // Achado do usuário 2026-09-22: mesmo bug do searchInUse acima, agora no
+  // formulário de credenciais Electrolux -- o poll de 15s reconstruía a
+  // tela inteira (renderHome) enquanto o GESTOR ainda estava digitando
+  // endereço/usuário/senha, apagando o campo assim que ele mudava de
+  // input (cada re-render recria o HTML com o valor antigo salvo, nunca
+  // o que estava sendo digitado). Mesma correção: pula o re-render
+  // enquanto qualquer um dos 3 campos estiver com foco.
+  function apiConfigInUse(){
+    const ids=['vxElxApiInput','vxElxUserInput','vxElxPassInput'];
+    return ids.some(id=>document.activeElement===document.getElementById(id));
+  }
+  function rerender(){if(elx.screen==='board')renderDynamic();else if(elx.screen!=='closed'&&!searchInUse()&&!apiConfigInUse())renderHome();}
 
   async function refresh(){
     elx.loading=elx.orders.length===0;rerender();
