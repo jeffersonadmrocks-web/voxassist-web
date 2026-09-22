@@ -5,7 +5,7 @@ const workerDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 
 export const PORTAL_URL =
   process.env.WHIRLPOOL_PORTAL_URL ||
-  "https://larcrm7.whirlpool.com/sap(bD1wdCZjPTAwMSZkPW1pbg==)/bc/bsp/sap/crm_ui_start/default.htm?sap-languange=PT";
+  "https://larcrm7.whirlpool.com/sap(bD1wdCZjPTAwMSZkPW1pbg==)/bc/bsp/sap/crm_ui_start/default.htm?sap-language=PT";
 
 export const PROFILE_DIR = path.join(workerDir, ".playwright-profile", "serra");
 export const ARTIFACT_DIR = path.join(workerDir, ".artifacts");
