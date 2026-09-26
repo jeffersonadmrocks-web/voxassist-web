@@ -1449,16 +1449,19 @@ async function capturePdf(context,page,id){
  if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP ainda processa a abertura da OS.'),{code:'NAVIGATION_FAILURE'});
  const pdfDir=path.join(ARTIFACT_DIR,"pdfs");await mkdir(pdfDir,{recursive:true});
  let resolvePdf,rejectPdf;const done=new Promise((res,rej)=>{resolvePdf=res;rejectPdf=rej});
- const timer=setTimeout(()=>rejectPdf(new Error("PDF não apareceu em 90 segundos.")),90000);
+ const responseDiagnostics=[];
+ const timer=setTimeout(()=>rejectPdf(new Error("PDF não capturado em 90 segundos. Respostas: "+JSON.stringify(responseDiagnostics.slice(-12)))),90000);
  const handler=async response=>{
   try{
-   const u=new URL(response.url()),ct=(response.headers()["content-type"]||"").toLowerCase();
-   // O SAP serve o PDF por uma URL dinâmica de sessão; o viewer Chromium
-   // confirmou o documento mesmo quando o caminho não terminava no
-   // endpoint antigo. A identidade da OS é validada após o parse.
-   if(u.hostname==="larcrm7.whirlpool.com"&&ct.includes("application/pdf")){
+   const u=new URL(response.url()),headers=response.headers(),ct=(headers["content-type"]||"").toLowerCase();
+   if(u.hostname!=="larcrm7.whirlpool.com")return;
+   const disposition=(headers["content-disposition"]||"").toLowerCase();
+   const candidate=/pdf/i.test(u.pathname)||ct.includes("pdf")||ct.includes("octet-stream")||disposition.includes("pdf");
+   if(candidate){
+    responseDiagnostics.push({path:u.pathname.slice(-110),status:response.status(),type:ct.slice(0,60),disposition:disposition.slice(0,60)});
     const bytes=Buffer.from(await response.body());
-    if(bytes.length<4096||bytes.subarray(0,5).toString()!=="%PDF-"||!bytes.subarray(-2048).toString().includes("%%EOF"))throw new Error("PDF incompleto.");
+    if(bytes.subarray(0,5).toString()!=="%PDF-")return;
+    if(bytes.length<4096||!bytes.subarray(-2048).toString().includes("%%EOF"))throw new Error("PDF incompleto.");
     clearTimeout(timer);context.off("response",handler);resolvePdf(bytes);
    }
   }catch{}
