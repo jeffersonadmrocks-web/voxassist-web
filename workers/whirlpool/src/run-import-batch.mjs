@@ -1397,18 +1397,14 @@ async function searchOrderById(page,id){
  if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu a pesquisa inicial.'),{code:'NAVIGATION_FAILURE'});
  const fieldDiagnostics=[];
  for(const frame of await visibleFrames(page)){
-  // A grade SAP é composta de widgets aninhados, não de <tr> simples.
-  // O rótulo visível e VALUE1 dividem a mesma linha de critério.
+  // O SAP expõe o rótulo do critério no title de .FIELD e o valor
+  // correspondente no mesmo índice .VALUE1 (confirmado no run 168).
   const valueId=await frame.evaluate(()=>{
    const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
-   for(const input of document.querySelectorAll('input[id*="btqsrvord_parameters"][id$=".VALUE1"]')){
-    let row=input.parentElement;
-    for(let depth=0;row&&depth<6;depth++,row=row.parentElement){
-     const label=norm(row.innerText||'');
-     const values=row.querySelectorAll('input[id$=".VALUE1"]');
-     if(values.length===1&&label.includes('id ordem de servico'))return input.id;
-     if(values.length>1)break;
-    }
+   for(const field of document.querySelectorAll('[id*="btqsrvord_parameters"][id$=".FIELD"]')){
+    if(!norm(field.getAttribute('title')).endsWith('criterio id ordem de servico'))continue;
+    const candidate=field.id.slice(0,-'.FIELD'.length)+'.VALUE1';
+    if(document.getElementById(candidate)?.matches('input'))return candidate;
    }
    return null;
   }).catch(()=>null);
