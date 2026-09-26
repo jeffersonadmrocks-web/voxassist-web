@@ -1392,9 +1392,27 @@ async function inspectAndOpen(frame,id){
  }
  return found;
 }
-async function openOrder(page,id){
+async function searchOrderById(page,id){
+ if(!/^7015\d{6}$/.test(id))throw new Error('Número Whirlpool inválido para pesquisa direta.');
+ if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu a pesquisa inicial.'),{code:'NAVIGATION_FAILURE'});
+ for(const frame of await visibleFrames(page)){
+  const fields=await collectSearchFormFields(frame);
+  const field=fields.find(f=>/^(id|n[uú]mero|nº) (da |de |do )?ordem de servi[cç]o$/i.test(f.label.trim()));
+  if(!field?.id&&!field?.name)continue;
+  const selector=field.id?`xpath=//*[@id=${JSON.stringify(field.id)}]`:`xpath=//*[@name=${JSON.stringify(field.name)}]`;
+  const input=frame.locator(selector).first();
+  if(!(await input.count()))continue;
+  await input.fill(id,{force:true});
+  await input.dispatchEvent('change');
+  if(!(await clickTrustedInFrame(frame,['Procurar','Search'],20000)))throw Object.assign(new Error('Botão Procurar indisponível após informar ID da OS.'),{code:'NAVIGATION_FAILURE'});
+  if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu a pesquisa direta da OS.'),{code:'NAVIGATION_FAILURE'});
+  return;
+ }
+ throw Object.assign(new Error('Critério ID ordem de serviço não localizado na busca SAP.'),{code:'NAVIGATION_FAILURE'});
+}
+async function openOrder(page,id,maxPages=100){
  if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP ainda processa a pesquisa anterior.'),{code:'NAVIGATION_FAILURE'});
- for(let n=1;n<=100;n++){
+ for(let n=1;n<=maxPages;n++){
   for(const frame of await visibleFrames(page)){try{const r=await inspectAndOpen(frame,id);if(r==="OPENED"){if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu a abertura da OS.'),{code:'NAVIGATION_FAILURE'});return;}if(r==="NO_ACTION")throw new Error("OS sem link.");}catch(e){if(e.code==='NAVIGATION_FAILURE'||e.message==="OS sem link.")throw e;}}
   // Mesma correção já validada em scanServiceOrderCatalog: o rótulo real
   // de paginação na tela em inglês é "Forward" (confirmado por print do
@@ -1639,7 +1657,7 @@ try{
  for(const job of jobs){
   try{
    if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP ainda processa a operação anterior.'),{code:'NAVIGATION_FAILURE'});
-   await openSearch(page);await openOrder(page,job.external_order_id);
+   await openSearch(page);await searchOrderById(page,job.external_order_id);await openOrder(page,job.external_order_id,2);
    const pdf=await capturePdf(context,page,job.external_order_id);
    const payload=parseWhirlpoolPdf(await extractPdfText(pdf));
    if(payload.externalOrderId!==job.external_order_id)throw new Error("PDF pertence a outra OS.");
