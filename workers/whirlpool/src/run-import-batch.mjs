@@ -1395,6 +1395,7 @@ async function inspectAndOpen(frame,id){
 async function searchOrderById(page,id){
  if(!/^7015\d{6}$/.test(id))throw new Error('Número Whirlpool inválido para pesquisa direta.');
  if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu a pesquisa inicial.'),{code:'NAVIGATION_FAILURE'});
+ const fieldDiagnostics=[];
  for(const frame of await visibleFrames(page)){
   // A grade SAP é composta de widgets aninhados, não de <tr> simples.
   // O rótulo visível e VALUE1 dividem a mesma linha de critério.
@@ -1411,7 +1412,15 @@ async function searchOrderById(page,id){
    }
    return null;
   }).catch(()=>null);
-  if(!valueId)continue;
+  if(!valueId){
+   const sample=await frame.evaluate(()=>[...document.querySelectorAll('[id*="btqsrvord_parameters"]')]
+    .filter(el=>/\.(FIELD|VALUE1)$/.test(el.id))
+    .slice(0,30).map(el=>({id:el.id,tag:el.tagName,kind:el.id.endsWith('.FIELD')?'FIELD':'VALUE1',
+      label:(el.closest('tr')?.innerText||el.parentElement?.parentElement?.innerText||'').replace(/\s+/g,' ').slice(0,80),
+      title:el.getAttribute('title')||null}))).catch(()=>[]);
+   if(sample.length)fieldDiagnostics.push({frame:frame.url().split('?')[0].slice(-100),sample});
+   continue;
+  }
   const input=frame.locator(`xpath=//*[@id=${JSON.stringify(valueId)}]`).first();
   if(!(await input.count()))continue;
   await input.fill(id,{force:true});
@@ -1420,6 +1429,7 @@ async function searchOrderById(page,id){
   if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu a pesquisa direta da OS.'),{code:'NAVIGATION_FAILURE'});
   return;
  }
+ await writeDiagnosticsJson('search-id-fields',{fieldDiagnostics});
  throw Object.assign(new Error('Critério ID ordem de serviço não localizado na busca SAP.'),{code:'NAVIGATION_FAILURE'});
 }
 async function openOrder(page,id,maxPages=100){
