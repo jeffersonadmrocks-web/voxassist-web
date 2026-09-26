@@ -1450,6 +1450,8 @@ async function capturePdf(context,page,id){
  const pdfDir=path.join(ARTIFACT_DIR,"pdfs");await mkdir(pdfDir,{recursive:true});
  let resolvePdf,rejectPdf;const done=new Promise((res,rej)=>{resolvePdf=res;rejectPdf=rej});
  const responseDiagnostics=[];
+ let popupPage=null;
+ let downloadHandler=null;
  const timer=setTimeout(()=>rejectPdf(new Error("PDF não capturado em 90 segundos. Respostas: "+JSON.stringify(responseDiagnostics.slice(-12)))),90000);
  const handler=async response=>{
   try{
@@ -1462,7 +1464,7 @@ async function capturePdf(context,page,id){
     const bytes=Buffer.from(await response.body());
     if(bytes.subarray(0,5).toString()!=="%PDF-")return;
     if(bytes.length<4096||!bytes.subarray(-2048).toString().includes("%%EOF"))throw new Error("PDF incompleto.");
-    clearTimeout(timer);context.off("response",handler);resolvePdf(bytes);
+    clearTimeout(timer);context.off("response",handler);popupPage?.off("response",handler);if(downloadHandler)context.off("download",downloadHandler);resolvePdf(bytes);
    }
   }catch{}
  };
@@ -1494,6 +1496,23 @@ async function capturePdf(context,page,id){
  if(!visualizacaoClicked){clearTimeout(timer);context.off("response",handler);throw new Error("Botão Visualização não localizado.");}
  const popup=await popupPromise;
  if(!popup){clearTimeout(timer);context.off("response",handler);throw new Error("Janela de impressão (Visualização) não abriu.");}
+ popupPage=popup;
+ // O viewer é uma nova aba. Em alguns runs o PDF foi exibido nessa aba
+ // sem que a resposta passasse pelo listener da página original; escute a
+ // própria aba e também o evento de download do Chromium.
+ popup.on("response",handler);
+ downloadHandler=async download=>{
+  try{
+   const suggested=String(download.suggestedFilename()||'').toLowerCase();
+   if(!suggested.includes('pdf'))return;
+   const file=await download.path();
+   if(!file)return;
+   const bytes=Buffer.from(await (await import('node:fs/promises')).readFile(file));
+   if(bytes.subarray(0,5).toString()!=="%PDF-"||bytes.length<4096)return;
+   clearTimeout(timer);context.off("response",handler);popup.off("response",handler);context.off("download",downloadHandler);resolvePdf(bytes);
+  }catch{}
+ };
+ context.on("download",downloadHandler);
  await popup.waitForLoadState("domcontentloaded").catch(()=>{});
  await waitForSapIdle(popup,30000);
  let reportClicked=false;
@@ -1504,7 +1523,7 @@ async function capturePdf(context,page,id){
   }
   if(!reportClicked)await delay(500);
  }
- if(!reportClicked){clearTimeout(timer);context.off("response",handler);throw new Error("Formulário de impressão de ordem de serviço não localizado.");}
+ if(!reportClicked){clearTimeout(timer);context.off("response",handler);popup.off("response",handler);context.off("download",downloadHandler);throw new Error("Formulário de impressão de ordem de serviço não localizado.");}
  const bytes=await done;
  await writeFile(path.join(pdfDir,`${id}.pdf`),bytes);
  return bytes;
