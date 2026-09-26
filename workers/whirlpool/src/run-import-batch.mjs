@@ -1453,7 +1453,10 @@ async function capturePdf(context,page,id){
  const handler=async response=>{
   try{
    const u=new URL(response.url()),ct=(response.headers()["content-type"]||"").toLowerCase();
-   if(u.hostname==="larcrm7.whirlpool.com"&&u.pathname.toLowerCase().endsWith("/crm/crm_pdf_print")&&ct.includes("application/pdf")){
+   // O SAP serve o PDF por uma URL dinâmica de sessão; o viewer Chromium
+   // confirmou o documento mesmo quando o caminho não terminava no
+   // endpoint antigo. A identidade da OS é validada após o parse.
+   if(u.hostname==="larcrm7.whirlpool.com"&&ct.includes("application/pdf")){
     const bytes=Buffer.from(await response.body());
     if(bytes.length<4096||bytes.subarray(0,5).toString()!=="%PDF-"||!bytes.subarray(-2048).toString().includes("%%EOF"))throw new Error("PDF incompleto.");
     clearTimeout(timer);context.off("response",handler);resolvePdf(bytes);
