@@ -110,6 +110,29 @@ async function visibleFrames(page){
   const flags=await Promise.all(frames.map(f=>isFrameChainVisible(f).catch(()=>false)));
   return frames.filter((_,i)=>flags[i]);
 }
+// O SAP mantém um bloqueio "Esperar..." durante requisições assíncronas.
+// A captura de produção de 26/09 mostrou o robô iniciando a próxima OS
+// enquanto esse bloqueio ainda cobria a busca e a tela de detalhe.
+async function waitForSapIdle(page,timeout=45000){
+  const deadline=Date.now()+timeout;
+  let clearSince=0;
+  while(Date.now()<deadline){
+    let busy=false;
+    for(const frame of await visibleFrames(page)){
+      try{
+        if(await frame.evaluate(()=>[...document.querySelectorAll('div,span,td')].some(el=>{
+          if(el.children.length>3||!/^(esperar|please wait)\.{0,3}$/i.test((el.textContent||'').trim()))return false;
+          const rect=el.getBoundingClientRect(),style=getComputedStyle(el);
+          return rect.width>0&&rect.height>0&&style.visibility!=='hidden'&&style.display!=='none';
+        }))){busy=true;break;}
+      }catch{}
+    }
+    if(!busy){if(!clearSince)clearSince=Date.now();if(Date.now()-clearSince>=700)return true;}
+    else clearSince=0;
+    await delay(400);
+  }
+  return false;
+}
 // Acha o frame cujo próprio <iframe> (no documento pai) tem
 // id="CRMApplicationFrame" -- o operacional real do CRM Whirlpool,
 // confirmado por inspeção manual via DevTools (display:block,
@@ -1370,8 +1393,9 @@ async function inspectAndOpen(frame,id){
  return found;
 }
 async function openOrder(page,id){
+ if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP ainda processa a pesquisa anterior.'),{code:'NAVIGATION_FAILURE'});
  for(let n=1;n<=100;n++){
-  for(const frame of await visibleFrames(page)){try{const r=await inspectAndOpen(frame,id);if(r==="OPENED"){await delay(2000);return;}if(r==="NO_ACTION")throw new Error("OS sem link.");}catch(e){if(e.message==="OS sem link.")throw e;}}
+  for(const frame of await visibleFrames(page)){try{const r=await inspectAndOpen(frame,id);if(r==="OPENED"){if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu a abertura da OS.'),{code:'NAVIGATION_FAILURE'});return;}if(r==="NO_ACTION")throw new Error("OS sem link.");}catch(e){if(e.code==='NAVIGATION_FAILURE'||e.message==="OS sem link.")throw e;}}
   // Mesma correção já validada em scanServiceOrderCatalog: o rótulo real
   // de paginação na tela em inglês é "Forward" (confirmado por print do
   // usuário), nunca só "Avançar", e só responde a clique confiável.
@@ -1380,11 +1404,12 @@ async function openOrder(page,id){
    if(await clickTrustedInFrame(frame,["Avançar","Forward","Next"],300)){advanced=true;break;}
   }
   if(!advanced)break;
-  await delay(1200);
+  if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu a paginação da OS.'),{code:'NAVIGATION_FAILURE'});
  }
  throw new Error(`OS ${id} não localizada.`);
 }
 async function capturePdf(context,page,id){
+ if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP ainda processa a abertura da OS.'),{code:'NAVIGATION_FAILURE'});
  const pdfDir=path.join(ARTIFACT_DIR,"pdfs");await mkdir(pdfDir,{recursive:true});
  let resolvePdf,rejectPdf;const done=new Promise((res,rej)=>{resolvePdf=res;rejectPdf=rej});
  const timer=setTimeout(()=>rejectPdf(new Error("PDF não apareceu em 90 segundos.")),90000);
@@ -1427,8 +1452,15 @@ async function capturePdf(context,page,id){
  const popup=await popupPromise;
  if(!popup){clearTimeout(timer);context.off("response",handler);throw new Error("Janela de impressão (Visualização) não abriu.");}
  await popup.waitForLoadState("domcontentloaded").catch(()=>{});
- await delay(500);
- const reportClicked=await clickTextTrustedInFrame(popup.mainFrame(),["Formulário de impressão de ordem de serviço"],20000);
+ await waitForSapIdle(popup,30000);
+ let reportClicked=false;
+ const reportDeadline=Date.now()+30000;
+ while(!reportClicked&&Date.now()<reportDeadline){
+  for(const frame of await visibleFrames(popup)){
+   if(await clickTextTrustedInFrame(frame,["Formulário de impressão de ordem de serviço"],500)){reportClicked=true;break;}
+  }
+  if(!reportClicked)await delay(500);
+ }
  if(!reportClicked){clearTimeout(timer);context.off("response",handler);throw new Error("Formulário de impressão de ordem de serviço não localizado.");}
  const bytes=await done;
  await writeFile(path.join(pdfDir,`${id}.pdf`),bytes);
@@ -1606,6 +1638,7 @@ try{
  if(!jobs.length)console.log("Nenhuma OS ativa pendente.");
  for(const job of jobs){
   try{
+   if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP ainda processa a operação anterior.'),{code:'NAVIGATION_FAILURE'});
    await openSearch(page);await openOrder(page,job.external_order_id);
    const pdf=await capturePdf(context,page,job.external_order_id);
    const payload=parseWhirlpoolPdf(await extractPdfText(pdf));
@@ -1613,7 +1646,7 @@ try{
    const imported=await uploadAndImport(job.external_order_id,payload,pdf);
    await closePdfPages(context,page);
    if(!(await waitForTextClick(page,["Encerrar"],20000)))throw new Error("Importada, mas botão Encerrar não localizado.");
-   await delay(1500);
+   if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu o encerramento da OS.'),{code:'NAVIGATION_FAILURE'});
    results.push({externalOrderId:job.external_order_id,status:"IMPORTADA",appointmentStatus:imported.appointmentStatus||null});
   }catch(e){
    const reason=String(e.message||e).slice(0,1600);
@@ -1622,7 +1655,7 @@ try{
    await reportJobFailure(job,e?.code||"JOB_FAILURE",reason);
    await closePdfPages(context,page);
    await clickText(page,["Encerrar"]).catch(()=>{});
-   await delay(1000);
+   await waitForSapIdle(page,30000);
    if(e?.code==="NAVIGATION_FAILURE")break;
   }
  }
