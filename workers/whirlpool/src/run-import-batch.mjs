@@ -1610,7 +1610,14 @@ const workerId=crypto.randomUUID();
 const conn={id:null};
 const claim=await workerRequest("claim",{worker_id:workerId,lease_seconds:900});
 conn.id=claim?.connection_id||null;
-if(!claim?.claimed){console.log("EXECUÇÃO NÃO INICIADA: "+String(claim?.reason||"SEM_LEASE"));process.exit(0);}
+if(!claim?.claimed){
+ const reason=String(claim?.reason||"SEM_LEASE");
+ console.log("EXECUÇÃO NÃO INICIADA: "+reason);
+ // Um job encerrado pelo timeout pode deixar a trava de login ativa até
+ // expirar. Mostrar verde nesse caso ocultava que nenhuma OS foi tentada.
+ // Sem lease, nenhuma interação com o portal é permitida.
+ process.exit(reason==="LOGIN_ALREADY_ATTEMPTED"||reason==="CREDENTIALS_MISSING"?2:0);
+}
 let browser,context,page,reported=false;
 const results=[];
 try{
