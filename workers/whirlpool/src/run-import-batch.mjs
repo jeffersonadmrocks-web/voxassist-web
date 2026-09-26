@@ -1396,7 +1396,8 @@ async function searchOrderById(page,id){
  if(!/^7015\d{6}$/.test(id))throw new Error('Número Whirlpool inválido para pesquisa direta.');
  if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu a pesquisa inicial.'),{code:'NAVIGATION_FAILURE'});
  for(const frame of await visibleFrames(page)){
-  const fields=await collectSearchFormFields(frame);
+  const collected=await collectSearchFormFields(frame).catch(()=>[]);
+  const fields=Array.isArray(collected)?collected:[];
   const field=fields.find(f=>/^(id|n[uú]mero|nº) (da |de |do )?ordem de servi[cç]o$/i.test(f.label.trim()));
   if(!field?.id&&!field?.name)continue;
   const selector=field.id?`xpath=//*[@id=${JSON.stringify(field.id)}]`:`xpath=//*[@name=${JSON.stringify(field.name)}]`;
