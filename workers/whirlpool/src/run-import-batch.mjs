@@ -1396,12 +1396,23 @@ async function searchOrderById(page,id){
  if(!/^7015\d{6}$/.test(id))throw new Error('Número Whirlpool inválido para pesquisa direta.');
  if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu a pesquisa inicial.'),{code:'NAVIGATION_FAILURE'});
  for(const frame of await visibleFrames(page)){
-  const collected=await collectSearchFormFields(frame).catch(()=>[]);
-  const fields=Array.isArray(collected)?collected:[];
-  const field=fields.find(f=>/^(id|n[uú]mero|nº) (da |de |do )?ordem de servi[cç]o$/i.test(f.label.trim()));
-  if(!field?.id&&!field?.name)continue;
-  const selector=field.id?`xpath=//*[@id=${JSON.stringify(field.id)}]`:`xpath=//*[@name=${JSON.stringify(field.name)}]`;
-  const input=frame.locator(selector).first();
+  // A grade SAP é composta de widgets aninhados, não de <tr> simples.
+  // O rótulo visível e VALUE1 dividem a mesma linha de critério.
+  const valueId=await frame.evaluate(()=>{
+   const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
+   for(const input of document.querySelectorAll('input[id*="btqsrvord_parameters"][id$=".VALUE1"]')){
+    let row=input.parentElement;
+    for(let depth=0;row&&depth<6;depth++,row=row.parentElement){
+     const label=norm(row.innerText||'');
+     const values=row.querySelectorAll('input[id$=".VALUE1"]');
+     if(values.length===1&&label.includes('id ordem de servico'))return input.id;
+     if(values.length>1)break;
+    }
+   }
+   return null;
+  }).catch(()=>null);
+  if(!valueId)continue;
+  const input=frame.locator(`xpath=//*[@id=${JSON.stringify(valueId)}]`).first();
   if(!(await input.count()))continue;
   await input.fill(id,{force:true});
   await input.dispatchEvent('change');
