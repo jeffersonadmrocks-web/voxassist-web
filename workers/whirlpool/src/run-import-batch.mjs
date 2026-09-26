@@ -1413,11 +1413,12 @@ async function searchOrderById(page,id){
    return null;
   }).catch(()=>null);
   if(!valueId){
-   const sample=await frame.evaluate(()=>[...document.querySelectorAll('[id*="btqsrvord_parameters"]')]
+   const rawSample=await frame.evaluate(()=>[...document.querySelectorAll('[id*="btqsrvord_parameters"]')]
     .filter(el=>/\.(FIELD|VALUE1)$/.test(el.id))
     .slice(0,30).map(el=>({id:el.id,tag:el.tagName,kind:el.id.endsWith('.FIELD')?'FIELD':'VALUE1',
       label:(el.closest('tr')?.innerText||el.parentElement?.parentElement?.innerText||'').replace(/\s+/g,' ').slice(0,80),
       title:el.getAttribute('title')||null}))).catch(()=>[]);
+   const sample=Array.isArray(rawSample)?rawSample:[];
    if(sample.length)fieldDiagnostics.push({frame:frame.url().split('?')[0].slice(-100),sample});
    continue;
   }
@@ -1697,6 +1698,7 @@ try{
    results.push({externalOrderId:job.external_order_id,status:"IMPORTADA",appointmentStatus:imported.appointmentStatus||null});
   }catch(e){
    const reason=String(e.message||e).slice(0,1600);
+   console.error('WORKER WHIRLPOOL JOB_EXCEPTION: '+String(e?.stack||e).slice(0,1200));
    results.push({externalOrderId:job.external_order_id,status:"FALHA",reason});
    await captureDiagnostics(`job-${job.external_order_id}`);
    await reportJobFailure(job,e?.code||"JOB_FAILURE",reason);
