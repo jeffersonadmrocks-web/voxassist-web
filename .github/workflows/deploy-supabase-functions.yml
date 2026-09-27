@@ -1,0 +1,55 @@
+name: Deploy Supabase Edge Functions
+
+# Achado real (2026-09-27): nenhuma automação publicava supabase/functions/*
+# -- o único workflow deste repositório é o do robô Whirlpool, e o Vercel só
+# publica o frontend estático. Uma correção real (electrolux-proxy, PR #103)
+# ficou mergeada no repositório por dias sem nunca chegar em produção, e o
+# erro que ela corrigia continuou idêntico. Este workflow fecha essa lacuna.
+#
+# Lista de functions explícita (nunca "deploy tudo") -- operational-alerts-scan
+# fica de fora de propósito: não tem nenhuma verificação de token própria no
+# código, então não dá pra saber com segurança se ela depende de
+# verify_jwt=true ou false sem confirmar direto no painel do Supabase
+# primeiro. Adicionar uma function nova aqui é uma linha na matriz abaixo.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+      - "supabase/config.toml"
+      - ".github/workflows/deploy-supabase-functions.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-supabase-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        function:
+          - electrolux-proxy
+          - chat-gateway-proxy
+          - chat-send-message
+          - chat-delete-message
+          - get-electrolux-appointment-detail
+          - app-gateway-launch
+          - whirlpool-manual-sync
+          - sync-electrolux-agenda
+          - sync-electrolux-nps
+          - whirlpool-worker-api
+          - chat-inbound-webhook
+          - chat-lid-resolved-webhook
+          - chat-status-webhook
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Deploy ${{ matrix.function }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy ${{ matrix.function }} --project-ref dgasmtvpgifceyqufcfg

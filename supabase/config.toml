@@ -1,0 +1,42 @@
+# Configuração de deploy das Edge Functions -- criado em 2026-09-27 depois
+# de descobrir que nenhuma automação publicava supabase/functions/* (o
+# GitHub Actions só publica o robô Whirlpool; o Vercel só publica o
+# frontend). Uma correção real (electrolux-proxy, PR #103) ficou parada no
+# repositório sem nunca chegar em produção por causa disso.
+#
+# verify_jwt=false é OBRIGATÓRIO aqui pras 6 functions abaixo -- elas nunca
+# recebem um JWT real do Supabase (usam token de serviço próprio verificado
+# no próprio código: SYNC_SERVICE_TOKEN, CHAT_GATEWAY_SERVICE_TOKEN, ou o
+# token OIDC do GitHub Actions). Sem essa declaração explícita, qualquer
+# `supabase functions deploy` reseta pro padrão (verify_jwt=true) e
+# derruba o robô Whirlpool e os crons do Electrolux/WhatsApp em silêncio.
+#
+# Todas as outras functions do projeto (electrolux-proxy,
+# chat-gateway-proxy, chat-send-message, chat-delete-message,
+# get-electrolux-appointment-detail, app-gateway-launch,
+# whirlpool-manual-sync) recebem sessão de usuário real (JWT Supabase
+# verificado via userClient.auth.getUser()) -- verify_jwt=true (padrão,
+# não precisa de entrada aqui).
+#
+# operational-alerts-scan foi deixada de fora de propósito: não tem
+# nenhuma verificação de token no próprio código, e por enquanto não
+# faz parte do deploy automático até confirmar com o usuário qual
+# verify_jwt está realmente configurado nela em produção.
+
+[functions.sync-electrolux-agenda]
+verify_jwt = false
+
+[functions.sync-electrolux-nps]
+verify_jwt = false
+
+[functions.whirlpool-worker-api]
+verify_jwt = false
+
+[functions.chat-inbound-webhook]
+verify_jwt = false
+
+[functions.chat-lid-resolved-webhook]
+verify_jwt = false
+
+[functions.chat-status-webhook]
+verify_jwt = false
