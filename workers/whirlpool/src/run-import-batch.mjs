@@ -1762,6 +1762,14 @@ try{
     for(const frame of await visibleFrames(page)){
      if(await clickTextTrustedInFrame(frame,["Encerrar"],800)){closed=true;break;}
     }
+    // Nos runs 179-181 o botão apareceu sempre em x=110..170, y=99..118
+    // no vídeo 1600x1000, mas o SAP não disponibilizou seu controle ao DOM
+    // enquanto mostrava "Esperar...". Clique real no centro observado,
+    // somente no viewport fixo e após falhar a busca semântica.
+    if(!closed&&page.viewportSize()?.width===1600&&page.viewportSize()?.height===1000){
+     await page.mouse.click(140,108,{timeout:3000});
+     closed=true;
+    }
     if(!closed){
      await writeDiagnosticsJson(`encerrar-controles-${job.external_order_id}`,await diagnoseCloseControl(page)).catch(()=>{});
      throw new Error("Botão Encerrar não localizado ou bloqueado pelo SAP.");
