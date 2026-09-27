@@ -51,6 +51,20 @@
      await loadCore();toast(coherent?'OS importada e adicionada à agenda.':'OS importada e adicionada aos Agendamentos em Aberto.');if(!coherent)alert('A OS foi importada, mas não possui uma data de atendimento válida. Ela está em Agendamentos em Aberto para definição com o cliente.');render('os:'+os.id);
    }catch(e){toast('Falha ao criar a OS importada: '+e.message,'err')}
  }
- window.renderImportOs=renderImport;
- const old=window.render;window.render=async function(view){if(view==='importar-os')return renderImport();return old(view)};
+ // Achado do usuário em 2026-09-27: este protótipo (V0.8.13, só
+ // Brastemp/Consul, parser rígido por regex de layout fixo) carregava
+ // DEPOIS de import-os-v0812.js no index.html e sobrescrevia
+ // window.renderImportOs + window.render por cima, roubando a tela
+ // "Importar O.S." inteira -- o usuário caía sempre nesta versão antiga
+ // (título "Importação Brastemp / Consul") e nunca na importação
+ // genérica multi-fabricante pedida nesta sessão, com o parser rígido
+ // falhando ("Número da OS não reconhecido") em qualquer PDF fora do
+ // layout exato que ele esperava. Superseded por import-os-v0812.js
+ // (extração por âncora de rótulo + regex de formato, não por posição
+ // fixa de coluna, com confirmação da empresa e revisão manual de todo
+ // campo antes de criar a OS). OS Whirlpool tem seu próprio pipeline
+ // automático dedicado (workers/whirlpool/), não depende de import
+ // manual de PDF -- por isso as funções deste arquivo continuam
+ // definidas acima (não removidas, sem uso conhecido em outro lugar),
+ // só as duas linhas abaixo que disputavam a rota foram desativadas.
 })();
