@@ -93,7 +93,60 @@
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${E(title)}</title><style>@page{size:A4;margin:8mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:10px}.doc{width:100%}.head{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border-bottom:2px solid #163754;padding-bottom:8px;margin-bottom:8px}.head img{max-width:130px;max-height:60px}.osno{font-size:21px;font-weight:800;color:#163754}.muted{color:#64748b}.grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.box{border:1px solid #9aa9b8;border-radius:4px;padding:7px;margin-bottom:7px}.box h3{font-size:10px;margin:0 0 5px;color:#163754}.row{display:grid;grid-template-columns:130px 1fr;border-bottom:1px solid #e3e8ed;padding:3px 0}.row:last-child{border:0}.row b{font-size:8px}.wp table{width:100%;border-collapse:collapse;margin:0 0 3px}.wp td,.wp th{border:1px solid #111;padding:3px;font-size:8px;vertical-align:top}.wp th{background:#f2f2f2}.wp .title{font-weight:800;text-align:center}.sign{height:52px;border-top:1px solid #777;margin-top:24px;text-align:center;padding-top:4px}.footer{font-size:8px;text-align:center;margin-top:8px;color:#5d6b78}@media print{button{display:none!important}}.vox .head{background:linear-gradient(135deg,#0b2b4a,#123a61);color:#fff;border-radius:10px;padding:12px 14px;border-bottom:0}.vox .head .muted{color:#9fc1e6}.vox .osno{color:#fff}.vox .box{border:1px solid #e1e8ef;border-radius:10px;box-shadow:0 1px 2px rgba(15,42,68,.08);padding:9px 11px}.vox .box h3{color:#1976d2;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.02em}.vox .row{border-bottom:1px solid #eef2f6}.vox .row b{color:#5e7188}.vox .sign{border-top:1px solid #c7d0d9;color:#5e7188}.vox .footer{color:#5e7188}</style></head><body>${body}<script>setTimeout(()=>window.print(),250)<\/script></body></html>`);w.document.close();
   }
 
-  async function printVox(id){const d=await loadBundle(id),o=d.o,c=o.clients||{},e=o.equipments||{},b=d.brand||{},parts=d.parts||[],fin=d.fin||{};const partsTotal=parts.reduce((s,p)=>s+Number(p.quantity||0)*Number(p.unit_value||0),0),total=partsTotal+Number(fin.labor_value||0)+Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0)-Number(fin.discount_value||0);const body=`<div class="doc vox"><div class="head"><div>${b.logo_url?`<img src="${E(b.logo_url)}">`:''}<div><b>${E(b.trade_name||b.legal_name||'VOXASSIST')}</b></div><div class="muted">${E([b.address,b.address_number,b.city,b.state].filter(Boolean).join(' • '))}</div><div class="muted">${E([b.phone,b.mobile,b.email].filter(Boolean).join(' • '))}</div></div><div><div class="muted">ORDEM DE SERVIÇO</div><div class="osno">${E(o.os_number)}</div><div>${E(String(o.status||'').replaceAll('_',' '))}</div></div></div><div class="grid"><div class="box"><h3>👤 CLIENTE</h3><div class="row"><b>NOME</b><span>${E(c.name)}</span></div><div class="row"><b>CPF/CNPJ</b><span>${E(c.document)}</span></div><div class="row"><b>TELEFONE</b><span>${E(c.phone_primary)}</span></div><div class="row"><b>ENDEREÇO</b><span>${E([c.address,c.address_number,c.complement,c.neighborhood,c.city,c.state].filter(Boolean).join(', '))}</span></div></div><div class="box"><h3>📦 EQUIPAMENTO</h3><div class="row"><b>PRODUTO</b><span>${E(e.product_type)}</span></div><div class="row"><b>MARCA / MODELO</b><span>${E([e.brand,e.model].filter(Boolean).join(' • '))}</span></div><div class="row"><b>SÉRIE</b><span>${E(e.serial_number)}</span></div><div class="row"><b>ATENDIMENTO</b><span>${E(o.service_type)}</span></div></div></div><div class="box"><h3>🔧 ATENDIMENTO TÉCNICO</h3><div class="row"><b>DEFEITO RELATADO</b><span>${E(o.reported_defect)}</span></div><div class="row"><b>DEFEITO CONSTATADO</b><span>${E(o.diagnosed_defect)}</span></div><div class="row"><b>SERVIÇO / LAUDO</b><span>${E(o.technical_service)}</span></div></div><div class="box"><h3>💰 ORÇAMENTO</h3><div class="row"><b>PEÇAS</b><span>${money(partsTotal)}</span></div><div class="row"><b>MÃO DE OBRA</b><span>${money(fin.labor_value||0)}</span></div><div class="row"><b>TOTAL</b><span><strong>${money(total)}</strong></span></div></div><div class="grid"><div class="sign">ASSINATURA DO CLIENTE</div><div class="sign">ASSINATURA DO TÉCNICO</div></div><div class="footer">${E(b.document_footer||b.document_header_note||'')}</div></div>`;printShell('OS '+o.os_number,body)}
+  // Achado do usuário em 2026-09-27: "Imprimir O.S." de uma OS nativa
+  // (não-Whirlpool) sempre gerava o MESMO documento único (cliente +
+  // equipamento + defeito + orçamento + 2 assinaturas), sem separar por
+  // etapa do atendimento -- só existia a escolha Whirlpool x VoxAssist.
+  // Pedido explícito: ENTRADA (recibo de recebimento, sem valor nenhum --
+  // o cliente confirmou que orçamento não deve aparecer aqui), ORÇAMENTO
+  // (diagnóstico + valores, pra aprovação) e ENTREGA (laudo completo +
+  // valores + confirmação de retirada, comprovante final).
+  const DOC_LABELS={entrada:'ENTRADA',orcamento:'ORÇAMENTO',entrega:'ENTREGA'};
+  function chooseVoxDocType(){
+    return new Promise(resolve=>{
+      document.querySelector('#vxDocTypeModal')?.remove();
+      const ov=document.createElement('div');ov.id='vxDocTypeModal';ov.className='vx-admin-overlay';
+      ov.innerHTML=`<div class="vx-admin-modal" style="width:min(420px,92vw)"><div class="vx-admin-modal-head"><h3>Qual documento imprimir?</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body" style="display:grid;gap:8px">
+        <button type="button" class="secondary" data-doc="entrada" style="text-align:left;padding:12px;cursor:pointer">📥 <b>ENTRADA</b><br><small style="color:#5e7188">Recibo de recebimento do aparelho, sem valores.</small></button>
+        <button type="button" class="secondary" data-doc="orcamento" style="text-align:left;padding:12px;cursor:pointer">💰 <b>ORÇAMENTO</b><br><small style="color:#5e7188">Diagnóstico e valores, para aprovação do cliente.</small></button>
+        <button type="button" class="secondary" data-doc="entrega" style="text-align:left;padding:12px;cursor:pointer">✅ <b>ENTREGA</b><br><small style="color:#5e7188">Laudo completo, valores e confirmação de retirada.</small></button>
+      </div></div>`;
+      document.body.appendChild(ov);
+      const close=()=>{ov.remove();resolve(null)};
+      ov.querySelector('[data-close]').onclick=close;
+      ov.addEventListener('click',e=>{if(e.target===ov)close()});
+      ov.querySelectorAll('[data-doc]').forEach(btn=>btn.onclick=()=>{ov.remove();resolve(btn.dataset.doc)});
+    });
+  }
+  async function printVox(id,docType){
+    if(!docType)return; // usuário fechou a escolha do documento sem selecionar
+    const d=await loadBundle(id),o=d.o,c=o.clients||{},e=o.equipments||{},b=d.brand||{},parts=d.parts||[],fin=d.fin||{};
+    const partsTotal=parts.reduce((s,p)=>s+Number(p.quantity||0)*Number(p.unit_value||0),0);
+    const total=partsTotal+Number(fin.labor_value||0)+Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0)-Number(fin.discount_value||0);
+    const clienteBox=`<div class="box"><h3>👤 CLIENTE</h3><div class="row"><b>NOME</b><span>${E(c.name)}</span></div><div class="row"><b>CPF/CNPJ</b><span>${E(c.document)}</span></div><div class="row"><b>TELEFONE</b><span>${E(c.phone_primary)}</span></div><div class="row"><b>ENDEREÇO</b><span>${E([c.address,c.address_number,c.complement,c.neighborhood,c.city,c.state].filter(Boolean).join(', '))}</span></div></div>`;
+    const equipBox=`<div class="box"><h3>📦 EQUIPAMENTO</h3><div class="row"><b>PRODUTO</b><span>${E(e.product_type)}</span></div><div class="row"><b>MARCA / MODELO</b><span>${E([e.brand,e.model].filter(Boolean).join(' • '))}</span></div><div class="row"><b>SÉRIE</b><span>${E(e.serial_number)}</span></div><div class="row"><b>ATENDIMENTO</b><span>${E(o.service_type)}</span></div></div>`;
+    let middle='',signBox='';
+    if(docType==='entrada'){
+      // Só recebimento -- nenhum valor de orçamento (mesmo que já exista
+      // um preenchido na OS), achado do usuário: documento de entrada
+      // nunca deve mostrar preço, só o que foi recebido e o termo.
+      middle=`<div class="box"><h3>🔧 DEFEITO RELATADO PELO CLIENTE</h3><div class="row"><b>DEFEITO</b><span>${E(o.reported_defect)}</span></div></div>
+        <div class="box"><h3>📋 TERMO DE ENTRADA</h3><div style="font-size:8px;color:#5e7188;line-height:1.5">Declaro que entreguei o equipamento acima descrito para avaliação técnica nesta assistência. Estou ciente de que o orçamento será elaborado após o diagnóstico, e que a aprovação é necessária antes do início do reparo.</div></div>`;
+      signBox=`<div class="grid"><div class="sign">ASSINATURA DO CLIENTE (ENTRADA)</div><div class="sign">ASSINATURA DO ATENDENTE</div></div>`;
+    }else if(docType==='orcamento'){
+      middle=`<div class="box"><h3>🔎 DIAGNÓSTICO TÉCNICO</h3><div class="row"><b>DEFEITO RELATADO</b><span>${E(o.reported_defect)}</span></div><div class="row"><b>DEFEITO CONSTATADO</b><span>${E(o.diagnosed_defect)}</span></div><div class="row"><b>SERVIÇO / LAUDO</b><span>${E(o.technical_service)}</span></div></div>
+        <div class="box"><h3>💰 ORÇAMENTO</h3><div class="row"><b>PEÇAS</b><span>${money(partsTotal)}</span></div><div class="row"><b>MÃO DE OBRA</b><span>${money(fin.labor_value||0)}</span></div><div class="row"><b>TOTAL</b><span><strong>${money(total)}</strong></span></div></div>`;
+      signBox=`<div class="grid"><div class="sign">ASSINATURA DO CLIENTE (APROVAÇÃO DO ORÇAMENTO)</div><div class="sign">ASSINATURA DO TÉCNICO</div></div>`;
+    }else{
+      // Achado do usuário: entrega leva o laudo completo (não só a
+      // confirmação) -- comprovante final único que o cliente leva.
+      middle=`<div class="box"><h3>🔧 SERVIÇO REALIZADO</h3><div class="row"><b>DEFEITO RELATADO</b><span>${E(o.reported_defect)}</span></div><div class="row"><b>DEFEITO CONSTATADO</b><span>${E(o.diagnosed_defect)}</span></div><div class="row"><b>SERVIÇO / LAUDO</b><span>${E(o.technical_service)}</span></div></div>
+        <div class="box"><h3>💰 VALORES</h3><div class="row"><b>PEÇAS</b><span>${money(partsTotal)}</span></div><div class="row"><b>MÃO DE OBRA</b><span>${money(fin.labor_value||0)}</span></div><div class="row"><b>TOTAL</b><span><strong>${money(total)}</strong></span></div></div>`;
+      signBox=`<div class="grid"><div class="sign">ASSINATURA DO CLIENTE (RETIRADA)</div><div class="sign">ASSINATURA DO TÉCNICO</div></div>`;
+    }
+    const body=`<div class="doc vox"><div class="head"><div>${b.logo_url?`<img src="${E(b.logo_url)}">`:''}<div><b>${E(b.trade_name||b.legal_name||'VOXASSIST')}</b></div><div class="muted">${E([b.address,b.address_number,b.city,b.state].filter(Boolean).join(' • '))}</div><div class="muted">${E([b.phone,b.mobile,b.email].filter(Boolean).join(' • '))}</div></div><div><div class="muted">ORDEM DE SERVIÇO • ${DOC_LABELS[docType]}</div><div class="osno">${E(o.os_number)}</div><div>${E(String(o.status||'').replaceAll('_',' '))}</div></div></div><div class="grid">${clienteBox}${equipBox}</div>${middle}${signBox}<div class="footer">${E(b.document_footer||b.document_header_note||'')}</div></div>`;
+    printShell('OS '+o.os_number+' - '+DOC_LABELS[docType],body);
+  }
 
   // Achado do usuário (plano "Arquitetura de Documentos da OS", Fase 1
   // -- 2026-09-09): "GERAR PDF" do cabeçalho (kind='auto') e o botão da
@@ -109,12 +162,14 @@
   window.vxPrintOsDocument=async function(kind='auto'){
     const o=state?.activeOs;if(!o)return toast('Abra uma OS antes de imprimir.','err');
     if(kind==='whirlpool')return printWhirlpoolOfficial(o.id);
-    if(kind==='vox')return printVox(o.id);
+    if(kind==='vox-entrada'||kind==='vox-orcamento'||kind==='vox-entrega')return printVox(o.id,kind.slice(4));
+    if(kind==='vox')return printVox(o.id,await chooseVoxDocType());
     if(isWhirlpool(o)){
       const useWp=confirm('Esta é uma OS Whirlpool (Brastemp/Consul).\n\nOK = imprimir documento Whirlpool\nCancelar = imprimir modelo padrão VoxAssist');
-      return useWp?printWhirlpoolOfficial(o.id):printVox(o.id);
+      if(useWp)return printWhirlpoolOfficial(o.id);
+      return printVox(o.id,await chooseVoxDocType());
     }
-    return printVox(o.id);
+    return printVox(o.id,await chooseVoxDocType());
   };
   window.printOs=()=>window.vxPrintOsDocument('auto');
 
