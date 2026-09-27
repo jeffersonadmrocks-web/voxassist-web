@@ -78,7 +78,7 @@
     const ov=document.createElement('div');ov.id='vxDocTermsModal';ov.className='vx-admin-overlay';
     ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>Termos -- ${DOC_TYPE_LABELS[docType]}</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body"><form class="vx-admin-form">
       ${current?`<p class="vx-sg-help">Versão atual: v${current.version}. Salvar cria a v${current.version+1} -- a v${current.version} continua valendo pros documentos já emitidos com ela.</p>`:'<p class="vx-sg-help">Ainda sem nenhuma versão com texto. Salvar cria a primeira.</p>'}
-      <label>TEXTO</label><textarea name="body" rows="10" placeholder="Termos e condições...">${current?E(current.body):''}</textarea>
+      <label>TEXTO</label><textarea name="body" rows="10" style="height:260px" placeholder="Termos e condições...">${current?E(current.body):''}</textarea>
       <div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button class="primary">SALVAR NOVA VERSÃO</button></div>
     </form></div></div>`;
     document.body.appendChild(ov);
