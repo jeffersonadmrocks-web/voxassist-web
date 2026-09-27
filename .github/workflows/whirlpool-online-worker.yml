@@ -22,7 +22,7 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: workers/whirlpool
@@ -47,12 +47,12 @@ jobs:
           # Each worker claim remains capped at 3 OS. Continue in the same
           # workflow while full successful batches indicate a backlog.
           started=$SECONDS
-          for round in 1 2 3; do
-            if (( SECONDS - started >= 1080 )); then
+          for round in {1..12}; do
+            if (( SECONDS - started >= 3000 )); then
               echo "Stopping before the job time limit. The next schedule resumes the queue."
               break
             fi
-            echo "Whirlpool batch $round/3"
+            echo "Whirlpool batch $round/12"
             log="$RUNNER_TEMP/whirlpool-batch-$round.log"
             npm run run-online | tee "$log"
             more=$(node -e '
