@@ -55,7 +55,10 @@ Deno.serve(async req=>{
     }
     if(action==="pending"){
       const limit=Math.min(Math.max(Number(input.limit)||3,1),3);
-      const {data:q,error}=await admin.from("whirlpool_import_queue").select("id,external_order_id,created_at").eq("state","PENDENTE").eq("queue_reason","ATIVA_NOVA").order("created_at").limit(limit);
+      // A autenticação já foi validada pelo worker antes desta chamada. Após
+      // uma falha sistêmica, o relatório AUTH_OK só libera a fila ao FINAL do
+      // lote; filtrar apenas PENDENTE aqui deixava o lote vazio para sempre.
+      const {data:q,error}=await admin.from("whirlpool_import_queue").select("id,external_order_id,created_at").in("state",["PENDENTE","AGUARDANDO_CONEXAO_WHIRLPOOL"]).eq("queue_reason","ATIVA_NOVA").order("created_at").limit(limit);
       if(error)throw error;
       const ids=(q||[]).map((x:any)=>x.external_order_id);
       const {data:ext,error:ee}=ids.length?await admin.from("whirlpool_external_orders").select("id,external_order_id,service_status").in("id",ids):{data:[],error:null};
