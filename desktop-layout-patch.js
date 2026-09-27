@@ -111,9 +111,21 @@
   function desktopOrdersTable(rows){return `<div class="desktop-table-wrap"><table class="desktop-table"><thead><tr><th>OS</th><th>CLIENTE</th><th>PRODUTO</th><th>MARCA</th><th>TÉCNICO</th><th>STATUS</th></tr></thead><tbody>${rows.map(o=>`<tr onclick="render('os:${o.id}')"><td>${esc(o.os_number)}</td><td>${esc(o.clients?.name||'—')}</td><td>${esc([o.equipments?.product_type,o.equipments?.model].filter(Boolean).join(' ')||'—')}</td><td>${esc(o.equipments?.brand||'—')}</td><td>${esc(o.profiles?.full_name||'—')}</td><td>${esc(o.status||'—')}</td></tr>`).join('')||'<tr><td colspan="6">Nenhuma OS encontrada.</td></tr>'}</tbody></table></div>`}
 
   const originalRender = window.render;
+  // Achado do usuário em 2026-09-27 (falha grave em produção): este vigia
+  // checava, um instante depois de QUALQUER navegação pro Dashboard, se
+  // a tela tinha a classe .daily-hero (marca do Dashboard antigo desta
+  // própria função, acima) -- o Dashboard canônico atual
+  // (runtime/dashboard-canonical-v1.js) nunca usa essa classe. Sempre que
+  // o Dashboard canônico levava mais que um instante pra terminar de
+  // buscar os dados (condição de corrida real, não hipotética), este
+  // vigia concluía "falhou" e forçava o Dashboard ANTIGO por cima do
+  // certo -- sem erro nenhum no console, só a tela errada aparecendo.
+  // O render original já entrega o Dashboard canônico corretamente
+  // (renderDashboard() é resolvido dinamicamente por window.renderDashboard
+  // a cada chamada) -- este vigia nunca foi necessário pra isso, só
+  // ativamente prejudicial. window.renderDashboard (função antiga acima)
+  // fica sem uso agora, mas não é removida por segurança.
   window.render = async function(view){
-    const r=await originalRender(view);
-    if(view==='dashboard'||!view){setTimeout(()=>{ if($('#app')&&!$('.daily-hero')) window.renderDashboard(); },0)}
-    return r;
+    return await originalRender(view);
   };
 })();
