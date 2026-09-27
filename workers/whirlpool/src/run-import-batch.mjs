@@ -1774,19 +1774,17 @@ try{
      await writeDiagnosticsJson(`encerrar-controles-${job.external_order_id}`,await diagnoseCloseControl(page)).catch(()=>{});
      throw new Error("Botão Encerrar não localizado ou bloqueado pelo SAP.");
     }
-    if(!(await waitForSapIdle(page,60000)))throw new Error('SAP não concluiu o encerramento da OS.');
-    // Encerrar termina a transação, mas mantém o detalhe da OS aberto.
-    // No run 182 o botão ficou desativado e a próxima openSearch falhou
-    // nesse detalhe. Voltar no canto superior direito retorna à lista.
-    let returned=false;
-    for(const frame of await visibleFrames(page)){
-     if(await clickTextTrustedInFrame(frame,["Voltar","Back"],800)){returned=true;break;}
-    }
-    if(!returned&&page.viewportSize()?.width===1600&&page.viewportSize()?.height===1000){
-     await page.mouse.click(1518,156,{timeout:3000});
-     returned=true;
-    }
-    if(!returned||!(await waitForSapIdle(page,60000)))throw new Error('SAP não retornou à lista após encerrar a OS.');
+    // Encerrar foi aceito no run 182 (o botão ficou desativado), mas o
+    // detalhe permaneceu aberto. Voltar deixou o SAP em "Esperar..." por
+    // mais de 60 s no run 183. Feche a página antiga e abra uma nova na
+    // mesma sessão/cookies, uma OS de cada vez, antes da próxima busca.
+    await waitForSapIdle(page,10000);
+    for(const oldPage of context.pages())await oldPage.close().catch(()=>{});
+    page=await context.newPage();
+    await loginIfNeeded(page,claim);
+    page=await selectCrmPage(context,page);
+    await page.bringToFront().catch(()=>{});
+    if(!(await waitForSapIdle(page,45000)))throw new Error('SAP não carregou após renovar a página da OS.');
    }catch(cleanupError){
     console.warn('WORKER WHIRLPOOL CLEANUP_WARNING: '+job.external_order_id+' — '+String(cleanupError?.message||cleanupError).slice(0,240));
     await captureDiagnostics(`cleanup-${job.external_order_id}`).catch(()=>{});
