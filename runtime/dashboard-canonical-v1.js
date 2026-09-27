@@ -754,10 +754,15 @@
 
     // Orçamentos/Entregues do mês, via os_status_history (data real da
     // transição, não opened_at/updated_at da OS).
+    // Achado do usuário em 2026-09-27: uma OS que passou por
+    // AGUARDANDO APROVACAO neste mês e depois foi CANCELADA continuava
+    // contada/listada aqui pra sempre -- o filtro olhava só o histórico
+    // (transição já aconteceu), nunca o status ATUAL da OS. Exclui
+    // quem está CANCELADA hoje, mesmo tendo passado pelo status no mês.
     function monthTransitions(statusLabel,from,to){
       const ids=new Set(history.filter(h=>norm(h.new_status)===statusLabel&&new Date(h.changed_at)>=from&&new Date(h.changed_at)<to).map(h=>h.service_order_id));
-      const rows=orders.filter(o=>ids.has(o.id));
-      return {count:ids.size,value:rows.reduce((s,o)=>s+budget(finMap.get(String(o.id)),partsTotalMap.get(String(o.id))),0),rows};
+      const rows=orders.filter(o=>ids.has(o.id)&&norm(o.status)!=='CANCELADA');
+      return {count:rows.length,value:rows.reduce((s,o)=>s+budget(finMap.get(String(o.id)),partsTotalMap.get(String(o.id))),0),rows};
     }
     const monthEnd=new Date(month0.getFullYear(),month0.getMonth()+1,1);
     const orcamentosMes=monthTransitions('AGUARDANDO APROVACAO',month0,monthEnd);
