@@ -587,9 +587,9 @@ async function clickTextTrustedInFrame(frame,texts,timeout=20000){
       found=await frame.evaluate(({targets,marker})=>{
         const norm=v=>String(v||"").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+/g," ").trim().toLowerCase();
         const wanted=targets.map(norm);
-        const nodes=[...document.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"],[role="menuitem"],span,td')];
+        const nodes=[...document.querySelectorAll('a,button,input[type="button"],input[type="submit"],input[type="image"],[role="button"],[role="menuitem"],span,td')];
         const choices=nodes.map(node=>{
-          const label=norm(node.innerText||node.textContent||node.value||node.title||node.getAttribute("aria-label")||"");
+          const label=norm(node.innerText||node.textContent||node.value||node.alt||node.title||node.getAttribute("aria-label")||"");
           if(!wanted.includes(label))return null;
           const action=node.closest('a,button,[role="button"],[role="menuitem"]')||node;
           const rect=action.getBoundingClientRect();
@@ -1739,8 +1739,12 @@ try{
    // falha nem tente navegar para a próxima OS com a página ainda ocupada.
    try{
     await closePdfPages(context,page);
-    if(!(await waitForTextClick(page,["Encerrar"],20000)))throw new Error("Botão Encerrar não localizado.");
-    if(!(await waitForSapIdle(page)))throw new Error('SAP não concluiu o encerramento da OS.');
+    let closed=false;
+    for(const frame of await visibleFrames(page)){
+     if(await clickTextTrustedInFrame(frame,["Encerrar"],800)){closed=true;break;}
+    }
+    if(!closed)throw new Error("Botão Encerrar não localizado ou bloqueado pelo SAP.");
+    if(!(await waitForSapIdle(page,60000)))throw new Error('SAP não concluiu o encerramento da OS.');
    }catch(cleanupError){
     console.warn('WORKER WHIRLPOOL CLEANUP_WARNING: '+job.external_order_id+' — '+String(cleanupError?.message||cleanupError).slice(0,240));
     await captureDiagnostics(`cleanup-${job.external_order_id}`).catch(()=>{});
