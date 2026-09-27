@@ -20,12 +20,20 @@
   function btn(label,action,kind=''){return `<button class="vx-btn ${kind}" data-action="${action}">${label}</button>`}
   function card(title,desc,actions,color='#1472d0'){return `<div class="feature-card" style="--accent:${color}"><h3>${title}</h3><p>${desc}</p>${actions}</div>`}
   function bindFeatureActions(){document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>runAction(b.dataset.action));}
+  // Achado da auditoria em 2026-09-27: usava previousRender (a referência de
+  // window.render capturada no carregamento DESTE arquivo) -- como este
+  // arquivo carrega ANTES de company-guard-confirm-edit-v0812.js (a trava
+  // "Configurações disponível só pro Gestor"), clicar em "Usuários / Perfis"
+  // a partir de um card de funcionalidade (ex.: Pareceres Técnicos) pulava
+  // essa trava por completo. window.render (referência viva, resolvida a
+  // cada chamada) sempre inclui tudo que carregou depois -- nunca fica pra
+  // trás conforme mais telas se registram.
   async function runAction(a){
-    if(a==='os')return previousRender('os'); if(a==='nova-os')return previousRender('nova-os'); if(a==='clientes')return previousRender('clientes');
-    if(a==='oficina')return previousRender('oficina'); if(a==='agenda')return previousRender('agenda'); if(a==='estoque')return previousRender('estoque');
-    if(a==='financeiro')return previousRender('financeiro'); if(a==='testes')return previousRender('testes'); if(a==='usuarios')return previousRender('usuarios');
+    if(a==='os')return window.render('os'); if(a==='nova-os')return window.render('nova-os'); if(a==='clientes')return window.render('clientes');
+    if(a==='oficina')return window.render('oficina'); if(a==='agenda')return window.render('agenda'); if(a==='estoque')return window.render('estoque');
+    if(a==='financeiro')return window.render('financeiro'); if(a==='testes')return window.render('testes'); if(a==='usuarios')return window.render('usuarios');
     if(a==='print')return window.print();
-    if(a==='f11'){if(state.activeOs)return previousRender('os:'+state.activeOs);return toast('Abra uma OS para acessar F11 / Observações Internas.');}
+    if(a==='f11'){if(state.activeOs)return window.render('os:'+state.activeOs);return toast('Abra uma OS para acessar F11 / Observações Internas.');}
     toast('Ação disponível para homologação nesta etapa.');
   }
 

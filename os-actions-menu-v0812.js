@@ -94,7 +94,14 @@
     }
   }
   const base=window.renderOsDetail;if(typeof base==='function')window.renderOsDetail=async function(){const r=await base.apply(this,arguments);await ensure();return r;};setTimeout(ensure,0);
-  if(!document.querySelector('script[data-vx-whirlpool-extension]')){const s=document.createElement('script');s.dataset.vxWhirlpoolExtension='1';s.src='os-whirlpool-extension-v0813.js?v=0813-20260820-WPEXT2';document.head.appendChild(s);}
-  if(!document.querySelector('script[data-vx-whirlpool-faithful]')){const s=document.createElement('script');s.dataset.vxWhirlpoolFaithful='1';s.src='whirlpool-faithful-mode-v0813.js?v=0813-20260820-WPFAITHFUL2';document.head.appendChild(s);}
-  if(!document.querySelector('script[data-vx-whirlpool-layout]')){const s=document.createElement('script');s.dataset.vxWhirlpoolLayout='1';s.src='whirlpool-layout-hotfix-v0813.js?v=0813-20260820-WPLAYOUT1';document.head.appendChild(s);}
+  // Achado da auditoria em 2026-09-27: os 3 arquivos abaixo (whirlpool-extension,
+  // whirlpool-faithful-mode, whirlpool-layout-hotfix) já são carregados
+  // corretamente como <script defer> no index.html, com versões atualizadas.
+  // Esta injeção dinâmica carregava CADA UM DELES DE NOVO, com versões antigas
+  // (o guard checava um atributo data-vx-whirlpool-* que o <script defer> real
+  // nunca tinha, então nunca detectava "já carregado") -- carregamento
+  // duplicado, assíncrono, que podia terminar DEPOIS do real e sobrescrever
+  // window.vxPrintOsDocument/etc. com código desatualizado, de forma
+  // intermitente (dependendo da ordem de rede). Removido -- o <script defer>
+  // já cobre os 3 arquivos.
 })();

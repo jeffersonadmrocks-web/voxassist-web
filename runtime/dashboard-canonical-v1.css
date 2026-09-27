@@ -222,7 +222,7 @@ button.vx-c-icon-row:disabled{cursor:default;opacity:1}
 
 /* ---------- modal de drill-down ---------- */
 .vx-c-modal-bg{position:fixed;inset:0;z-index:30000;background:rgba(5,25,43,.5);display:flex;align-items:center;justify-content:center;padding:20px}
-.vx-c-modal{width:min(960px,96vw);max-height:86vh;overflow:auto;background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.25)}
+.vx-c-modal{width:min(1180px,96vw);max-height:86vh;overflow:auto;background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.25)}
 .vx-c-modal-head{position:sticky;top:0;background:#fff;display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #e3e9ef}
 .vx-c-modal-head strong{display:block;color:var(--vx-navy)}
 .vx-c-modal-head small{display:block;color:#8291a0;font-size:9px;margin-top:2px}
