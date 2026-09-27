@@ -1559,6 +1559,25 @@ async function reportJobFailure(job,code,message){
  await workerRequest("job_failed",{queue_id:job.queueId,error_code:code,error_message:message}).catch(()=>{});
 }
 async function closePdfPages(context,main){for(const p of context.pages())if(p!==main&&/crm_pdf_print|\.pdf/i.test(p.url()))await p.close().catch(()=>{});}
+async function diagnoseCloseControl(page){
+ const frames=page.frames();
+ return Promise.all(frames.map(async(frame,index)=>({
+  index,name:frame.name(),visible:await isFrameChainVisible(frame).catch(()=>false),
+  path:(()=>{try{return new URL(frame.url()).pathname.slice(-100)}catch{return ''}})(),
+  controls:await frame.evaluate(()=>{
+   const norm=v=>String(v||'').replace(/\s+/g,' ').trim().toLowerCase();
+   return [...document.querySelectorAll('a,button,input,span,td,[role="button"]')]
+    .filter(el=>['encerrar','close'].includes(norm(el.innerText||el.textContent||el.value||el.alt||el.title||el.getAttribute('aria-label'))))
+    .slice(0,8).map(el=>{
+     const r=el.getBoundingClientRect(),style=getComputedStyle(el);
+     const at=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+     return {tag:el.tagName,type:el.getAttribute('type'),id:String(el.id||'').slice(0,80),alt:el.getAttribute('alt'),title:el.getAttribute('title'),
+      rect:{x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)},
+      display:style.display,visibility:style.visibility,blocker:at?{tag:at.tagName,id:String(at.id||'').slice(0,80)}:null};
+    });
+  }).catch(()=>[]),
+ })));
+}
 // Só roda em falha, nunca no caminho feliz. Screenshot + HTML servem só pra
 // diagnóstico visual real (em vez de mais um "chute" às cegas sobre o CRM
 // SAP) -- nunca vazam a senha: campo password renderiza mascarado no
@@ -1743,7 +1762,10 @@ try{
     for(const frame of await visibleFrames(page)){
      if(await clickTextTrustedInFrame(frame,["Encerrar"],800)){closed=true;break;}
     }
-    if(!closed)throw new Error("Botão Encerrar não localizado ou bloqueado pelo SAP.");
+    if(!closed){
+     await writeDiagnosticsJson(`encerrar-controles-${job.external_order_id}`,await diagnoseCloseControl(page)).catch(()=>{});
+     throw new Error("Botão Encerrar não localizado ou bloqueado pelo SAP.");
+    }
     if(!(await waitForSapIdle(page,60000)))throw new Error('SAP não concluiu o encerramento da OS.');
    }catch(cleanupError){
     console.warn('WORKER WHIRLPOOL CLEANUP_WARNING: '+job.external_order_id+' — '+String(cleanupError?.message||cleanupError).slice(0,240));
