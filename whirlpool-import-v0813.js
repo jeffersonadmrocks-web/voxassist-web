@@ -58,12 +58,15 @@
  // "Importar O.S." inteira pra QUALQUER fabricante -- o usuário caía
  // sempre nesta versão antiga e nunca na importação genérica
  // multi-fabricante pedida nesta sessão. Import genérico
- // (import-os-v0812.js) agora é o padrão pra "Importar O.S.". Este
- // arquivo continua vivo como modo manual dedicado só pra Whirlpool
- // (Brastemp/Consul) -- pedido explícito do usuário como contingência
- // pra quando o pipeline automático (workers/whirlpool/) tiver uma
- // pane momentânea -- só que numa rota própria ('importar-os-whirlpool',
- // roteada por final-routing-v0812.js), sem mais disputar a rota
- // genérica. Acessível pelo link dedicado na tela de Importar O.S.
- window.renderImportWhirlpoolLegacy=renderImport;
+ // (import-os-v0812.js) é o único botão/tela de "Importar O.S." agora,
+ // e já serve como o "modo manual" pra Whirlpool também (pedido
+ // explícito do usuário como contingência pra quando o pipeline
+ // automático em workers/whirlpool/ tiver uma pane momentânea): a
+ // leitura é por rótulo/formato, não por layout fixo de um fabricante,
+ // então funciona igual num PDF Brastemp/Consul -- sem precisar de uma
+ // tela separada nem de o usuário escolher entre botões diferentes.
+ // Por isso este arquivo fica sem rota nenhuma (nem window.render,
+ // nem window.renderImportOs/renderImportWhirlpoolLegacy) -- as
+ // funções continuam aqui só de referência, sem uso conhecido em
+ // outro lugar.
 })();

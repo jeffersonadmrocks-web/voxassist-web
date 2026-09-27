@@ -19,7 +19,6 @@
       return window.renderDashboard();
     }
     if(view==='importar-os' && typeof window.renderImportOs==='function') return window.renderImportOs();
-    if(view==='importar-os-whirlpool' && typeof window.renderImportWhirlpoolLegacy==='function') return window.renderImportWhirlpoolLegacy();
     const r=await previous.apply(this,arguments);
     if(view==='os') setTimeout(patchAtendimento,0);
     return r;
