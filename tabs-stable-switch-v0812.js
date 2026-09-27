@@ -28,7 +28,12 @@
 
       /* Durante a troca, bloqueia qualquer rotina antiga que tente reconstruir a barra de abas. */
       window.renderTabs=function(){return;};
-      await baseRender(target);
+      // Usa o window.render ATUAL (não o baseRender capturado no carregamento deste
+      // arquivo) -- scripts carregados depois (ex.: field-agenda-complete-v0813.js)
+      // registram suas próprias views por cima de window.render, e baseRender aqui
+      // ficava congelado na versão de antes deles, fazendo a troca de aba (clique na
+      // aba já aberta) cair sempre na implementação mais antiga de cada view.
+      await (typeof window.render==='function'?window.render:baseRender)(target);
 
       dedupeTabs();
       state.view=target;
