@@ -81,10 +81,24 @@ Deno.serve(async (req) => {
     }
     const credential = await resolveElectroluxCredential(admin, companyId);
 
+    // Achado real do usuário (2026-09-27, DevTools): POST /api/admin/sync-now
+    // sempre voltava HTTP 500 com {"error":"Falha ao processar a
+    // requisição."} -- corpo em português, formato diferente do nosso
+    // próprio catch ({"ok":false,"error":...}), confirmando que é o
+    // Electrolux recusando a chamada, não um erro daqui. O POST nunca
+    // mandava Content-Type nem corpo -- backends que esperam JSON
+    // costumam rejeitar exatamente assim um POST vazio sem
+    // Content-Type. Acessando o painel Electrolux direto (sessão do
+    // navegador) funciona -- só a chamada server-to-server via proxy
+    // que ia sem esses cabeçalhos.
     const basicAuth = "Basic " + btoa(`${credential.username}:${credential.password}`);
     const upstream = await fetch(`${credential.apiUrl}${path}`, {
       method: req.method,
-      headers: { Authorization: basicAuth },
+      headers: {
+        Authorization: basicAuth,
+        ...(req.method === "POST" ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(req.method === "POST" ? { body: "{}" } : {}),
     }).catch((e) => {
       throw new Error("upstream_fetch_failed: " + (e as Error).message);
     });
