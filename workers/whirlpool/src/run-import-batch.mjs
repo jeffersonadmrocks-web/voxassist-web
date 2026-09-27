@@ -1452,6 +1452,7 @@ async function capturePdf(context,page,id){
  const responseDiagnostics=[];
  let popupPage=null;
  let downloadHandler=null;
+ let captureStarted=false;
  const timer=setTimeout(()=>rejectPdf(new Error("PDF não capturado em 90 segundos. Respostas: "+JSON.stringify(responseDiagnostics.slice(-12)))),90000);
  const handler=async response=>{
   try{
@@ -1459,14 +1460,33 @@ async function capturePdf(context,page,id){
    if(u.hostname!=="larcrm7.whirlpool.com")return;
    const disposition=(headers["content-disposition"]||"").toLowerCase();
    const candidate=/pdf/i.test(u.pathname)||ct.includes("pdf")||ct.includes("octet-stream")||disposition.includes("pdf");
-   if(candidate){
+   if(candidate&&!captureStarted){
+    captureStarted=true;
     responseDiagnostics.push({path:u.pathname.slice(-110),status:response.status(),type:ct.slice(0,60),disposition:disposition.slice(0,60)});
-    const bytes=Buffer.from(await response.body());
-    if(bytes.subarray(0,5).toString()!=="%PDF-")return;
+    let bytes;
+    try{
+     bytes=Buffer.from(await Promise.race([
+      response.body(),
+      delay(10000).then(()=>{throw new Error('BODY_TIMEOUT');}),
+     ]));
+    }catch(e){
+     responseDiagnostics.push({bodyError:String(e?.message||e).slice(0,100)});
+    }
+    // O visualizador embutido do Chromium pode consumir a resposta PDF
+    // antes de Playwright disponibilizar response.body(). A URL HTTP 200
+    // já foi observada: refaz apenas esse GET com os cookies do mesmo
+    // BrowserContext, sem abrir outra sessão nem alterar dados no SAP.
+    if(!bytes||bytes.subarray(0,5).toString()!=="%PDF-"||!bytes.subarray(-2048).toString().includes("%%EOF")){
+     const fetched=await context.request.get(response.url(),{timeout:30000});
+     responseDiagnostics.push({fetchStatus:fetched.status(),fetchType:(fetched.headers()['content-type']||'').slice(0,60)});
+     if(!fetched.ok())throw new Error('GET do PDF retornou HTTP '+fetched.status());
+     bytes=Buffer.from(await fetched.body());
+    }
+    if(bytes.subarray(0,5).toString()!=="%PDF-")throw new Error("Resposta de impressão não é PDF.");
     if(bytes.length<4096||!bytes.subarray(-2048).toString().includes("%%EOF"))throw new Error("PDF incompleto.");
     clearTimeout(timer);context.off("response",handler);popupPage?.off("response",handler);if(downloadHandler)context.off("download",downloadHandler);resolvePdf(bytes);
    }
-  }catch{}
+  }catch(e){captureStarted=false;responseDiagnostics.push({captureError:String(e?.message||e).slice(0,120)});}
  };
  context.on("response",handler);
  // Achado real por print do usuário (2026-09-18, OS 7015737715 -- a
@@ -1508,7 +1528,7 @@ async function capturePdf(context,page,id){
    const file=await download.path();
    if(!file)return;
    const bytes=Buffer.from(await (await import('node:fs/promises')).readFile(file));
-   if(bytes.subarray(0,5).toString()!=="%PDF-"||bytes.length<4096)return;
+   if(bytes.subarray(0,5).toString()!=="%PDF-"||bytes.length<4096||!bytes.subarray(-2048).toString().includes("%%EOF"))return;
    clearTimeout(timer);context.off("response",handler);popup.off("response",handler);context.off("download",downloadHandler);resolvePdf(bytes);
   }catch{}
  };
