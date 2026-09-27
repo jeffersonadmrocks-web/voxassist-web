@@ -1733,10 +1733,19 @@ try{
    const payload=parseWhirlpoolPdf(await extractPdfText(pdf));
    if(payload.externalOrderId!==job.external_order_id)throw new Error("PDF pertence a outra OS.");
    const imported=await uploadAndImport(job.external_order_id,payload,pdf);
-   await closePdfPages(context,page);
-   if(!(await waitForTextClick(page,["Encerrar"],20000)))throw new Error("Importada, mas botão Encerrar não localizado.");
-   if(!(await waitForSapIdle(page)))throw Object.assign(new Error('SAP não concluiu o encerramento da OS.'),{code:'NAVIGATION_FAILURE'});
    results.push({externalOrderId:job.external_order_id,status:"IMPORTADA",appointmentStatus:imported.appointmentStatus||null});
+   // upload_import já confirmou a OS no VoxAssist. Uma falha ao voltar ou
+   // encerrar a tela SAP não desfaz essa transação; não registre a OS como
+   // falha nem tente navegar para a próxima OS com a página ainda ocupada.
+   try{
+    await closePdfPages(context,page);
+    if(!(await waitForTextClick(page,["Encerrar"],20000)))throw new Error("Botão Encerrar não localizado.");
+    if(!(await waitForSapIdle(page)))throw new Error('SAP não concluiu o encerramento da OS.');
+   }catch(cleanupError){
+    console.warn('WORKER WHIRLPOOL CLEANUP_WARNING: '+job.external_order_id+' — '+String(cleanupError?.message||cleanupError).slice(0,240));
+    await captureDiagnostics(`cleanup-${job.external_order_id}`).catch(()=>{});
+    break;
+   }
   }catch(e){
    const reason=String(e.message||e).slice(0,1600);
    console.error('WORKER WHIRLPOOL JOB_EXCEPTION: '+String(e?.stack||e).slice(0,1200));
