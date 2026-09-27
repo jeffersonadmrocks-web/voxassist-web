@@ -2,7 +2,7 @@ name: Whirlpool Online Worker
 
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    - cron: "5,15,25,35,45,55 * * * *"
   workflow_dispatch:
   push:
     branches: [main]
@@ -22,7 +22,7 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: workers/whirlpool
@@ -41,8 +41,31 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Run guarded Whirlpool batch
-        run: npm run run-online
+      - name: Run guarded Whirlpool batches
+        shell: bash
+        run: |
+          # Each worker claim remains capped at 3 OS. Continue in the same
+          # workflow while full successful batches indicate a backlog.
+          started=$SECONDS
+          for round in 1 2 3; do
+            if (( SECONDS - started >= 1080 )); then
+              echo "Stopping before the job time limit. The next schedule resumes the queue."
+              break
+            fi
+            echo "Whirlpool batch $round/3"
+            log="$RUNNER_TEMP/whirlpool-batch-$round.log"
+            npm run run-online | tee "$log"
+            more=$(node -e '
+              const fs = require("node:fs");
+              const lines = fs.readFileSync(process.argv[1], "utf8").trim().split("\n");
+              const batch = JSON.parse(lines.at(-1));
+              console.log(batch.results.length === 3 && batch.results.every(item => item.status === "IMPORTADA") ? "yes" : "no");
+            ' "$log")
+            if [[ "$more" != "yes" ]]; then
+              echo "Batch was not fully imported; leaving remaining work for the next scheduled run."
+              break
+            fi
+          done
       - name: Upload failure diagnostics
         if: always()
         uses: actions/upload-artifact@v4
