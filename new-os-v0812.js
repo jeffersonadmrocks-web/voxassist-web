@@ -7,6 +7,14 @@
 
   const f=(label,control,cls='')=>`<div class="vx-newos-field ${cls}"><label>${label}</label>${control}</div>`;
 
+  // Achado do usuário em 2026-09-27: "Importar O.S." (import-os-v0812.js) lê o PDF e prepara
+  // um rascunho, mas nada consumia window.__vxImportedOsDraft -- os dados lidos eram
+  // descartados e o usuário tinha que digitar tudo de novo aqui. importedOsNumber preserva o
+  // número de OS do FABRICANTE (nunca gera um novo com genOsNumber() quando veio de
+  // importação -- pedido explícito do usuário) até o save; resetado a cada renderNewOs() pra
+  // nunca vazar pra uma Nova O.S. aberta manualmente depois.
+  let importedOsNumber=null;
+
   function clientSuggestions(rows){
     const box=document.querySelector('#newClientMatches'); if(!box)return;
     if(!rows.length){box.innerHTML='<span class="new-client-hint">Nenhum cadastro localizado — continue o preenchimento e o cliente será cadastrado junto com a OS.</span>';return}
@@ -44,9 +52,19 @@
 
   window.renderNewOs=async function(){
     selectedClient=null;
+    importedOsNumber=null;
+    const draft=window.__vxImportedOsDraft;window.__vxImportedOsDraft=null;
+    if(draft?.company_id&&draft.company_id!==state.profile?.active_company_id){
+      try{
+        await api('rpc/switch_company',{method:'POST',body:JSON.stringify({target_company:draft.company_id})});
+        await loadProfile();await loadCore();
+        window.vxRefreshCompanySelector?.();
+      }catch(err){toast('Não foi possível trocar para a empresa da O.S. importada: '+err.message,'err');}
+    }
     const title=document.querySelector('#title');if(title)title.textContent='Nova Ordem de Serviço';
     document.querySelector('#app').innerHTML=`<form id="osForm" class="vx-newos-wrap">
       <div class="vx-newos-head"><div class="vx-newos-title">NOVA ORDEM DE SERVIÇO</div><div><button type="button" class="vx-newos-status">RASCUNHO</button></div></div>
+      ${draft?`<div class="vx-newos-import-banner">📄 Dados importados de <b>${V(draft.file_name||'PDF')}</b> -- Nº O.S. do fabricante <b>${V(draft.external_os||'—')}</b> será mantido ao criar. Confira e corrija os campos abaixo antes de salvar.</div>`:''}
       <div class="vx-newos-tabs"><button type="button" class="active">O.S.</button><button type="button">Equipamento</button><button type="button">Cliente</button><button type="button" disabled>Orçamento</button><button type="button" disabled>Fotos / Anexos</button><button type="button" disabled>Financeiro</button><button type="button" disabled>Histórico</button></div>
       <section class="vx-newos-panel"><div class="vx-newos-grid">
         <div class="vx-newos-box"><h3>1. RESUMO DO CLIENTE</h3>
@@ -83,6 +101,18 @@
 
     ['newClientName','newClientDoc','newClientPhone'].forEach(id=>document.querySelector('#'+id).addEventListener('input',()=>{document.querySelector('#'+id).value=U(document.querySelector('#'+id).value);lookupClient()}));
     ['newClientPhone2','newClientZip','newClientAddress','newClientNumber','newClientComplement','newClientNeighborhood','newClientCity','newClientState','productType','brand','model','serial','accessories','reported'].forEach(id=>document.querySelector('#'+id)?.addEventListener('input',()=>{document.querySelector('#'+id).value=U(document.querySelector('#'+id).value)}));
+
+    if(draft){
+      const set=(id,v)=>{const el=document.querySelector('#'+id);if(el&&v)el.value=U(v);};
+      set('newClientName',draft.client_name);set('newClientDoc',draft.client_document);set('newClientPhone',draft.phone);
+      set('newClientEmail',draft.email);set('newClientZip',draft.zip);set('newClientAddress',draft.address);
+      set('newClientNumber',draft.address_number);set('newClientNeighborhood',draft.neighborhood);
+      set('newClientCity',draft.city);set('newClientState',draft.state);
+      set('productType',draft.product_type);set('brand',draft.brand);set('model',draft.model);set('serial',draft.serial);
+      set('reported',draft.reported_defect);
+      importedOsNumber=(draft.external_os||'').trim()||null;
+      lookupClient();
+    }
     // Achado do usuário em 2026-09-07: campo LOJA removido -- a OS já é
     // isolada pela empresa ativa no momento do cadastro (trigger
     // trg_fill_company preenche service_orders.company_id sozinho antes
@@ -126,8 +156,15 @@
       const client=await ensureClient(),product=U($('#productType').value),reported=U($('#reported').value);if(!product||!reported)throw new Error('Informe TIPO DE PRODUTO e DEFEITO RELATADO.');
       const serviceGroupId=$('#serviceGroupSelect')?.value||null;if(!serviceGroupId)throw new Error('Selecione o GRUPO DE ATENDIMENTO desta OS.');
       const eq=await api('equipments',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({current_client_id:client,product_type:product,brand:U($('#brand').value),model:U($('#model').value),serial_number:U($('#serial').value),accessories:U($('#accessories').value||'SEM ACESSÓRIOS')})});if(!eq?.[0]?.id)throw new Error('Não foi possível criar o equipamento.');
-      const os=await api('service_orders',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({os_number:genOsNumber(),client_id:client,equipment_id:eq[0].id,service_type:$('#serviceType').value,product_location:$('#productLocation').value,device_condition:U($('#condition').value),reported_defect:reported,internal_notes:U($('#notes').value),status:'AGUARDANDO ANALISE',opened_at:new Date().toISOString(),created_by:state.session.user.id,attendant_id:state.session.user.id,service_group_id:serviceGroupId})});if(!os?.[0]?.id)throw new Error('Não foi possível criar a ordem de serviço.');
-      await api('os_status_history',{method:'POST',body:JSON.stringify({service_order_id:os[0].id,new_status:'AGUARDANDO ANALISE',change_type:'AUTOMATICO',changed_by:state.session.user.id})});toast('OS salva com sucesso.');await loadCore();render(advance?`os:${os[0].id}`:'os');
-    }catch(err){toast('Falha ao salvar OS: '+err.message,'err');btns.forEach(b=>b.disabled=false)}
+      // Achado do usuário em 2026-09-27: OS importada de PDF de fabricante/seguradora mantém
+      // o número ORIGINAL (importedOsNumber, preenchido em renderNewOs a partir do rascunho
+      // de import-os-v0812.js) -- nunca gera um número novo do VoxAssist nesse caso.
+      const os=await api('service_orders',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({os_number:importedOsNumber||genOsNumber(),client_id:client,equipment_id:eq[0].id,service_type:$('#serviceType').value,product_location:$('#productLocation').value,device_condition:U($('#condition').value),reported_defect:reported,internal_notes:U($('#notes').value),status:'AGUARDANDO ANALISE',opened_at:new Date().toISOString(),created_by:state.session.user.id,attendant_id:state.session.user.id,service_group_id:serviceGroupId})});if(!os?.[0]?.id)throw new Error('Não foi possível criar a ordem de serviço.');
+      await api('os_status_history',{method:'POST',body:JSON.stringify({service_order_id:os[0].id,new_status:'AGUARDANDO ANALISE',change_type:'AUTOMATICO',changed_by:state.session.user.id})});toast('OS salva com sucesso.');importedOsNumber=null;await loadCore();render(advance?`os:${os[0].id}`:'os');
+    }catch(err){
+      const dup=importedOsNumber&&/duplicate|unique/i.test(err.message||'');
+      toast(dup?`Já existe uma OS com o número ${importedOsNumber} -- confira se este PDF já foi importado antes.`:'Falha ao salvar OS: '+err.message,'err');
+      btns.forEach(b=>b.disabled=false);
+    }
   }
 })();
