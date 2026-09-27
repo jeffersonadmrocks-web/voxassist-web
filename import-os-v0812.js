@@ -30,6 +30,7 @@
         <div class="vx-import-actions"><button id="vxChoosePdf" class="vx-secondary">Buscar PDF</button><button id="vxReadPdf" class="vx-primary" disabled>Ler PDF e conferir dados</button></div>
       </div>
       <div class="vx-import-note"><strong>Fluxo de importação</strong><span>1. Selecionar PDF → 2. Ler dados automaticamente → 3. Conferir/corrigir informações → 4. Confirmar empresa → 5. Criar O.S. preservando o número do fabricante.</span></div>
+      <p class="vx-import-alt-link"><a href="#" id="vxImportWhirlpoolAlt">É uma O.S. Whirlpool (Brastemp/Consul) e a importação automática está indisponível no momento? Usar o modo manual dedicado →</a></p>
     </div>`;
     bind();
   }
@@ -41,6 +42,7 @@
     ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag')}));
     ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag')}));
     drop.addEventListener('drop',e=>setFile(e.dataTransfer?.files?.[0]));
+    document.querySelector('#vxImportWhirlpoolAlt')?.addEventListener('click',e=>{e.preventDefault();window.render('importar-os-whirlpool');});
     read.onclick=async()=>{
       read.disabled=true;read.textContent='Lendo PDF…';
       try{

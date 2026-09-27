@@ -30,8 +30,8 @@
  }
  const dataUrl=file=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)});
  async function renderImport(){
-   state.view='importar-os';try{addTab('importar-os','Importar O.S.');renderTabs('Importar O.S.')}catch{};document.querySelector('#title').textContent='Importar O.S. Brastemp / Consul';
-   const app=document.querySelector('#app');app.innerHTML=`<div class="vx-import-page"><div class="vx-import-head"><div><h2>Importação Brastemp / Consul</h2><p>O PDF original é preservado e os dados alimentam a OS e a agenda.</p></div><button class="vx-secondary" id="wBack">← Voltar</button></div><div class="vx-import-card"><div id="wDrop" class="vx-drop-pdf" tabindex="0"><div class="vx-drop-icon">⇧</div><strong>Arraste a OS do fabricante aqui</strong><span>PDF Brastemp ou Consul</span><input id="wFile" type="file" accept="application/pdf,.pdf" hidden></div><div id="wInfo" class="vx-pdf-info" hidden></div><div class="vx-import-actions"><button id="wChoose" class="vx-secondary">Buscar PDF</button><button id="wRead" class="vx-primary" disabled>Ler e conferir</button></div></div></div>`;
+   state.view='importar-os-whirlpool';try{addTab('importar-os-whirlpool','Importar O.S. Whirlpool');renderTabs('Importar O.S. Whirlpool')}catch{};document.querySelector('#title').textContent='Importar O.S. Brastemp / Consul (modo manual)';
+   const app=document.querySelector('#app');app.innerHTML=`<div class="vx-import-page"><div class="vx-import-head"><div><h2>Importação Brastemp / Consul (modo manual)</h2><p>Use apenas se a importação automática de OS estiver indisponível no momento. O PDF original é preservado e os dados alimentam a OS e a agenda.</p></div><button class="vx-secondary" id="wBack">← Voltar</button></div><div class="vx-import-card"><div id="wDrop" class="vx-drop-pdf" tabindex="0"><div class="vx-drop-icon">⇧</div><strong>Arraste a OS do fabricante aqui</strong><span>PDF Brastemp ou Consul</span><input id="wFile" type="file" accept="application/pdf,.pdf" hidden></div><div id="wInfo" class="vx-pdf-info" hidden></div><div class="vx-import-actions"><button id="wChoose" class="vx-secondary">Buscar PDF</button><button id="wRead" class="vx-primary" disabled>Ler e conferir</button></div></div></div>`;
    const drop=document.querySelector('#wDrop'),input=document.querySelector('#wFile'),choose=document.querySelector('#wChoose');const pickFile=()=>input.click();drop.onclick=pickFile;choose.onclick=pickFile;input.onchange=()=>setFile(input.files?.[0]);['dragenter','dragover'].forEach(x=>drop.addEventListener(x,e=>{e.preventDefault();drop.classList.add('drag')}));['dragleave','drop'].forEach(x=>drop.addEventListener(x,e=>{e.preventDefault();drop.classList.remove('drag')}));drop.addEventListener('drop',e=>setFile(e.dataTransfer?.files?.[0]));document.querySelector('#wRead').onclick=readAndReview;document.querySelector('#wBack').onclick=()=>render('os');
  }
  function setFile(file){if(!file)return;if(file.type!=='application/pdf'&&!/\.pdf$/i.test(file.name)){toast('Selecione um PDF válido.','err');return}selectedFile=file;const info=document.querySelector('#wInfo');info.hidden=false;info.innerHTML=`<strong>${E(file.name)}</strong><span>${(file.size/1024).toFixed(1)} KB</span><small>Pronto para leitura.</small>`;document.querySelector('#wRead').disabled=false}
@@ -55,16 +55,15 @@
  // Brastemp/Consul, parser rígido por regex de layout fixo) carregava
  // DEPOIS de import-os-v0812.js no index.html e sobrescrevia
  // window.renderImportOs + window.render por cima, roubando a tela
- // "Importar O.S." inteira -- o usuário caía sempre nesta versão antiga
- // (título "Importação Brastemp / Consul") e nunca na importação
- // genérica multi-fabricante pedida nesta sessão, com o parser rígido
- // falhando ("Número da OS não reconhecido") em qualquer PDF fora do
- // layout exato que ele esperava. Superseded por import-os-v0812.js
- // (extração por âncora de rótulo + regex de formato, não por posição
- // fixa de coluna, com confirmação da empresa e revisão manual de todo
- // campo antes de criar a OS). OS Whirlpool tem seu próprio pipeline
- // automático dedicado (workers/whirlpool/), não depende de import
- // manual de PDF -- por isso as funções deste arquivo continuam
- // definidas acima (não removidas, sem uso conhecido em outro lugar),
- // só as duas linhas abaixo que disputavam a rota foram desativadas.
+ // "Importar O.S." inteira pra QUALQUER fabricante -- o usuário caía
+ // sempre nesta versão antiga e nunca na importação genérica
+ // multi-fabricante pedida nesta sessão. Import genérico
+ // (import-os-v0812.js) agora é o padrão pra "Importar O.S.". Este
+ // arquivo continua vivo como modo manual dedicado só pra Whirlpool
+ // (Brastemp/Consul) -- pedido explícito do usuário como contingência
+ // pra quando o pipeline automático (workers/whirlpool/) tiver uma
+ // pane momentânea -- só que numa rota própria ('importar-os-whirlpool',
+ // roteada por final-routing-v0812.js), sem mais disputar a rota
+ // genérica. Acessível pelo link dedicado na tela de Importar O.S.
+ window.renderImportWhirlpoolLegacy=renderImport;
 })();
