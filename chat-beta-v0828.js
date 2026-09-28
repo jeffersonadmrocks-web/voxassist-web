@@ -141,7 +141,11 @@
     // agora prefere data.message (detalhe real que o gateway já manda
     // pra códigos sem tradução amigável, ex.: create_failed) antes do
     // código cru, sem mudar nenhuma mensagem já mapeada acima.
-    if(!res.ok||data.ok===false)throw new Error(GATEWAY_ERROR_MESSAGES[data.error]||data.message||data.error||'Falha na operação.');
+    if(!res.ok||data.ok===false){
+      const err=new Error(GATEWAY_ERROR_MESSAGES[data.error]||data.message||data.error||'Falha na operação.');
+      err.code=data.error;
+      throw err;
+    }
     return data;
   }
 
@@ -518,7 +522,20 @@
       await loadConexoesData();
       renderConexoesScreen();
     }catch(err){
-      toast?.('Falha na operação: '+err.message,'err');
+      // Achado real (2026-09-28): "Reconectar" falhava com
+      // "Conexão não encontrada" e o card ficava travado na tela --
+      // a function rejeita (posse: company_id da conexão não bate mais
+      // com a empresa ativa, ou a conexão já foi excluída) mas a lista
+      // renderizada não se atualizava sozinha, então o usuário clicava
+      // de novo no mesmo card já inválido pra sempre. Sempre que o erro
+      // for esse, recarrega a lista pra tirar o card obsoleto da tela.
+      if(err.code==='connection_not_found'){
+        toast?.('Esta conexão não está mais disponível para esta empresa -- a lista foi atualizada.','err');
+        await loadConexoesData();
+        renderConexoesScreen();
+      }else{
+        toast?.('Falha na operação: '+err.message,'err');
+      }
     }
   }
 
