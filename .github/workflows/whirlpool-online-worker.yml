@@ -38,7 +38,7 @@ jobs:
     env:
       WHIRLPOOL_WORKER_API_URL: https://dgasmtvpgifceyqufcfg.supabase.co/functions/v1/whirlpool-worker-api
       WHIRLPOOL_BATCH_LIMIT: "3"
-      WHIRLPOOL_RECOVERY_IDS: ${{ inputs.recovery_ids || '7015761243' }}
+      WHIRLPOOL_RECOVERY_IDS: ${{ inputs.recovery_ids || '' }}
       WHIRLPOOL_FORCE_FULL_SCAN: ${{ inputs.force_full_scan && '1' || '0' }}
       CI: "true"
     steps:
