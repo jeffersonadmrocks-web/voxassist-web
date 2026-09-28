@@ -417,6 +417,8 @@
     window.__vxPartReqList=ctx?.partRequests||[];
     window.__vxPartReqOsMap=new Map([[String(o.id),o]]);
     const openedFmt=o.opened_at?new Date(o.opened_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+    const appt=ctx?.appointment;
+    const apptFmt=appt?(()=>{const d=new Date(appt.appointment_date+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});const per=String(appt.period||'').toUpperCase()==='TARDE'?'Tarde':String(appt.period||'').toUpperCase()==='MANHA'?'Manhã':'';return per?`${d} • ${per}`:d})():'';
     return `<div class="vx-os-head">
       <div class="vx-os-head-top">
         <div class="vx-os-head-left">
@@ -446,6 +448,7 @@
         <div><span class="vx-os-head-info-ic">👤</span><div><small>ATENDENTE</small><b>${val(abbreviateName(o.attendant?.full_name))}</b></div></div>
         <div><span class="vx-os-head-info-ic">🧑‍🔧</span><div><small>TÉCNICO</small><b>${val(abbreviateName(o.profiles?.full_name))}</b></div></div>
         <div><span class="vx-os-head-info-ic">🏬</span><div><small>LOJA</small><b>${val(o.stores?.name||'—')}</b></div></div>
+        ${apptFmt?`<div><span class="vx-os-head-info-ic">🗓</span><div><small>AGENDADO</small><b>${val(apptFmt)}</b></div></div>`:''}
         <button class="vx-back" onclick="render('os')">← Voltar</button>
       </div>
     </div>`;
@@ -555,11 +558,17 @@
     // por vários arquivos Whirlpool (o.profiles?.full_name); atendente
     // e loja são embeds NOVOS e aditivos, com alias pra não colidir.
     const arr=await api(`service_orders?id=eq.${id}&select=*,clients(*),equipments(*),profiles!service_orders_technician_id_fkey(full_name),attendant:profiles!service_orders_attendant_id_fkey(full_name),stores(name)`);const o=arr?.[0];if(!o){document.querySelector('#app').innerHTML='<div class="card">OS não encontrada.</div>';return}
-    state.activeOs=o;const [hist,parts,finRows,atts,payments,techs,phones,addresses,docs,stores,clientOrders,clientEquipments,serviceGroups,partRequests,paymentMethods,productConditions]=await Promise.all([
-      api(`os_status_history?service_order_id=eq.${id}&select=*,profiles(full_name)&order=changed_at.desc`).catch(()=>[]),api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`).catch(()=>[]),api(`os_financial?service_order_id=eq.${id}&select=*`).catch(()=>[]),api(`attachments?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`payments_operational?service_order_id=eq.${id}&select=*,profiles(full_name)&order=created_at.desc`).catch(()=>[]),api(`profiles?role=eq.TECNICO&active=eq.true&select=id,full_name`).catch(()=>[]),api(`client_phones?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`client_addresses?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`technical_documents?select=*&order=created_at.desc`).catch(()=>[]),api('stores?active=eq.true&select=id,name,code').catch(()=>[]),api(`service_orders?client_id=eq.${o.client_id}&select=*,equipments(product_type,brand,model,serial_number),stores(name)&order=opened_at.desc`).catch(()=>[]),api(`equipments?current_client_id=eq.${o.client_id}&select=*&order=created_at.desc`).catch(()=>[]),api(`service_groups?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=name`).catch(()=>[]),api(`parts_requests?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`payment_methods?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=sort_order`).catch(()=>[]),api(`product_conditions?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=name&order=sort_order`).catch(()=>[])
+    state.activeOs=o;const [hist,parts,finRows,atts,payments,techs,phones,addresses,docs,stores,clientOrders,clientEquipments,serviceGroups,partRequests,paymentMethods,productConditions,appointments]=await Promise.all([
+      api(`os_status_history?service_order_id=eq.${id}&select=*,profiles(full_name)&order=changed_at.desc`).catch(()=>[]),api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`).catch(()=>[]),api(`os_financial?service_order_id=eq.${id}&select=*`).catch(()=>[]),api(`attachments?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`payments_operational?service_order_id=eq.${id}&select=*,profiles(full_name)&order=created_at.desc`).catch(()=>[]),api(`profiles?role=eq.TECNICO&active=eq.true&select=id,full_name`).catch(()=>[]),api(`client_phones?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`client_addresses?client_id=eq.${o.client_id}&select=*`).catch(()=>[]),api(`technical_documents?select=*&order=created_at.desc`).catch(()=>[]),api('stores?active=eq.true&select=id,name,code').catch(()=>[]),api(`service_orders?client_id=eq.${o.client_id}&select=*,equipments(product_type,brand,model,serial_number),stores(name)&order=opened_at.desc`).catch(()=>[]),api(`equipments?current_client_id=eq.${o.client_id}&select=*&order=created_at.desc`).catch(()=>[]),api(`service_groups?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=name`).catch(()=>[]),api(`parts_requests?service_order_id=eq.${id}&select=*&order=created_at.desc`).catch(()=>[]),api(`payment_methods?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=sort_order`).catch(()=>[]),api(`product_conditions?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=name&order=sort_order`).catch(()=>[]),
+      // Achado do usuário em 2026-09-28: a OS nunca mostrava a data do
+      // agendamento em lugar nenhum -- só dava pra ver na Agenda Externa.
+      // Pega o agendamento mais recente (não cancelado) desta OS pro
+      // cabeçalho.
+      api(`appointments?service_order_id=eq.${id}&select=appointment_date,period,status&order=created_at.desc`).catch(()=>[])
     ]);
     const filteredDocs=(docs||[]).filter(d=>(!d.model||d.model===o.equipments?.model)&&(!d.product_type||d.product_type===o.equipments?.product_type));
-    ctx={o,c:o.clients||{},e:o.equipments||{},hist,parts,fin:finRows?.[0]||{},atts,payments,techs,phones,addresses,docs:filteredDocs,stores,clientOrders,clientEquipments,serviceGroups,partRequests,paymentMethods,productConditions,activeTab:tab,selectedPayment:null};
+    const appointment=(appointments||[]).find(a=>a.appointment_date&&String(a.status||'').toUpperCase()!=='CANCELADO')||null;
+    ctx={o,c:o.clients||{},e:o.equipments||{},hist,parts,fin:finRows?.[0]||{},atts,payments,techs,phones,addresses,docs:filteredDocs,stores,clientOrders,clientEquipments,serviceGroups,partRequests,paymentMethods,productConditions,appointment,activeTab:tab,selectedPayment:null};
     const title=document.querySelector('#title');if(title)title.textContent='OS '+o.os_number;document.querySelector('#app').innerHTML=`<div class="vx-os-wrap"><div class="vx-os-sticky-top">${header(o)}${tabs()}</div>${osPanel()}${equipPanel()}${clientPanel()}${budgetPanel()}${attachmentsPanel()}${financePanel()}${historyPanel()}</div>`;
     bind();if(tab==='orcamento')ensureAnalysisDate();
   };
