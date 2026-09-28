@@ -1163,6 +1163,7 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
     firstResult=await findCatalogResultFrame(page,inCrmFrame);
   }
   let reachedLastPage=false;
+  let cappedResults=false;
   for(let pageNumber=1;pageNumber<=1000;pageNumber++){
     const result=pageNumber===1?firstResult:await findCatalogResultFrame(page,inCrmFrame);
     if(!result&&pageNumber>1)throw Object.assign(new Error(`Grade desapareceu na página ${pageNumber} da varredura.`),{code:"NAVIGATION_FAILURE"});
@@ -1210,7 +1211,14 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
       const next=await findCatalogResultFrame(page,inCrmFrame);
       if(next&&catalogRowsFingerprint(next.rows)!==before){changed=true;break;}
     }
-    if(!changed)throw Object.assign(new Error(`Paginação parou sem confirmar a próxima página após ${pageNumber}; catálogo parcial não será registrado como completo.`),{code:"NAVIGATION_FAILURE"});
+    if(!changed){
+      // O SAP mantém o botão Forward visível na última página de uma
+      // pesquisa limitada. 99/100 resultados chegam na RPC quando uma
+      // linha não é OS; 999/1000 é igualmente um corte, não um erro.
+      const rowsSeen=collected.size+ignoredAutEspecial+unclassifiedRows;
+      if(rowsSeen>=maxHits-1){cappedResults=true;break;}
+      throw Object.assign(new Error(`Paginação parou sem confirmar a próxima página após ${pageNumber}; catálogo parcial não será registrado como completo.`),{code:"NAVIGATION_FAILURE"});
+    }
   }
   if(scannedPages>0&&!reachedLastPage&&scannedPages>=1000)throw Object.assign(new Error("Limite de 1000 páginas atingido; catálogo incompleto."),{code:"NAVIGATION_FAILURE"});
   // Grava sempre (mesmo vazio, pra provar que nenhuma linha bateu) --
@@ -1307,7 +1315,7 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
   const cutoff=new Date(today);cutoff.setDate(cutoff.getDate()-30);
   const cutoffIso=cutoff.toISOString().slice(0,10);
   const items=[...collected.values()].map(row=>classifyCatalogRow(row,cutoffIso));
-  return {items,scannedPages,ignoredAutEspecial,unclassifiedRows,limitReached:collected.size+ignoredAutEspecial+unclassifiedRows>=maxHits,cutoffIso};
+  return {items,scannedPages,ignoredAutEspecial,unclassifiedRows,limitReached:cappedResults||collected.size+ignoredAutEspecial+unclassifiedRows>=maxHits,cutoffIso};
 }
 
 async function crmTargetFromStartPage(page){
