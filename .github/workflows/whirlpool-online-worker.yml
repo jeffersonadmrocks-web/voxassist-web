@@ -71,7 +71,9 @@ jobs:
               const fs = require("node:fs");
               const lines = fs.readFileSync(process.argv[1], "utf8").trim().split("\n");
               const batch = JSON.parse(lines.at(-1));
-              console.log(batch.results.length > 0 && batch.results.every(item => item.status === "IMPORTADA") ? "yes" : "no");
+              // Um erro individual não deve interromper as OS restantes.
+              // O worker já retorna código != 0 quando nenhuma OS avançou.
+              console.log(batch.results.some(item => item.status === "IMPORTADA") ? "yes" : "no");
             ' "$log")
             if [[ "$more" != "yes" ]]; then
               echo "Queue drained or a job failed; remaining work will be retried by the next scheduled run."
