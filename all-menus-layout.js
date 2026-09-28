@@ -145,7 +145,18 @@
       bar.setAttribute('style','margin-bottom:12px');
       bar.innerHTML='<button type="button" class="secondary" id="vxOpBack">← Voltar</button>';
       app.insertBefore(bar,app.firstChild);
-      document.getElementById('vxOpBack').onclick=()=>{const v=state.__vxOpPrevView||'dashboard';state.__vxOpPrevView=null;window.render(v)};
+      // Achado do usuário em 2026-09-28: no caso de 'financeiro' (Recebimentos),
+      // o Voltar caía numa tela errada (ou na própria, "só atualiza a mesma
+      // página") -- state.__vxOpPrevView depende de qual tela chamou
+      // 'op:financeiro' pela primeira vez, e existe mais de um card levando
+      // pra cá (Financeiro→Recebimentos, mas também atalhos de outras
+      // telas) sem relação nenhuma com o hub real do Financeiro. Pra este
+      // caso específico não há ambiguidade nenhuma: 'op:financeiro' É o
+      // relatório de Recebimentos, e seu hub é sempre view 'financeiro' --
+      // fixo, sem depender de breadcrumb nenhum. As outras views desta
+      // função (os/clientes/oficina/agenda/estoque/testes/usuarios) continuam
+      // usando o __vxOpPrevView normalmente, sem mudança.
+      document.getElementById('vxOpBack').onclick=()=>{const v=view==='financeiro'?'financeiro':(state.__vxOpPrevView||'dashboard');state.__vxOpPrevView=null;window.render(v)};
     }
   }
   // Mapa view->label 1:1 (auditado: cada view de renderOperational já
@@ -153,7 +164,12 @@
   // pelo case 'op:' do wrap de window.render abaixo, pra rotear por lá
   // (nunca chamada direta de função) e cair no mesmo mecanismo de
   // histórico do botão físico de voltar do Android.
-  const OP_LABELS={os:'Pesquisa O.S.',clientes:'Clientes',oficina:'Fila Técnica',agenda:'Atividades',estoque:'Estoque / Peças',financeiro:'Financeiro',testes:'Testes de Funções',usuarios:'Usuários / Segurança'};
+  // financeiro:'Recebimentos' (não 'Financeiro') -- achado do usuário em
+  // 2026-09-28: com o mesmo rótulo do hub, a aba do relatório ficava
+  // idêntica à aba do menu principal do Financeiro (duas abas "Financeiro"
+  // abertas ao mesmo tempo, indistinguíveis), mascarando até visualmente
+  // se o botão Voltar realmente tinha trocado de tela.
+  const OP_LABELS={os:'Pesquisa O.S.',clientes:'Clientes',oficina:'Fila Técnica',agenda:'Atividades',estoque:'Estoque / Peças',financeiro:'Recebimentos',testes:'Testes de Funções',usuarios:'Usuários / Segurança'};
   function lowerTabs(){return `<div class="module-lower-tabs"><button class="active">Oportunidades do Dia</button><button>Casos de Atenção</button><button data-target="agenda-operacional">Minhas Tarefas</button><button data-target="agenda-operacional">Agenda / Compromissos</button><button data-target="estoque-operacional">Pedidos de Peças</button><button>Produtividade / Bonificação</button></div><div class="module-lower-content">Ambiente de homologação — dados fictícios.</div>`}
   // summaryDrills NÃO é resetado aqui -- os argumentos (metrics, com os
   // summary(...) que povoam summaryDrills) já foram todos avaliados
