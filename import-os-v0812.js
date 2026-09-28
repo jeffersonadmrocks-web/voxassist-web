@@ -1,13 +1,26 @@
-/* VoxAssist Web V0.8.13 — Importação real de OS por PDF (leitura genérica de texto)
+/* VoxAssist Web V0.8.13 — Importação real de OS por PDF (leitura genérica por posição)
    Achado do usuário em 2026-09-27: a tela existia desde V0.8.12, mas nunca lia o PDF de
    verdade -- o usuário tinha que digitar tudo manualmente. Pedido explícito: nenhum modelo
-   específico por fabricante, só leitura genérica de um PDF de OS com texto selecionável
-   (confirmado com exemplo real do usuário, gerado por um sistema de posvenda comum a vários
-   fabricantes/revendas -- rótulo acima, valor abaixo, em formato de tabela). A extração é só
-   um PRIMEIRO PREENCHIMENTO: a tela de conferência (e depois o formulário de Nova O.S.)
-   continua 100% editável antes de qualquer gravação -- imprecisão da leitura nunca vira OS
-   errada sem revisão humana. Mantém o número de OS do fabricante (nunca gera um novo) e
-   pede confirmação da empresa (Vox Serra/Vox Vitória) antes de criar. */
+   específico por fabricante, só leitura genérica de um PDF de OS com texto selecionável.
+   Achado do usuário em 2026-09-28, testando com um PDF real de verdade (a validação
+   anterior tinha sido feita só com um texto digitado à mão simulando o que a extração
+   deveria encontrar -- nunca contra o pdf.js de verdade): o pressuposto "rótulo logo antes
+   do valor" estava ERRADO pra esse documento real -- o padrão é o de uma tabela HTML
+   comum (uma LINHA inteira de rótulos, depois uma LINHA inteira de valores logo abaixo,
+   cada valor alinhado na mesma posição X do seu rótulo). Isso embolava tudo: "Número"
+   do cabeçalho da assistência (sem relação com o cliente) virava o número do endereço,
+   "Cliente" (substring de "APRESENTADO PELO CLIENTE", rótulo do defeito) virava o nome
+   do cliente, e o e-mail do PRÓPRIO POSTO (no cabeçalho) vinha antes do e-mail real do
+   cliente numa busca "primeiro e-mail do documento inteiro". Corrigido reconstruindo
+   linhas por coordenada Y e casando cada valor com o rótulo mais próximo pela mesma
+   coordenada X (buildLabelGrid) -- imune a célula vazia (ela só produz um valor vazio
+   pro rótulo, não desalinha os outros, diferente de casar por ÍNDICE sequencial). A
+   busca antiga por rótulo-imediatamente-antes-do-valor continua como PLANO B pra
+   documentos que não seguem esse formato de tabela. A extração é só um PRIMEIRO
+   PREENCHIMENTO: a tela de conferência (e depois o formulário de Nova O.S.) continua
+   100% editável antes de qualquer gravação -- imprecisão da leitura nunca vira OS errada
+   sem revisão humana. Mantém o número de OS do fabricante (nunca gera um novo) e pede
+   confirmação da empresa (Vox Serra/Vox Vitória) antes de criar. */
 (function(){
   const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
@@ -44,8 +57,8 @@
     read.onclick=async()=>{
       read.disabled=true;read.textContent='Lendo PDF…';
       try{
-        const text=await extractPdfText(selectedFile);
-        extracted=await buildExtraction(text);
+        const {text,items}=await extractPdfData(selectedFile);
+        extracted=await buildExtraction(text,items);
         renderReview();
       }catch(err){
         toast('Não foi possível ler o PDF automaticamente: '+(err?.message||err)+'. Você pode preencher manualmente na próxima tela.','err');
@@ -64,18 +77,13 @@
 
   /* ---------- Leitura do PDF (genérica, sem modelo por fabricante) ---------- */
 
-  // Junta o texto do PDF na ORDEM NATURAL do arquivo (nunca reordenado por
-  // posição visual/coluna). Testado contra um PDF real de OS (formato de
-  // tabela rótulo/valor, comum a vários fabricantes/revendas): um PDF
-  // gerado a partir de impressão do navegador normalmente preserva a ordem
-  // do documento fonte no fluxo de texto -- o rótulo aparece logo antes do
-  // seu valor, mesmo quando visualmente ficam em linhas de tabela
-  // diferentes. Tentativa anterior (reconstruir linha/coluna por posição
-  // X/Y) se mostrou frágil: célula vazia na tabela (comum quando o valor é
-  // só uma logomarca/imagem) desalinha o índice das colunas e casa o rótulo
-  // com o valor ERRADO -- corrigido usando busca por texto/formato em vez
-  // de posição.
-  async function extractPdfText(file){
+  // Lê o texto E a posição (x,y) de cada item do PDF -- a posição é o que
+  // permite reconstruir a tabela "linha de rótulos / linha de valores" (ver
+  // comentário no topo do arquivo). `text` continua sendo o texto corrido
+  // (ordem natural do documento), usado pra tudo que é indiferente à
+  // posição: palpite de marca/tipo de produto, palpite de empresa, e o
+  // plano B de leitura por rótulo-imediatamente-antes-do-valor.
+  async function extractPdfData(file){
     if(typeof pdfjsLib==='undefined')throw new Error('Biblioteca de leitura de PDF não carregou.');
     if(!pdfjsLib.GlobalWorkerOptions.workerSrc){
       pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -83,18 +91,92 @@
     const buf=await file.arrayBuffer();
     const pdf=await pdfjsLib.getDocument({data:buf}).promise;
     const parts=[];
+    const items=[];
     for(let p=1;p<=Math.min(pdf.numPages,3);p++){
       const page=await pdf.getPage(p);
       const content=await page.getTextContent();
-      for(const it of content.items){if(it.str&&it.str.trim())parts.push(it.str.trim());}
+      // Deslocamento grande em Y por página -- mantém cada página no seu
+      // próprio "andar" de coordenadas, pra nunca misturar uma linha da
+      // página 1 com uma linha da página 2 que caia na mesma altura.
+      const pageOffset=(p-1)*100000;
+      for(const it of content.items){
+        const str=it.str&&it.str.trim();
+        if(!str)continue;
+        parts.push(str);
+        items.push({str,x:it.transform[4],y:pageOffset-it.transform[5]});
+      }
     }
-    return parts.join(' ').replace(/\s+/g,' ').trim();
+    return {text:parts.join(' ').replace(/\s+/g,' ').trim(),items};
   }
 
   // Rótulos conhecidos (genéricos -- termos comuns em OS de qualquer
-  // fabricante/seguradora/revenda) -- usado como "parede" pra um campo de
-  // texto livre não vazar pro valor do PRÓXIMO campo.
-  const KNOWN_LABELS=/\b(Fabricante|OS Fabricante|N[úu]mero (da )?O\.?S\.?|Ordem de Servi[çc]o|DATA DE ENTRADA[^,.;]*|Refer[êe]ncia|Descri[çc][ãa]o|N[úu]m\.? de S[ée]rie|Nome do Consumidor|Cliente|Cidade|Estado|UF|Fone|CELULAR|Celular|Telefone[^,.;]*|E-?Mail|Endere[çc]o|N[úu]mero|Complemento|Bairro|CEP|CPF\s*\/?\s*CNPJ|CPF|CNPJ|DEFEITO APRESENTADO PELO CLIENTE|Defeito|Reclama[çc][ãa]o|APAR[ÊE]NCIA GERAL DO PRODUTO|ACESS[óÓ]RIOS|Atendimento|DESLOCAMENTO|Diagn[óo]stico)\b/i;
+  // fabricante/seguradora/revenda) -- usado tanto como "parede" pra um
+  // campo de texto livre não vazar pro valor do PRÓXIMO campo (plano B),
+  // quanto pra reconhecer uma linha inteira como "linha de rótulos" na
+  // reconstrução por posição (plano A).
+  const KNOWN_LABELS=/\b(Informa[çc][õo]es sobre a (Ordem de Servi[çc]o|Revenda)|Fabricante|OS Fabricante|N[úu]mero (da )?O\.?S\.?|Ordem de Servi[çc]o|DATA DE ENTRADA[^,.;]*|DATA EMISS[ÃA]O|N[ÚU]MERO|Refer[êe]ncia|Descri[çc][ãa]o|N[úu]m\.?\s*de\s*S[ée]rie|N[ºo°]\s*de\s*S[ée]rie|Nome do Consumidor|Cliente|Cidade|Estado|UF|Fone|CELULAR|Celular|TELEFONE CELULAR|Telefone Comercial|TELEFONE COMERCIAL|Telefone[^,.;]*|E-?Mail|EMAIL|Endere[çc]o|N[úu]mero|Complemento|Bairro|CEP|CPF\s*\/?\s*CNPJ|CNPJ\s*\/?\s*CPF|IE\s*\/\s*RG|CPF|CNPJ|DEFEITO APRESENTADO PELO CLIENTE|Defeito|Reclama[çc][ãa]o|APAR[ÊE]NCIA GERAL DO PRODUTO|ACESS[óÓ]RIOS DEIXADOS PELO CLIENTE|ACESS[óÓ]RIOS|Quantidade|Servi[çc]o|Atendimento|Nome do T[ée]cnico|DESLOCAMENTO|Diagn[óo]stico|NF\s*N[º°.]?|Data\s*NF)\b/i;
+
+  // ---- Plano A: reconstrução por posição (linha de rótulos -> linha de
+  // valores, casando pela coordenada X) ----
+  function groupRows(items){
+    const byY=new Map();
+    for(const it of items){
+      const y=Math.round(it.y);
+      if(!byY.has(y))byY.set(y,[]);
+      byY.get(y).push(it);
+    }
+    return [...byY.keys()].sort((a,b)=>a-b).map(y=>({y,items:byY.get(y).slice().sort((a,b)=>a.x-b.x)}));
+  }
+  // Uma linha só conta como "linha de rótulos" se ela inteira for composta
+  // por rótulos conhecidos (nada de texto solto misturado) -- é isso que
+  // evita, por exemplo, tratar a linha do cabeçalho da assistência (nome
+  // da empresa + endereço dela + a palavra solta "NÚMERO") como se fosse
+  // uma linha de rótulos de verdade.
+  function isLabelRow(row){
+    const text=row.items.map(i=>i.str).join(' ');
+    const stripped=text.replace(new RegExp(KNOWN_LABELS.source,'gi'),' ').replace(/[\s,.:;]+/g,'');
+    return stripped.length===0&&row.items.some(i=>KNOWN_LABELS.test(i.str));
+  }
+  function buildLabelGrid(items){
+    const rows=groupRows(items);
+    const map={};
+    for(let i=0;i<rows.length;i++){
+      if(!isLabelRow(rows[i]))continue;
+      const labelRow=rows[i];
+      const valueRows=[];
+      let j=i+1;
+      while(j<rows.length&&!isLabelRow(rows[j])){valueRows.push(rows[j]);j++;}
+      if(!valueRows.length)continue;
+      const labels=labelRow.items;
+      for(let k=0;k<labels.length;k++){
+        const xStart=labels[k].x,xEnd=k+1<labels.length?labels[k+1].x:Infinity;
+        const key=norm(labels[k].str);
+        const parts=[];
+        for(const vr of valueRows){
+          const inBucket=vr.items.filter(v=>v.x>=xStart-5&&v.x<xEnd-2);
+          if(inBucket.length)parts.push(inBucket.map(v=>v.str).join(' '));
+        }
+        const val=parts.join(' ').trim();
+        if(val&&!map[key])map[key]=val; // primeira ocorrência vence (evita 2ª via/cópia sobrescrever)
+      }
+    }
+    return map;
+  }
+  function gridGet(grid,...aliases){
+    for(const a of aliases){const v=grid[norm(a)];if(v)return v;}
+    return '';
+  }
+  // Refina um valor já isolado pelo grid (ex.: extrai só os dígitos do
+  // tamanho esperado, ou só o trecho no formato de telefone/e-mail) --
+  // continua funcionando mesmo se o valor vier "sujo" com texto ao redor.
+  function digitsOfLength(str,length){
+    if(!str)return '';
+    const runs=str.match(/\d[\d.\-\/]{3,}/g)||[];
+    for(const run of runs){const d=run.replace(/\D/g,'');if(d.length===length)return d;}
+    const glued=str.match(new RegExp(`\\d{${length}}`));
+    return glued?glued[0]:'';
+  }
+  function pickShape(str,re){const m=String(str||'').match(re);return m?m[0]:'';}
 
   function afterLabel(text,labelRe,windowChars=120){
     const m=text.match(labelRe);
@@ -132,6 +214,8 @@
     ['MICRO-ONDAS','MICRO-ONDAS'],['MICROONDAS','MICRO-ONDAS'],['M. ONDAS','MICRO-ONDAS'],
     ['AR-CONDICIONADO','AR-CONDICIONADO'],['AR CONDICIONADO','AR-CONDICIONADO'],['SPLIT','AR-CONDICIONADO'],
     ['ADEGA','ADEGA'],['COIFA','COIFA'],[' TV ',' TV '],['TELEVISOR','TV'],[' TV',' TV'],
+    ['ASPIRADOR','ASPIRADOR DE PÓ'],['LIQUIDIFICADOR','LIQUIDIFICADOR'],['BATEDEIRA','BATEDEIRA'],
+    ['CAFETEIRA','CAFETEIRA'],['FERRO DE PASSAR','FERRO DE PASSAR'],['VENTILADOR','VENTILADOR'],
   ];
   const BRAND_HINTS=['BRASTEMP','CONSUL','ELECTROLUX','WHIRLPOOL','BRITÂNIA','BRITANIA','PHILCO','LG','SAMSUNG','SONY','PANASONIC','MIDEA','PHILIPS','GE','DAKO','FISCHER','ESMALTEC','VENAX','MONDIAL'];
 
@@ -153,30 +237,43 @@
     }catch{return [];}
   }
 
-  async function buildExtraction(text){
+  async function buildExtraction(text,items){
+    const grid=buildLabelGrid(items||[]);
     const externalOs=
+      gridGet(grid,'OS Fabricante','Número da OS','Número O.S.','Numero da OS')||
       firstMatch(afterLabel(text,/\bOS\s*Fabricante\b/i,30)?.win||'',/[0-9A-Za-z-]{5,}/)||
       firstMatch(afterLabel(text,/\bN[úu]mero\s*(da\s*)?O\.?S\.?\b/i,30)?.win||'',/[0-9A-Za-z-]{5,}/)||
       firstMatch(afterLabel(text,/\bOrdem\s*de\s*Servi[çc]o\s*N[ºo°]?\b/i,30)?.win||'',/[0-9A-Za-z-]{5,}/)||'';
-    const description=textAfterLabel(text,/\bDescri[çc][ãa]o\b/i);
+    const description=gridGet(grid,'Descrição','Descricao')||textAfterLabel(text,/\bDescri[çc][ãa]o\b/i);
+    let serial=gridGet(grid,'Núm. de Série','Num. de Serie','N° de Série','Nº de Série')||textAfterLabel(text,/\bN[úu]m\.?\s*de\s*S[ée]rie\b/i)||textAfterLabel(text,/\bN[ºo°]\s*de\s*S[ée]rie\b/i);
+    let model=description||gridGet(grid,'Modelo')||textAfterLabel(text,/\bModelo\b/i);
+    // Quando a linha de rótulos não tinha uma coluna própria pra "Núm. de
+    // Série" (acontece na 1ª via de alguns documentos, que repete os dados
+    // sem esse rótulo), o valor do número de série cola no final da
+    // Descrição -- corta fora se sobrou grudado.
+    if(serial&&model&&model!==serial&&model.endsWith(serial)){
+      model=model.slice(0,model.length-serial.length).trim();
+    }
+    const emailRaw=gridGet(grid,'E-Mail','Email');
+    const phoneRaw=gridGet(grid,'Celular','CELULAR','Telefone Celular','TELEFONE CELULAR','Fone','Telefone Comercial','TELEFONE COMERCIAL');
     const fields={
       external_os:externalOs,
-      client_name:textAfterLabel(text,/\bNome\s*do\s*Consumidor\b/i)||textAfterLabel(text,/\bCliente\b/i),
-      document:digitsAfterLabel(text,/\bCPF\s*\/?\s*CNPJ\b/i,11)||digitsAfterLabel(text,/\bCPF\b/i,11)||digitsAfterLabel(text,/\bCNPJ\b/i,14),
-      // Telefone tem formato distintivo ((DD) NNNNN-NNNN) -- busca no texto
-      // inteiro é mais confiável que ancorar num rótulo específico (este
-      // documento repete o mesmo telefone sob 3 rótulos diferentes).
-      phone:firstMatch(text,/\(\d{2}\)\s?9?\d{3,5}-?\d{4}/),
-      email:firstMatch(text,/[\w.+-]+@[\w-]+\.[\w.-]+/),
-      zip:digitsAfterLabel(text,/\bCEP\b/i,8),
-      address:textAfterLabel(text,/\bEndere[çc]o\b/i),
-      address_number:textAfterLabel(text,/\bN[úu]mero\b/i,20),
-      neighborhood:textAfterLabel(text,/\bBairro\b/i),
-      city:textAfterLabel(text,/\bCidade\b/i,40),
-      state:(textAfterLabel(text,/\bEstado\b/i,10)||textAfterLabel(text,/\bUF\b/i,10)||'').slice(0,2),
-      defect:textAfterLabel(text,/\bDEFEITO\s*APRESENTADO\s*PELO\s*CLIENTE\b/i,200)||textAfterLabel(text,/\bDefeito\b/i,200)||textAfterLabel(text,/\bReclama[çc][ãa]o\b/i,200),
-      model:description||textAfterLabel(text,/\bModelo\b/i),
-      serial:textAfterLabel(text,/\bN[úu]m\.?\s*de\s*S[ée]rie\b/i)||textAfterLabel(text,/\bN[ºo°]\s*de\s*S[ée]rie\b/i),
+      client_name:gridGet(grid,'Nome do Consumidor')||textAfterLabel(text,/\bNome\s*do\s*Consumidor\b/i),
+      document:digitsOfLength(gridGet(grid,'CPF/CNPJ','CNPJ/CPF','CPF'),11)||digitsOfLength(gridGet(grid,'CPF/CNPJ','CNPJ/CPF','CNPJ'),14)||digitsAfterLabel(text,/\bCPF\s*\/?\s*CNPJ\b/i,11)||digitsAfterLabel(text,/\bCPF\b/i,11)||digitsAfterLabel(text,/\bCNPJ\b/i,14),
+      // Telefone/e-mail têm formato distintivo -- ancorados na coluna certa
+      // do grid (evita pegar o telefone/e-mail do CABEÇALHO da assistência,
+      // que também aparecem no documento, antes dos dados do cliente).
+      phone:pickShape(phoneRaw,/\(\d{2}\)\s?9?\d{3,5}-?\d{4}/)||firstMatch(text,/\(\d{2}\)\s?9?\d{3,5}-?\d{4}/),
+      email:pickShape(emailRaw,/[\w.+-]+@[\w-]+\.[\w.-]+/)||firstMatch(text,/[\w.+-]+@[\w-]+\.[\w.-]+/),
+      zip:digitsOfLength(gridGet(grid,'CEP'),8)||digitsAfterLabel(text,/\bCEP\b/i,8),
+      address:gridGet(grid,'Endereço','Endereco')||textAfterLabel(text,/\bEndere[çc]o\b/i),
+      address_number:gridGet(grid,'Número','Numero')||textAfterLabel(text,/\bN[úu]mero\b/i,20),
+      neighborhood:gridGet(grid,'Bairro')||textAfterLabel(text,/\bBairro\b/i),
+      city:gridGet(grid,'Cidade')||textAfterLabel(text,/\bCidade\b/i,40),
+      state:(gridGet(grid,'Estado','UF')||textAfterLabel(text,/\bEstado\b/i,10)||textAfterLabel(text,/\bUF\b/i,10)||'').slice(0,2),
+      defect:gridGet(grid,'DEFEITO APRESENTADO PELO CLIENTE','Defeito','Reclamação')||textAfterLabel(text,/\bDEFEITO\s*APRESENTADO\s*PELO\s*CLIENTE\b/i,200)||textAfterLabel(text,/\bDefeito\b/i,200)||textAfterLabel(text,/\bReclama[çc][ãa]o\b/i,200),
+      model,
+      serial,
       product_type:guessFromText(description+' '+text,PRODUCT_TYPE_HINTS),
       brand:guessFromText(text,BRAND_HINTS),
     };
