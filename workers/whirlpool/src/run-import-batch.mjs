@@ -1711,6 +1711,7 @@ conn.id=claim?.connection_id||null;
 if(!claim?.claimed){
  const reason=String(claim?.reason||"SEM_LEASE");
  console.log("EXECUÇÃO NÃO INICIADA: "+reason);
+ console.log(JSON.stringify({limit:LIMIT,processed:0,results:[],skipped:true,reason}));
  // Um job encerrado pelo timeout pode deixar a trava de login ativa até
  // expirar. Mostrar verde nesse caso ocultava que nenhuma OS foi tentada.
  // Sem lease, nenhuma interação com o portal é permitida.
