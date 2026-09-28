@@ -77,7 +77,9 @@ function decideScanMode(claim){
   const searchLimitIncremental=Number(claim.search_limit_incremental)||100;
   const lastFullScanAt=claim.last_full_scan_at?new Date(claim.last_full_scan_at).getTime():0;
   const fullScanDue=!lastFullScanAt||(Date.now()-lastFullScanAt)>FULL_SCAN_INTERVAL_MS;
-  return {fullScan:fullScanDue,limit:fullScanDue?searchLimitFull:searchLimitIncremental};
+  // Permite uma recuperação imediata sem alterar o relógio salvo no banco.
+  const forced=process.env.WHIRLPOOL_FORCE_FULL_SCAN==="1";
+  return {fullScan:forced||fullScanDue,limit:forced||fullScanDue?searchLimitFull:searchLimitIncremental};
 }
 const norm=(v="")=>v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
 // O CRM SAP mantém mais de uma árvore de frames carregada ao mesmo tempo
@@ -1160,8 +1162,10 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
     await delay(1000);
     firstResult=await findCatalogResultFrame(page,inCrmFrame);
   }
-  for(let pageNumber=1;pageNumber<=100;pageNumber++){
+  let reachedLastPage=false;
+  for(let pageNumber=1;pageNumber<=1000;pageNumber++){
     const result=pageNumber===1?firstResult:await findCatalogResultFrame(page,inCrmFrame);
+    if(!result&&pageNumber>1)throw Object.assign(new Error(`Grade desapareceu na página ${pageNumber} da varredura.`),{code:"NAVIGATION_FAILURE"});
     if(!result)break;
     scannedPages++;
     if(statusDiagnosticSeenLabels.size<STATUS_DIAGNOSTIC_MAX_DISTINCT){
@@ -1199,15 +1203,16 @@ async function scanServiceOrderCatalog(page,crmFrame,maxHits,partnerId=null){
     // sessão do robô (2026-09-18, print do usuário): o rótulo real de
     // paginação na tela em inglês é "Forward" (par de "Back"), não
     // "Next" -- "Page 1 <Back 1 2 3 ... 10 Forward> 100".
-    if(!(await clickTrustedInFrame(result.frame,["Avançar","Forward","Next"],20000)))break;
+    if(!(await clickTrustedInFrame(result.frame,["Avançar","Forward","Next"],2000))){reachedLastPage=true;break;}
     let changed=false;
     for(let attempt=0;attempt<60;attempt++){
       await delay(500);
       const next=await findCatalogResultFrame(page,inCrmFrame);
       if(next&&catalogRowsFingerprint(next.rows)!==before){changed=true;break;}
     }
-    if(!changed)break;
+    if(!changed)throw Object.assign(new Error(`Paginação parou sem confirmar a próxima página após ${pageNumber}; catálogo parcial não será registrado como completo.`),{code:"NAVIGATION_FAILURE"});
   }
+  if(scannedPages>0&&!reachedLastPage&&scannedPages>=1000)throw Object.assign(new Error("Limite de 1000 páginas atingido; catálogo incompleto."),{code:"NAVIGATION_FAILURE"});
   // Grava sempre (mesmo vazio, pra provar que nenhuma linha bateu) --
   // puramente informativo, nunca lido de volta por nenhuma lógica. O
   // "map" abaixo é só uma vista resumida dos mesmos samples (código
@@ -1733,7 +1738,24 @@ try{
  const crmFrameForScan=await findCrmApplicationFrame(page);
  if(!crmFrameForScan)throw Object.assign(new Error("CRMApplicationFrame não localizado para a varredura do catálogo."),{code:"NAVIGATION_FAILURE"});
  const scan=await scanServiceOrderCatalog(page,crmFrameForScan,scanMode.limit,claim.external_partner_id||null);
- const ingestResult=await ingestCatalog(claim.filial,scan.items,scanMode.fullScan,scan.limitReached);
+  // Um resultado cortado pelo limite nunca deve avançar last_full_scan_at.
+  const completeFullScan=scanMode.fullScan&&!scan.limitReached;
+ const ingestResult=await ingestCatalog(claim.filial,scan.items,completeFullScan,scan.limitReached);
+ if(scanMode.fullScan&&!completeFullScan)console.warn("WORKER WHIRLPOOL: varredura atingiu o limite; recuperação completa continuará pendente.");
+ // Recuperação direcionada pela própria pesquisa SAP: registra a linha
+ // encontrada pela mesma classificação normal, nunca cria uma OS manual.
+ const recoveryIds=String(process.env.WHIRLPOOL_RECOVERY_IDS||"").split(",").map(x=>x.trim()).filter(x=>/^7015\d{6}$/.test(x));
+ for(const recoveryId of new Set(recoveryIds)){
+   await openSearch(page,1000,claim.external_partner_id||null);
+   await searchOrderById(page,recoveryId);
+   const result=await findCatalogResultFrame(page,f=>isWithinCrmFrame(f,crmFrameForScan));
+   const row=result?.rows.find(x=>x.externalOrderId===recoveryId);
+   if(!row)throw Object.assign(new Error(`OS ${recoveryId} não apareceu na pesquisa direta do SAP.`),{code:"NAVIGATION_FAILURE"});
+   if(norm(row.processType).includes("aut especial")||norm(row.processType).includes("aut.especial"))throw new Error(`OS ${recoveryId} retornou como Aut.Especial; requer revisão.`);
+   const recovered=await ingestCatalog(claim.filial,[classifyCatalogRow(row,scan.cutoffIso)],false,false);
+   if(recovered?.rejected?.length)throw new Error(`OS ${recoveryId} foi recusada pelo catálogo: ${JSON.stringify(recovered.rejected)}`);
+   console.log("WORKER WHIRLPOOL RECOVERY_FOUND: "+recoveryId);
+ }
  console.log("CATALOGO WHIRLPOOL ATUALIZADO: "+JSON.stringify({fullScan:scanMode.fullScan,limit:scanMode.limit,scannedPages:scan.scannedPages,ignoredAutEspecial:scan.ignoredAutEspecial,unclassifiedRows:scan.unclassifiedRows,limitReached:scan.limitReached,...ingestResult}));
  // Achado real do usuário (2026-09-17): uma única OS com status/
  // classificação fora do esperado não deve travar o lote inteiro --
