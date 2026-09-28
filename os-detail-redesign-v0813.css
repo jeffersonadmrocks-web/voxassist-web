@@ -115,18 +115,23 @@
 .vx-os-actions-item.danger:hover{background:#fdecec}
 .vx-os-actions-item-ic{font-size:13px;flex:none;opacity:.85}
 
-/* ---------- Faixa Abertura/Atendente/Técnico/Loja (+ Voltar à direita) ---------- */
+/* ---------- Faixa Abertura/Atendente/Técnico/Loja(/Agendado) (+ Voltar à direita) ---------- */
 /* Achado do usuário em 2026-09-04 (5ª rodada): flexbox+space-between
-   ainda deixava os 4 blocos amontoados à esquerda em telas largas --
-   grid com 4 colunas EXPLÍCITAS de 1fr cada (+ auto pro Voltar) força
-   os blocos a se espalharem por igual pela largura inteira, sem
-   depender de quanto espaço "sobra". */
-.vx-os-head-info{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;align-items:center;gap:18px;width:100%;background:rgba(255,255,255,.06);border-radius:var(--os-radius-sm);padding:12px 20px;box-sizing:border-box}
-.vx-os-head-info>div{display:flex;align-items:center;gap:9px;min-width:0}
+   ainda deixava os blocos amontoados à esquerda em telas largas --
+   forçar cada bloco a crescer igualmente (flex:1 1 0) espalha pela
+   largura inteira sem depender de quanto espaço "sobra", igual o
+   grid de 1fr fazia. Achado do usuário em 2026-09-28: aquele grid
+   tinha um número FIXO de 4 colunas + auto pro Voltar -- ao ganhar um
+   5º item condicional (AGENDADO), o grid empurrava o Voltar pra uma
+   célula solta numa segunda linha, fora do lugar. Flex se adapta
+   sozinho a 4 ou 5 itens, com o Voltar sempre no fim da linha
+   (margin-left:auto) ou pulando pra própria linha se não couber.*/
+.vx-os-head-info{display:flex;flex-wrap:wrap;align-items:center;gap:18px;width:100%;background:rgba(255,255,255,.06);border-radius:var(--os-radius-sm);padding:12px 20px;box-sizing:border-box}
+.vx-os-head-info>div{display:flex;align-items:center;gap:9px;min-width:0;flex:1 1 0}
 .vx-os-head-info-ic{flex:none;opacity:.9}
 .vx-os-head-info small{display:block;font-size:9.5px;color:#bcd7ef;font-weight:700;letter-spacing:.04em}
 .vx-os-head-info b{display:block;font-size:12.5px;color:#fff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media(max-width:900px){.vx-os-head-top{grid-template-columns:1fr}.vx-os-head-info{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.vx-back{grid-column:1/-1;width:100%;margin-left:0}}
+@media(max-width:900px){.vx-os-head-top{grid-template-columns:1fr}.vx-os-head-info>div{flex:1 1 45%}.vx-back{flex:1 1 100%;width:100%;margin-left:0}}
 
 /* ---------- Guias da O.S. ---------- */
 .vx-os-tabs{height:auto;display:flex;align-items:center;gap:4px;margin:0;padding:6px;background:var(--os-surface);border:1px solid var(--os-line);border-radius:999px;overflow-x:auto;box-shadow:0 1px 3px rgba(15,42,68,.05)}
