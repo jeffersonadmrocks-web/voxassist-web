@@ -77,6 +77,9 @@ jobs:
               echo "Queue drained or a job failed; remaining work will be retried by the next scheduled run."
               break
             fi
+            # O primeiro lote já descobriu e enfileirou as OS. Os seguintes
+            # esvaziam a mesma fila sem reler 100 páginas do SAP a cada 3 OS.
+            export WHIRLPOOL_SKIP_SCAN=1
           done
           echo "Queue drained, batch interrupted, or time budget reached after $round batches."
       - name: Upload failure diagnostics

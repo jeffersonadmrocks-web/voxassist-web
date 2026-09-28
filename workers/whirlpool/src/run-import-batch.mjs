@@ -1742,6 +1742,7 @@ try{
  // (nunca finge sucesso quando a busca não aconteceu). A OS aberta durante
  // o scan nunca fica presa numa tela de detalhe -- é sempre a própria lista
  // de resultados, então não há "Encerrar" pendente entre o scan e os jobs.
+ if(process.env.WHIRLPOOL_SKIP_SCAN!=="1"){
  const scanMode=decideScanMode(claim);
  const crmFrameForScan=await findCrmApplicationFrame(page);
  if(!crmFrameForScan)throw Object.assign(new Error("CRMApplicationFrame não localizado para a varredura do catálogo."),{code:"NAVIGATION_FAILURE"});
@@ -1772,6 +1773,7 @@ try{
  // pra isso -- nunca dado pessoal, só os mesmos campos estruturais já
  // enviados pro gateway (número da OS, status/classificação recusados).
  if(ingestResult?.rejected?.length)console.error("WORKER WHIRLPOOL INGEST_REJECTED_ITEMS: "+JSON.stringify(ingestResult.rejected).slice(0,2000));
+ }else console.log("CATALOGO WHIRLPOOL: varredura já realizada neste workflow; processando fila.");
  const jobs=await pendingOrders();
  if(!jobs.length)console.log("Nenhuma OS ativa pendente.");
  for(const job of jobs){
