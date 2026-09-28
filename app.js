@@ -142,7 +142,14 @@ function shell(){
 
 async function loadCore(){
  const [orders,clients,tests,tasks,stock]=await Promise.all([
- api('service_orders?select=*,clients(name,phone_primary),equipments(product_type,brand,model),profiles!service_orders_technician_id_fkey(full_name)&order=opened_at.desc&limit=100').catch(()=>[]),
+ // Achado do usuário em 2026-09-28: o card de Atendimento (all-menus-
+ // layout.js) mostrava contagens diferentes do Dashboard pro mesmo
+ // status (ex.: AGUARDANDO ANÁLISE) -- os dois contam a partir desta
+ // MESMA lista, mas o Dashboard busca as 500 OS mais recentes e aqui
+ // só vinham 100. Com mais de 100 OS abertas na empresa (comum, com a
+ // importação Whirlpool sozinha já gerando mais de 100), a contagem
+ // daqui ficava incompleta -- alinhado ao mesmo limite do Dashboard.
+ api('service_orders?select=*,clients(name,phone_primary),equipments(product_type,brand,model),profiles!service_orders_technician_id_fkey(full_name)&order=opened_at.desc&limit=500').catch(()=>[]),
  api('clients?select=*&order=name').catch(()=>[]),
  api('homologation_tests?select=*&order=module,title').catch(()=>[]),
  api('tasks?select=*&order=created_at.desc&limit=100').catch(()=>[]),
