@@ -1746,9 +1746,26 @@ try{
  // de resultados, então não há "Encerrar" pendente entre o scan e os jobs.
  if(process.env.WHIRLPOOL_SKIP_SCAN!=="1"){
  const scanMode=decideScanMode(claim);
- const crmFrameForScan=await findCrmApplicationFrame(page);
+ let crmFrameForScan=await findCrmApplicationFrame(page);
  if(!crmFrameForScan)throw Object.assign(new Error("CRMApplicationFrame não localizado para a varredura do catálogo."),{code:"NAVIGATION_FAILURE"});
- const scan=await scanServiceOrderCatalog(page,crmFrameForScan,scanMode.limit,claim.external_partner_id||null);
+ let scan;
+ try{
+   scan=await scanServiceOrderCatalog(page,crmFrameForScan,scanMode.limit,claim.external_partner_id||null);
+ }catch(scanError){
+   // O SAP às vezes carrega o cabeçalho da grade sem as linhas. Renova
+   // uma única vez a página/sessão de navegação, preservando cookies.
+   if(scanError?.code!=="NAVIGATION_FAILURE"||!String(scanError.message).includes("Grade de resultados da pesquisa de OS não carregou"))throw scanError;
+   console.warn("WORKER WHIRLPOOL: grade vazia após pesquisa; renovando página CRM para uma tentativa.");
+   await captureDiagnostics("scan-grade-vazia").catch(()=>{});
+   for(const oldPage of context.pages())await oldPage.close().catch(()=>{});
+   page=await context.newPage();
+   await loginIfNeeded(page,claim);
+   page=await selectCrmPage(context,page);
+   await page.bringToFront().catch(()=>{});
+   crmFrameForScan=await findCrmApplicationFrame(page);
+   if(!crmFrameForScan)throw scanError;
+   scan=await scanServiceOrderCatalog(page,crmFrameForScan,scanMode.limit,claim.external_partner_id||null);
+ }
  // A RPC registra a tentativa ampla, mas só avança last_full_scan_at
  // quando o SAP realmente devolveu todas as páginas.
  const ingestResult=await ingestCatalog(claim.filial,scan.items,scanMode.fullScan,scan.limitReached);
