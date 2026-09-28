@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: "5,15,25,35,45,55 * * * *"
   workflow_dispatch:
+    inputs:
+      recovery_ids:
+        description: "Números de OS para recuperação pela pesquisa direta SAP (separados por vírgula)"
+        required: false
+        type: string
+      force_full_scan:
+        description: "Forçar varredura completa agora"
+        required: false
+        type: boolean
   push:
     branches: [main]
     paths:
@@ -29,6 +38,8 @@ jobs:
     env:
       WHIRLPOOL_WORKER_API_URL: https://dgasmtvpgifceyqufcfg.supabase.co/functions/v1/whirlpool-worker-api
       WHIRLPOOL_BATCH_LIMIT: "3"
+      WHIRLPOOL_RECOVERY_IDS: ${{ inputs.recovery_ids || '' }}
+      WHIRLPOOL_FORCE_FULL_SCAN: ${{ inputs.force_full_scan && '1' || '0' }}
       CI: "true"
     steps:
       - name: Checkout
@@ -52,15 +63,18 @@ jobs:
             round=$((round + 1))
             echo "Whirlpool batch $round"
             log="$RUNNER_TEMP/whirlpool-batch-$round.log"
-            npm run run-online | tee "$log"
+            if ! npm run run-online | tee "$log"; then
+              echo "Whirlpool batch failed; remaining work will be retried by the next scheduled run."
+              exit 1
+            fi
             more=$(node -e '
               const fs = require("node:fs");
               const lines = fs.readFileSync(process.argv[1], "utf8").trim().split("\n");
               const batch = JSON.parse(lines.at(-1));
-              console.log(batch.results.length === 3 && batch.results.every(item => item.status === "IMPORTADA") ? "yes" : "no");
+              console.log(batch.results.length > 0 && batch.results.every(item => item.status === "IMPORTADA") ? "yes" : "no");
             ' "$log")
             if [[ "$more" != "yes" ]]; then
-              echo "Batch was not fully imported; leaving remaining work for the next scheduled run."
+              echo "Queue drained or a job failed; remaining work will be retried by the next scheduled run."
               break
             fi
           done
