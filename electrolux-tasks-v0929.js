@@ -398,16 +398,22 @@
   let newCount=0;
   function taskIdentity(t){return String(t?.id||t?.taskNumber||t?.createdDate||'');}
   async function latestPendingTasks(){
-    const data=await fetchPendingTasks({page:1,pageSize:100,orderBy:'CreatedDate',order:'desc'});
+    const data=await fetchPendingTasks({page:1,pageSize:15,orderBy:'CreatedDate',order:'desc'});
     return Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
   }
+  let badgeCheckRunning=false;
   async function refreshSharedBadge(){
+    if(badgeCheckRunning||document.visibilityState==='hidden')return;
+    badgeCheckRunning=true;
     try{
+      // Fora da tela de tarefas, sincroniza apenas as 15 mais recentes.
+      // Evita buscar/gravar 100 registros a cada checagem do badge.
       const items=await latestPendingTasks();
       await syncTracking(items);
       newCount=Object.values(st.tracking).filter(x=>!x.acknowledged_at).length;
       paintBadge();
     }catch(_e){/* mantém badge anterior em falha de rede */}
+    finally{badgeCheckRunning=false;}
   }
   async function markSeenNow(){await refreshSharedBadge();}
   async function checkForNew(){await refreshSharedBadge();}
@@ -422,8 +428,10 @@
     }else badge?.remove();
   }
 
-  new MutationObserver(()=>paintBadge()).observe(document.body,{childList:true,subtree:true});
+  // Não observa o document.body: o VoxAssist altera o DOM com frequência e
+  // isso fazia o callback do badge rodar centenas/milhares de vezes sem necessidade.
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkForNew();});
-  setTimeout(checkForNew,4000);
-  setInterval(checkForNew,2*60*1000);
+  window.addEventListener('focus',()=>paintBadge(),{passive:true});
+  setTimeout(checkForNew,8000);
+  setInterval(checkForNew,5*60*1000);
 })();
