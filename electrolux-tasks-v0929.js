@@ -66,7 +66,7 @@
       .vx-elxt-json-row td{padding:0!important}
       .vx-elxt-json-wrap{padding:10px 14px}
       .vx-elxt-toggle{background:none;border:0;color:#1876d2;font-size:11.5px;font-weight:700;cursor:pointer;padding:0}
-      .vx-elxt-badge{position:absolute;top:-4px;right:-4px;width:9px;height:9px;border-radius:50%;background:#cf3542;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+      .vx-elxt-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:7px;border-radius:10px;background:#cf3542;color:#fff;font-size:10px;font-weight:900;line-height:1;vertical-align:middle;box-shadow:0 0 0 1px rgba(0,0,0,.06)}
       .vx-elxt-table-wrap{width:100%;max-width:100%;overflow:hidden}
       .vx-elxt-table{width:100%;max-width:100%;table-layout:fixed}
       .vx-elxt-table th,.vx-elxt-table td{overflow:hidden}
@@ -244,52 +244,56 @@
      campo, só de ela ter mudado desde a última vez que o usuário abriu a
      tela. Guardado em localStorage (por navegador/dispositivo, não por
      empresa -- suficiente pro aviso visual, sem exigir uma tabela nova). */
-  const SEEN_KEY='vx_elx_tasks_seen_sig';
-  let hasNew=false;
+  const SEEN_KEY='vx_elx_tasks_seen_id';
+  let newCount=0;
 
-  async function latestPendingSig(){
-    const data=await fetchPendingTasks({page:1,pageSize:1,orderBy:'CreatedDate',order:'desc'});
-    const items=Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
-    return items.length?JSON.stringify(items[0]):'';
+  function taskIdentity(t){
+    return String(t?.id||t?.taskNumber||t?.createdDate||'');
+  }
+  async function latestPendingTasks(){
+    const data=await fetchPendingTasks({page:1,pageSize:100,orderBy:'CreatedDate',order:'desc'});
+    return Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
   }
   async function markSeenNow(){
     try{
-      const sig=await latestPendingSig();
-      localStorage.setItem(SEEN_KEY,sig);
-    }catch(_e){/* sem rede/credencial ainda -- próxima checagem tenta de novo */}
-    hasNew=false;
+      const items=await latestPendingTasks();
+      const latest=items[0]?taskIdentity(items[0]):'';
+      if(latest)localStorage.setItem(SEEN_KEY,latest);
+    }catch(_e){/* próxima checagem tenta de novo */}
+    newCount=0;
     paintBadge();
   }
   async function checkForNew(){
-    let sig;
-    try{ sig=await latestPendingSig(); }
-    catch(_e){ return; } // falha de rede não deve acender nem apagar o aviso
+    let items;
+    try{items=await latestPendingTasks();}
+    catch(_e){return;}
     let seen=null;
-    try{ seen=localStorage.getItem(SEEN_KEY); }catch(_e){/* ignore */}
+    try{seen=localStorage.getItem(SEEN_KEY);}catch(_e){/* ignore */}
     if(seen===null){
-      // primeira vez que este navegador roda a checagem -- só grava a
-      // referência, nunca acende o aviso do nada no primeiro carregamento.
-      try{localStorage.setItem(SEEN_KEY,sig);}catch(_e){/* ignore */}
-      hasNew=false;
+      const latest=items[0]?taskIdentity(items[0]):'';
+      try{if(latest)localStorage.setItem(SEEN_KEY,latest);}catch(_e){/* ignore */}
+      newCount=0;
     }else{
-      hasNew=!!sig&&sig!==seen;
+      const idx=items.findIndex(t=>taskIdentity(t)===seen);
+      newCount=idx===-1?items.length:idx;
     }
     paintBadge();
   }
   function paintBadge(){
     const btn=document.getElementById('vxElxTasksBtn');
     if(!btn)return;
-    let dot=btn.querySelector('.vx-elxt-badge');
-    if(hasNew){
-      if(!dot){
-        installStyle();
-        btn.style.position='relative';
-        dot=document.createElement('span');
-        dot.className='vx-elxt-badge';
-        btn.appendChild(dot);
+    let badge=btn.querySelector('.vx-elxt-badge');
+    if(newCount>0){
+      installStyle();
+      if(!badge){
+        badge=document.createElement('span');
+        badge.className='vx-elxt-badge';
+        btn.appendChild(badge);
       }
+      badge.textContent=newCount>99?'99+':String(newCount);
+      badge.title=newCount===1?'1 nova tarefa':newCount+' novas tarefas';
     }else{
-      dot?.remove();
+      badge?.remove();
     }
   }
 
