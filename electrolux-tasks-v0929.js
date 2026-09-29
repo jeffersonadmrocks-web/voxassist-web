@@ -66,6 +66,7 @@
       .vx-elxt-json-row td{padding:0!important}
       .vx-elxt-json-wrap{padding:10px 14px}
       .vx-elxt-toggle{background:none;border:0;color:#1876d2;font-size:11.5px;font-weight:700;cursor:pointer;padding:0}
+      .vx-elxt-badge{position:absolute;top:-4px;right:-4px;width:9px;height:9px;border-radius:50%;background:#cf3542;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
     `;
     document.head.appendChild(s);
   }
@@ -186,9 +187,80 @@
       }).join('')}</tbody></table></div>`;
   }
 
+  // Achado do usuário (2026-09-29): a tela abria vazia e voltava sozinha
+  // pra Home do Electrolux em segundos -- mesma causa raiz já documentada
+  // pro NPS (electrolux-nps-v0826.js): o poll de 15s de
+  // electrolux-reports-v0813.js (rerender -> renderHome quando
+  // elx.screen não é 'board'/'closed') continuava rodando por baixo e
+  // reconstruía #app com a Home de novo. "Voltar" já chama
+  // window.render('electrolux') -> renderPage() -> startPoll() de novo,
+  // então só precisa parar aqui na entrada, igual o NPS já faz.
   window.vxOpenElectroluxTasks=function(){
+    window.vxElxStopPoll?.();
     installStyle();
     st.tab='pending';st.page=1;st.pageSize=15;st.order='desc';st.expanded=null;
     load();
+    markSeenNow();
   };
+
+  /* ---------- Indicador de "chegou tarefa nova" no botão TAREFAS ----------
+     Só cobre a aba Pendentes (é a fila que realmente precisa de ação).
+     Assinatura = JSON da tarefa mais recente (page 1, pageSize 1, ordenada
+     por CreatedDate desc) -- não depende de acertar o nome exato de nenhum
+     campo, só de ela ter mudado desde a última vez que o usuário abriu a
+     tela. Guardado em localStorage (por navegador/dispositivo, não por
+     empresa -- suficiente pro aviso visual, sem exigir uma tabela nova). */
+  const SEEN_KEY='vx_elx_tasks_seen_sig';
+  let hasNew=false;
+
+  async function latestPendingSig(){
+    const data=await fetchPendingTasks({page:1,pageSize:1,orderBy:'CreatedDate',order:'desc'});
+    const items=Array.isArray(data)?data:(data?.items||data?.data||data?.results||[]);
+    return items.length?JSON.stringify(items[0]):'';
+  }
+  async function markSeenNow(){
+    try{
+      const sig=await latestPendingSig();
+      localStorage.setItem(SEEN_KEY,sig);
+    }catch(_e){/* sem rede/credencial ainda -- próxima checagem tenta de novo */}
+    hasNew=false;
+    paintBadge();
+  }
+  async function checkForNew(){
+    let sig;
+    try{ sig=await latestPendingSig(); }
+    catch(_e){ return; } // falha de rede não deve acender nem apagar o aviso
+    let seen=null;
+    try{ seen=localStorage.getItem(SEEN_KEY); }catch(_e){/* ignore */}
+    if(seen===null){
+      // primeira vez que este navegador roda a checagem -- só grava a
+      // referência, nunca acende o aviso do nada no primeiro carregamento.
+      try{localStorage.setItem(SEEN_KEY,sig);}catch(_e){/* ignore */}
+      hasNew=false;
+    }else{
+      hasNew=!!sig&&sig!==seen;
+    }
+    paintBadge();
+  }
+  function paintBadge(){
+    const btn=document.getElementById('vxElxTasksBtn');
+    if(!btn)return;
+    let dot=btn.querySelector('.vx-elxt-badge');
+    if(hasNew){
+      if(!dot){
+        installStyle();
+        btn.style.position='relative';
+        dot=document.createElement('span');
+        dot.className='vx-elxt-badge';
+        btn.appendChild(dot);
+      }
+    }else{
+      dot?.remove();
+    }
+  }
+
+  new MutationObserver(()=>paintBadge()).observe(document.body,{childList:true,subtree:true});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkForNew();});
+  setTimeout(checkForNew,4000);
+  setInterval(checkForNew,2*60*1000);
 })();
