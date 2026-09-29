@@ -28,7 +28,7 @@ const ALLOWED_GET_PATTERNS: RegExp[] = [
   // 2026-09-29: tela "Tarefas" do Electrolux (electrolux-tasks-v0929.js)
   // -- query string opcional (page/pageSize/orderBy/order), sempre
   // codificada pelo próprio getJson antes de chegar aqui.
-  /^\/api\/dashboard\/tasks\/(pending|assistance)(\?[A-Za-z0-9_=&%.-]*)?$/,
+  /^\/api\/dashboard\/tasks(\/(pending|assistance))?(\?[A-Za-z0-9_=&%.-]*)?$/,
 ];
 const ALLOWED_POST_PATTERNS: RegExp[] = [
   /^\/api\/admin\/sync-now$/,
