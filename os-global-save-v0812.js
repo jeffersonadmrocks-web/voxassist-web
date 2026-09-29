@@ -84,6 +84,12 @@
       if(Object.keys(financialBody).length){financialBody.service_order_id=o.id;financialBody.updated_at=new Date().toISOString();const existing=await api(`os_financial?service_order_id=eq.${encodeURIComponent(o.id)}&select=id&limit=1`).catch(()=>[]);if(existing?.[0]?.id)jobs.push(api(`os_financial?id=eq.${encodeURIComponent(existing[0].id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(financialBody)}));else jobs.push(api('os_financial',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(financialBody)}));}
       await Promise.all(jobs);Object.assign(o,orderBody);if(o.equipments&&typeof o.equipments==='object')Object.assign(o.equipments,equipmentBody);if(o.clients&&typeof o.clients==='object')Object.assign(o.clients,clientBody);
       if(typeof window.vxUpdateBudgetTotal==='function')window.vxUpdateBudgetTotal();
+      // Achado do usuário em 2026-09-29: ALTERAR > EDITAR DADOS DA O.S.
+      // destravava os campos do resumo e nunca travava de volta -- SALVAR
+      // salva de verdade (PATCH acima) mas nunca chamava a trava
+      // (os-edit-data-fix-v0812.js só sabia destravar). Trava de novo
+      // aqui, só depois do PATCH ter dado certo.
+      window.vxLockOsDataEdit?.();
       setDirty(false);
       const result=await window.vxAdvanceOsStatus?.(o.id);
       // Achado do usuário em 2026-09-03: vxAdvanceOsStatus agora mostra
