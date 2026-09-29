@@ -418,8 +418,14 @@
           await replyToTask(task.id,answer);
           if(typeof toast==='function')toast('Resposta enviada à Electrolux.');
           delete answersCache[task.id];
-          box.value='';box.disabled=false;b.disabled=false;b.textContent='Enviar resposta';
-          loadAnswers(task);
+          // Recarrega a lista (o status pode ter mudado) e reabre a mesma tarefa pelo id,
+          // já que o índice da linha muda -- ou fecha, se ela saiu do filtro atual.
+          if(st.searchResults!==null)await runGlobalSearch(st.search); else await load();
+          const src=st.searchResults!==null?st.searchResults:st.items;
+          const idx=src.findIndex(x=>x.id===task.id);
+          st.expanded=idx>=0?'row'+idx:null;
+          render();
+          if(idx>=0)loadAnswers(src[idx]);
         }catch(err){
           b.disabled=false;box.disabled=false;b.textContent='Enviar resposta';
           if(msg)msg.textContent='Não foi possível enviar: '+(err.message||err);
