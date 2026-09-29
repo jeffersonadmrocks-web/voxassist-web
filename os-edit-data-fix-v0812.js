@@ -53,6 +53,26 @@
     },0);
   },true);
 
+  // Achado do usuário em 2026-09-29: ALTERAR > EDITAR DADOS DA O.S.
+  // destravava os campos, mas SALVAR (os-global-save-v0812.js,
+  // #vxGlobalSave) nunca travava de volta -- .vx-editing-os-data só era
+  // ADICIONADA em algum lugar do código, nunca removida. Uma única
+  // função de trava, usada por QUALQUER campo que ganhou .vx-editable-now
+  // (inclusive os 3 campos que os-summary-lock-alignment-v0812.js
+  // protege à parte -- mesma classe marcadora, não precisa duplicar
+  // lógica), exposta pro SALVAR global chamar depois de gravar com
+  // sucesso.
+  function disableSummaryEdit(){
+    const panel=q('#vx-os');if(!panel)return;
+    panel.classList.remove('vx-editing-os-data');
+    qa('.vx-editable-now',panel).forEach(field=>{
+      const el=q('input,select,textarea',field);if(!el)return;
+      if(el.tagName==='SELECT')el.disabled=true;else el.readOnly=true;
+      field.classList.remove('vx-editable-now');
+    });
+  }
+  window.vxLockOsDataEdit=disableSummaryEdit;
+
   const style=document.createElement('style');
   style.textContent=`
     #vx-os.vx-editing-os-data .vx-editable-now input,

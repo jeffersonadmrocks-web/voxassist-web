@@ -685,7 +685,17 @@
     // electrolux-agenda-bridge-v0825.js (external_schedule_enabled),
     // nunca um critério novo.
     const techs=safe(by['Técnicos'].data).filter(t=>norm(t.role)==='TECNICO'||t.external_schedule_enabled);
-    const history=safe(by['Histórico de status'].data);
+    // Achado do usuário em 2026-09-29: "cada peça lançada um novo feed" --
+    // logValueChange() (os-corrections-v0812.js, edição de peça) grava uma
+    // nota de auditoria em os_status_history com new_status = o próprio
+    // status atual (não uma transição real, só um registro pra timeline da
+    // OS). feedText()/contagens abaixo assumem que toda linha é uma
+    // transição de verdade (previous_status → new_status diferentes) --
+    // sem esse filtro, cada peça editada enquanto a OS já está em
+    // AGUARDANDO APROVACAO reaparecia no Feed em Tempo Real como "Orçamento
+    // gerado" de novo. Filtrado uma única vez aqui, na fonte, pra cobrir
+    // qualquer consumidor (feed, "Ver tudo", contagens do mês).
+    const history=safe(by['Histórico de status'].data).filter(h=>norm(h.previous_status)!==norm(h.new_status));
 
     // clientes com mais de 1 OS ativa -- usa oppScope (Oportunidades/
     // Gestão por Exceção, escopado por perfil), não o "active" do topo.
