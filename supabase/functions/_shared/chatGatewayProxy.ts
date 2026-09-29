@@ -4,10 +4,10 @@
 // corpo. Mantém o VoxAssist desacoplado do gateway (o frontend nunca
 // conhece a URL do Railway nem o token de serviço — só fala com esta
 // function).
-export type GatewayAction = "create" | "connect" | "qr" | "disconnect" | "reconnect";
+export type GatewayAction = "create" | "connect" | "qr" | "disconnect" | "reconnect" | "delete";
 
 export type ResolvedGatewayRequest =
-  | { ok: true; path: string; method: "GET" | "POST"; body?: Record<string, unknown> }
+  | { ok: true; path: string; method: "GET" | "POST" | "DELETE"; body?: Record<string, unknown> }
   | { ok: false; error: string };
 
 export function resolveGatewayRequest(
@@ -29,6 +29,7 @@ export function resolveGatewayRequest(
   if (action === "reconnect") return { ok: true, path: `/connections/${connectionId}/reconnect`, method: "POST" };
   if (action === "disconnect") return { ok: true, path: `/connections/${connectionId}/disconnect`, method: "POST" };
   if (action === "qr") return { ok: true, path: `/connections/${connectionId}/qr`, method: "GET" };
+  if (action === "delete") return { ok: true, path: `/connections/${connectionId}`, method: "DELETE" };
 
   return { ok: false, error: "invalid_action" };
 }

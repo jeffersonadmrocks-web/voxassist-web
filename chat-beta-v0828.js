@@ -418,7 +418,7 @@
         ${showDisconnect?`<button data-action="disconnect" data-id="${E(c.id)}">Desconectar</button>`:''}
         <button data-action="import" data-id="${E(c.id)}">Importações</button>
         ${isGestor()?`<button data-action="toggle-pause" data-id="${E(c.id)}" data-paused="${isPaused?'1':'0'}">${isPaused?'▶ Retomar conexão':'⏸ Pausar conexão'}</button>`:''}
-        ${isGestor()?`<button data-action="toggle-conflict" data-id="${E(c.id)}" data-conflict="${hasConflict?'1':'0'}">${hasConflict?'✓ Resolver conflito':'⚠ Marcar conflito com outro sistema'}</button>`:''}
+        ${isGestor()?`<button data-action="toggle-conflict" data-id="${E(c.id)}" data-conflict="${hasConflict?'1':'0'}">${hasConflict?'✓ Resolver conflito':'⚠ Marcar conflito com outro sistema'}</button>`:''}\n        ${isGestor()?`<button data-action="delete" data-id="${E(c.id)}">🗑 Excluir conexão</button>`:''}
       </div>
     </div>`;
   }
@@ -478,6 +478,21 @@
 
   async function handleConnAction(action,connectionId,btn){
     if(action==='import'){ await openImportScreen(connectionId); return; }
+    if(action==='delete'){
+      const conn=cache.connections.find(c=>String(c.id)===String(connectionId));
+      if(!confirm(`Excluir a conexão "${conn?.name||'WhatsApp'}"?\n\nA sessão do WhatsApp será encerrada e removida do gateway. Conversas e mensagens já registradas no VoxAssist serão preservadas, mas deixarão de estar vinculadas a esta conexão.`))return;
+      if(btn)btn.disabled=true;
+      try{
+        await gatewayAction('delete',{connectionId});
+        toast?.('Conexão excluída.');
+        await loadConexoesData();
+        renderConexoesScreen();
+      }catch(err){
+        toast?.('Não foi possível excluir a conexão: '+err.message,'err');
+        if(btn)btn.disabled=false;
+      }
+      return;
+    }
     // P0 de segurança (incidente 2026-09-16): pausar/marcar conflito são
     // um PATCH direto na conexão (mesma policy "Somente GESTOR administra
     // conexões de chat" já existente, mesmo padrão já usado pra pausar o
