@@ -67,20 +67,38 @@
       .vx-elxt-json-wrap{padding:10px 14px}
       .vx-elxt-toggle{background:none;border:0;color:#1876d2;font-size:11.5px;font-weight:700;cursor:pointer;padding:0}
       .vx-elxt-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:7px;border-radius:10px;background:#cf3542;color:#fff;font-size:10px;font-weight:900;line-height:1;vertical-align:middle;box-shadow:0 0 0 1px rgba(0,0,0,.06)}
-      .vx-elxt-table-wrap{width:100%;max-width:100%;overflow:hidden}
-      .vx-elxt-table{width:100%;max-width:100%;table-layout:fixed}
+      .vx-elxt-table-wrap{width:100%;max-width:100%;overflow:hidden;background:#fff;border:1px solid #dde5ee;border-radius:14px;box-shadow:0 3px 14px rgba(12,35,64,.05)}
+      .vx-elxt-table-wrap .desktop-table{border-collapse:separate;border-spacing:0}
+      .vx-elxt-table{width:100%;max-width:100%;table-layout:fixed;border:0!important}
+      .vx-elxt-table thead th{background:#f7f9fc!important;color:#718096!important;border:0!important;border-bottom:1px solid #e4eaf1!important;padding:11px 14px!important;font-size:10px!important;font-weight:800!important;letter-spacing:.055em;text-align:left}
+      .vx-elxt-table tbody td{border:0!important;border-bottom:1px solid #edf1f5!important;padding:13px 14px!important;vertical-align:middle;color:#27384a;font-size:12px}
+      .vx-elxt-table tbody tr:last-child td{border-bottom:0!important}
       .vx-elxt-table th,.vx-elxt-table td{overflow:hidden}
       .vx-elxt-desc-cell{width:38%}
       .vx-elxt-desc-preview{display:block;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .vx-elxt-desc-btn{display:block;width:100%;text-align:left;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;overflow:hidden}
       .vx-elxt-desc-full{white-space:pre-wrap;word-break:break-word;line-height:1.45;color:#33475b;padding:12px 14px;background:#f7f9fb}
       .vx-elxt-case{white-space:nowrap}
-      .vx-elxt-task-row{cursor:pointer}
-      .vx-elxt-task-row:hover{background:#f6f9fc}
-      .vx-elxt-status{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;color:#516375}
+      .vx-elxt-task-row{cursor:pointer;background:#fff;transition:background .15s ease,box-shadow .15s ease}
+      .vx-elxt-task-row:hover{background:#f8fbff}
+      .vx-elxt-task-row:hover td:first-child{box-shadow:inset 3px 0 0 #2f80ed}
+      .vx-elxt-task-id{font-weight:850;color:#102a43;letter-spacing:.01em}
+      .vx-elxt-case{font-weight:800;color:#2f80ed}
+      .vx-elxt-subject{font-weight:750;color:#243b53}
+      .vx-elxt-created{color:#718096;font-size:11px;white-space:nowrap}
+      .vx-elxt-status{display:inline-flex;align-items:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:800;color:#8a5a00;background:#fff6dc;border:1px solid #f4df9b;border-radius:999px;padding:5px 9px;font-size:10px}
+      .vx-elxt-status:before{content:'';width:6px;height:6px;border-radius:50%;background:#e2a100;margin-right:6px;flex:0 0 auto}
       .vx-elxt-ack{margin-top:10px;border:0;border-radius:6px;padding:7px 12px;background:#0c2340;color:#fff;font-size:11px;font-weight:800;cursor:pointer}
       .vx-elxt-ack:disabled{opacity:.5;cursor:default}
-      .vx-elxt-new{display:inline-block;margin-left:6px;padding:2px 6px;border-radius:9px;background:#fff1f2;color:#b42332;font-size:9px;font-weight:900}
+      .vx-elxt-new{display:inline-block;margin-left:7px;padding:3px 6px;border-radius:999px;background:#eaf3ff;color:#1769c2;font-size:8px;font-weight:900;letter-spacing:.04em}
+      .vx-elxt-toolbar{background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:8px 10px;margin-bottom:12px!important}
+      .vx-elxt-toolbar select,.vx-elxt-toolbar button{height:34px;border-color:#dce4ed!important;border-radius:8px!important}
+      .vx-elxt-pager button{background:#fff!important}
+      .vx-elxt-pager span{font-weight:700;color:#60728a}
+      .vx-elxt-desc-full{border-top:0!important;background:#f8fafc!important;padding:16px 20px!important}
+      .vx-elxt-detail-label{font-size:9px;font-weight:900;letter-spacing:.07em;color:#8a9aad;text-transform:uppercase;margin-bottom:4px}
+      .vx-elxt-detail-subject{font-size:13px;font-weight:800;color:#243b53;margin-bottom:8px}
+      .vx-elxt-detail-text{font-size:12px;line-height:1.55;color:#52667a}
     `;
     document.head.appendChild(s);
   }
@@ -273,13 +291,13 @@
         const track=st.tracking[taskIdentity(t)];
         const isNew=!!track&&!track.acknowledged_at;
         return `<tr class="vx-elxt-task-row" data-row-expand="${id}" data-item-index="${i}" title="Clique para ${open?'recolher':'ver os detalhes completos'}">
-          <td><b>${esc2(f.tarefa)}</b>${isNew?'<span class="vx-elxt-new">NOVA</span>':''}</td>
-          <td class="vx-elxt-case"><b>${esc2(f.caso)}</b></td>
-          <td><span class="vx-elxt-desc-preview" title="${esc2(f.assunto)}">${esc2(f.assunto)}</span></td>
+          <td><span class="vx-elxt-task-id">${esc2(f.tarefa)}</span>${isNew?'<span class="vx-elxt-new">NOVA</span>':''}</td>
+          <td><span class="vx-elxt-case">${esc2(f.caso)}</span></td>
+          <td><span class="vx-elxt-desc-preview vx-elxt-subject" title="${esc2(f.assunto)}">${esc2(f.assunto)}</span></td>
           <td class="vx-elxt-desc-cell"><button type="button" class="vx-elxt-desc-btn" data-expand="${id}" title="Clique para ${open?'recolher':'ver a descrição completa'}"><span class="vx-elxt-desc-preview">${esc2(f.descricao)}</span></button></td>
-          <td>${esc2(dtFull(f.criada))}</td>
+          <td><span class="vx-elxt-created">${esc2(dtFull(f.criada))}</span></td>
           <td><span class="vx-elxt-status">${esc2(f.status)}</span></td>
-        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="6"><div class="vx-elxt-desc-full"><b>${esc2(f.assunto)}</b><br><br>${esc2(f.descricao)}${isNew?`<br><button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Ciente</button>`:''}</div></td></tr>`:''}`;
+        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="6"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div>${isNew?`<br><button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Ciente</button>`:''}</div></td></tr>`:''}`;
       }).join('')}</tbody></table></div>`;
   }
 
