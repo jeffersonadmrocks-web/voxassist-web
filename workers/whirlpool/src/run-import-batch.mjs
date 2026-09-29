@@ -75,7 +75,9 @@ const FULL_SCAN_INTERVAL_MS=Math.max(Number(process.env.WHIRLPOOL_FULL_SCAN_INTE
 function decideScanMode(claim){
   const searchLimitFull=Number(claim.search_limit_full)||1000;
   const searchLimitIncremental=Number(claim.search_limit_incremental)||100;
-  const lastFullScanAt=claim.last_full_scan_at?new Date(claim.last_full_scan_at).getTime():0;
+  // Uma busca limitada não é completa, mas conta como tentativa ampla.
+  // Sem esse relógio o SAP recebia 100 páginas a cada execução de 10 min.
+  const lastFullScanAt=claim.last_full_scan_attempt_at?new Date(claim.last_full_scan_attempt_at).getTime():claim.last_full_scan_at?new Date(claim.last_full_scan_at).getTime():0;
   const fullScanDue=!lastFullScanAt||(Date.now()-lastFullScanAt)>FULL_SCAN_INTERVAL_MS;
   // Permite uma recuperação imediata sem alterar o relógio salvo no banco.
   const forced=process.env.WHIRLPOOL_FORCE_FULL_SCAN==="1";
@@ -1709,6 +1711,7 @@ conn.id=claim?.connection_id||null;
 if(!claim?.claimed){
  const reason=String(claim?.reason||"SEM_LEASE");
  console.log("EXECUÇÃO NÃO INICIADA: "+reason);
+ console.log(JSON.stringify({limit:LIMIT,processed:0,results:[],skipped:true,reason}));
  // Um job encerrado pelo timeout pode deixar a trava de login ativa até
  // expirar. Mostrar verde nesse caso ocultava que nenhuma OS foi tentada.
  // Sem lease, nenhuma interação com o portal é permitida.
@@ -1744,13 +1747,30 @@ try{
  // de resultados, então não há "Encerrar" pendente entre o scan e os jobs.
  if(process.env.WHIRLPOOL_SKIP_SCAN!=="1"){
  const scanMode=decideScanMode(claim);
- const crmFrameForScan=await findCrmApplicationFrame(page);
+ let crmFrameForScan=await findCrmApplicationFrame(page);
  if(!crmFrameForScan)throw Object.assign(new Error("CRMApplicationFrame não localizado para a varredura do catálogo."),{code:"NAVIGATION_FAILURE"});
- const scan=await scanServiceOrderCatalog(page,crmFrameForScan,scanMode.limit,claim.external_partner_id||null);
-  // Um resultado cortado pelo limite nunca deve avançar last_full_scan_at.
-  const completeFullScan=scanMode.fullScan&&!scan.limitReached;
- const ingestResult=await ingestCatalog(claim.filial,scan.items,completeFullScan,scan.limitReached);
- if(scanMode.fullScan&&!completeFullScan)console.warn("WORKER WHIRLPOOL: varredura atingiu o limite; recuperação completa continuará pendente.");
+ let scan;
+ try{
+   scan=await scanServiceOrderCatalog(page,crmFrameForScan,scanMode.limit,claim.external_partner_id||null);
+ }catch(scanError){
+   // O SAP às vezes carrega o cabeçalho da grade sem as linhas. Renova
+   // uma única vez a página/sessão de navegação, preservando cookies.
+   if(scanError?.code!=="NAVIGATION_FAILURE"||!String(scanError.message).includes("Grade de resultados da pesquisa de OS não carregou"))throw scanError;
+   console.warn("WORKER WHIRLPOOL: grade vazia após pesquisa; renovando página CRM para uma tentativa.");
+   await captureDiagnostics("scan-grade-vazia").catch(()=>{});
+   for(const oldPage of context.pages())await oldPage.close().catch(()=>{});
+   page=await context.newPage();
+   await loginIfNeeded(page,claim);
+   page=await selectCrmPage(context,page);
+   await page.bringToFront().catch(()=>{});
+   crmFrameForScan=await findCrmApplicationFrame(page);
+   if(!crmFrameForScan)throw scanError;
+   scan=await scanServiceOrderCatalog(page,crmFrameForScan,scanMode.limit,claim.external_partner_id||null);
+ }
+ // A RPC registra a tentativa ampla, mas só avança last_full_scan_at
+ // quando o SAP realmente devolveu todas as páginas.
+ const ingestResult=await ingestCatalog(claim.filial,scan.items,scanMode.fullScan,scan.limitReached);
+ if(scanMode.fullScan&&scan.limitReached)console.warn("WORKER WHIRLPOOL: varredura ampla limitada pelo SAP; cobertura completa ainda pendente.");
  // Recuperação direcionada pela própria pesquisa SAP: registra a linha
  // encontrada pela mesma classificação normal, nunca cria uma OS manual.
  const recoveryIds=String(process.env.WHIRLPOOL_RECOVERY_IDS||"").split(",").map(x=>x.trim()).filter(x=>/^7015\d{6}$/.test(x));

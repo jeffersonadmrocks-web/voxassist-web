@@ -71,6 +71,7 @@ jobs:
               const fs = require("node:fs");
               const lines = fs.readFileSync(process.argv[1], "utf8").trim().split("\n");
               const batch = JSON.parse(lines.at(-1));
+              if (!Array.isArray(batch.results)) throw new Error("Invalid Whirlpool batch summary");
               // Um erro individual não deve interromper as OS restantes.
               // O worker já retorna código != 0 quando nenhuma OS avançou.
               console.log(batch.results.some(item => item.status === "IMPORTADA") ? "yes" : "no");

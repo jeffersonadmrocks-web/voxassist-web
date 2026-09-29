@@ -19,6 +19,7 @@
     const rows=await rpc('whirlpool_connection_admin_status',{p_company_id:companyId()});
     return Array.isArray(rows)?rows[0]:rows;
   }
+  const queueSummary=()=>rpc('whirlpool_queue_admin_summary',{p_company_id:companyId()});
   function fmt(v){return v?new Date(v).toLocaleString('pt-BR'):'Nunca';}
 
   async function inject(){
@@ -33,7 +34,8 @@
     try{
       const s=await status();
       const st=s?.connection_status||'NAO_CONFIGURADO';
-      row.querySelector('small').textContent=s?(s.worker_online?'Executor online':'Executor offline')+' · '+(s.pending_imports||0)+' importação(ões) pendente(s)':'Conexão não cadastrada';
+      const q=s?await queueSummary().catch(()=>null):null;
+      row.querySelector('small').textContent=s?(s.worker_online?'Executor online':'Executor offline')+' · '+(s.pending_imports||0)+' OS ativa(s) pendente(s)'+(q?' · '+(q.active_error_count||0)+' erro(s) · '+(q.cancelled_review_count||0)+' cancelada(s) para revisão':''):'Conexão não cadastrada';
       const badge=row.querySelector('.vx-int-badge');
       badge.textContent=labels[st]||st;badge.className='vx-int-badge '+(ok(st)?'ok':'off');
     }catch(e){row.querySelector('small').textContent='Não foi possível consultar a integração';}
@@ -43,12 +45,18 @@
     let s;
     try{s=await status();}catch(e){return alert('Não foi possível consultar a integração Whirlpool.');}
     if(!s)return alert('A conexão Whirlpool da empresa ainda não foi criada.');
+    const q=await queueSummary().catch(()=>null);
+    const errors=Array.isArray(q?.active_errors)?q.active_errors:[];
+    const cancelled=Array.isArray(q?.cancelled_review)?q.cancelled_review:[];
     const overlay=document.createElement('div');overlay.className='vx-wp-overlay';
     overlay.innerHTML='<section class="vx-wp-modal" role="dialog" aria-modal="true">'+
       '<header><div><h3>INTEGRAÇÃO WHIRLPOOL</h3><small>Filial '+E(s.filial||'')+' · parceiro '+E(s.external_partner_id||'—')+'</small></div><button type="button" data-close aria-label="Fechar">×</button></header>'+
       '<div class="vx-wp-status"><span class="vx-int-badge '+(ok(s.connection_status)?'ok':'off')+'">'+E(labels[s.connection_status]||s.connection_status)+'</span><b>'+(s.worker_online?'Executor online':'Executor offline')+'</b></div>'+
       (s.connection_status==='CREDENCIAIS_INVALIDAS'?'<div class="vx-wp-warning">A senha foi rejeitada. O robô está pausado e não fará outra tentativa até um gestor salvar novas credenciais.</div>':'')+
-      '<div class="vx-wp-grid"><div><small>Última autenticação</small><b>'+E(fmt(s.last_auth_at))+'</b></div><div><small>Último sinal do executor</small><b>'+E(fmt(s.worker_heartbeat_at))+'</b></div><div><small>Importações pendentes</small><b>'+E(s.pending_imports||0)+'</b></div><div><small>Aguardando conexão</small><b>'+E(s.waiting_connection_imports||0)+'</b></div></div>'+
+      '<div class="vx-wp-grid"><div><small>Última autenticação</small><b>'+E(fmt(s.last_auth_at))+'</b></div><div><small>Último sinal do executor</small><b>'+E(fmt(s.worker_heartbeat_at))+'</b></div><div><small>OS ativas pendentes</small><b>'+E(s.pending_imports||0)+'</b></div><div><small>Ativas aguardando conexão</small><b>'+E(s.waiting_connection_imports||0)+'</b></div></div>'+
+      (q?'<div class="vx-wp-review"><h4>Itens que exigem revisão</h4><p><b>'+E(q.active_error_count||0)+'</b> OS ativa(s) em erro · <b>'+E(q.cancelled_review_count||0)+'</b> cancelada(s) aguardando revisão.</p>'+
+        (errors.length?'<details><summary>OS ativas em erro</summary><ul>'+errors.map(x=>'<li>'+E(x.os)+' · '+E(x.code||'erro sem código')+'</li>').join('')+'</ul></details>':'')+
+        (cancelled.length?'<details><summary>Canceladas aguardando revisão (20 primeiras)</summary><ul>'+cancelled.map(x=>'<li>'+E(x.os)+' · '+E(x.status||'Cancelado')+'</li>').join('')+'</ul></details>':'')+'</div>':'')+
       '<form id="vxWpCredentials" autocomplete="off"><h4>Atualizar credenciais</h4><label>Usuário Whirlpool<input name="username" maxlength="200" autocomplete="off" required></label><label>Nova senha<input name="password" type="password" maxlength="500" autocomplete="new-password" required></label><p>A senha atual nunca é exibida. Salvar cria uma nova versão e autoriza somente uma tentativa de login.</p><div class="vx-wp-actions"><button type="submit" class="primary">Salvar e liberar tentativa</button><button type="button" class="secondary" data-pause>'+(s.connection_status==='PAUSADO'?'Retomar robô':'Pausar robô')+'</button></div></form>'+
       '<div id="vxWpMessage" aria-live="polite"></div></section>';
     document.body.appendChild(overlay);
@@ -81,4 +89,5 @@
   const style=document.createElement('style');
   style.textContent='.vx-wp-overlay{position:fixed;inset:0;z-index:10050;background:#071b2f99;display:grid;place-items:center;padding:18px}.vx-wp-modal{width:min(680px,96vw);max-height:92vh;overflow:auto;background:#fff;border-radius:14px;box-shadow:0 24px 70px #071b2f55;padding:20px;color:#183247}.vx-wp-modal header{display:flex;justify-content:space-between;align-items:start;border-bottom:1px solid #e5edf3;padding-bottom:12px}.vx-wp-modal h3,.vx-wp-modal h4{margin:0}.vx-wp-modal header button{border:0;background:none;font-size:25px}.vx-wp-status{display:flex;align-items:center;gap:12px;padding:15px 0}.vx-wp-warning{background:#fff4e5;color:#8b4b00;border:1px solid #ffd39a;border-radius:8px;padding:10px;margin-bottom:12px}.vx-wp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.vx-wp-grid div{background:#f5f8fb;border-radius:8px;padding:10px;display:flex;flex-direction:column}.vx-wp-modal form{margin-top:16px;border-top:1px solid #e5edf3;padding-top:14px}.vx-wp-modal label{display:flex;flex-direction:column;gap:5px;margin-top:10px;font-size:12px;font-weight:700}.vx-wp-modal input{padding:10px;border:1px solid #cbd8e2;border-radius:7px}.vx-wp-modal form p{font-size:11px;color:#687987}.vx-wp-actions{display:flex;gap:8px;flex-wrap:wrap}.vx-wp-actions button{padding:9px 12px}.vx-wp-modal #vxWpMessage{margin-top:12px;font-weight:700}.vx-wp-modal #vxWpMessage.ok{color:#18733a}.vx-wp-modal #vxWpMessage.error{color:#b42318}@media(max-width:600px){.vx-wp-grid{grid-template-columns:1fr}}';
   document.head.appendChild(style);
+  style.textContent+='.vx-wp-review{margin-top:12px;padding:12px;background:#fff9ec;border:1px solid #f1dcaa;border-radius:8px}.vx-wp-review p{margin:8px 0}.vx-wp-review details{margin-top:8px}.vx-wp-review ul{max-height:180px;overflow:auto;padding-left:20px}';
 })();
