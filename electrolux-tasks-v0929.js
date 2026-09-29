@@ -10,9 +10,11 @@
    fala com o backend Electrolux direto, e a allowlist de paths ali
    precisa ser atualizada (ver comentário no proprio index.ts) senão toda
    chamada daqui volta 400 path_not_allowed:
-     GET /api/dashboard/tasks/pending     -- "Não iniciado", tipo "Serviço
+     GET /api/dashboard/tasks             -- aba "Recebidas": todos os status
+                                              (ou ?status=X), tipo "Serviço Autorizado"
+     GET /api/dashboard/tasks/pending     -- só p/ o badge de novas: "Não iniciado", tipo "Serviço
                                               Autorizado", da nossa assistência
-     GET /api/dashboard/tasks/assistance  -- criadas por e atribuídas à
+     GET /api/dashboard/tasks/assistance  -- aba "Enviadas": criadas por e atribuídas à
                                               nossa assistência
 
    Formato dos dados (2026-09-29): NÃO documentado, e sem acesso de rede
@@ -41,13 +43,18 @@
   }
   const fetchPendingTasks=params=>getJson('/api/dashboard/tasks/pending'+qs(params));
   const fetchAssistanceTasks=params=>getJson('/api/dashboard/tasks/assistance'+qs(params));
+  // Recebidas = /api/dashboard/tasks (todos os status por padrão; `status` opcional).
+  const fetchReceivedTasks=params=>getJson('/api/dashboard/tasks'+qs(params));
 
   const TABS=[
-    {key:'pending',label:'Pendentes',fetch:fetchPendingTasks,desc:'Tasks "Não iniciado", tipo Serviço Autorizado, atribuídas à nossa assistência.'},
-    {key:'assistance',label:'Da assistência',fetch:fetchAssistanceTasks,desc:'Tasks criadas por e atribuídas à nossa assistência.'},
+    {key:'received',label:'Recebidas',fetch:fetchReceivedTasks,desc:'Tasks do tipo Serviço Autorizado atribuídas à nossa assistência (todas ou por status).'},
+    {key:'sent',label:'Enviadas',fetch:fetchAssistanceTasks,desc:'Tasks criadas por e atribuídas à nossa assistência.'},
   ];
+  // Filtro de status da aba Recebidas ('' = todos, que é o padrão).
+  const STATUS_OPTIONS=['Não iniciado','Em andamento','Concluído','Aguardando outra pessoa','Adiado'];
+  const NOT_STARTED='Não iniciado';
 
-  let st={tab:'pending',page:1,pageSize:15,order:'desc',loading:false,error:null,items:[],raw:null,expanded:null,tracking:{},search:'',searching:false,searchResults:null};
+  let st={tab:'received',status:'',page:1,pageSize:15,order:'desc',loading:false,error:null,items:[],raw:null,expanded:null,tracking:{},search:'',searching:false,searchResults:null};
 
   function installStyle(){
     if(document.getElementById('vxElxTasksStyle'))return;
@@ -77,7 +84,7 @@
       .vx-elxt-table tbody tr.vx-elxt-task-row:nth-child(4n+3){background:#fcfdff}
       .vx-elxt-table tbody tr:last-child td{border-bottom:0!important}
       .vx-elxt-table th,.vx-elxt-table td{overflow:hidden}
-      .vx-elxt-desc-cell{width:38%}
+      .vx-elxt-desc-cell{width:32%}
       .vx-elxt-desc-preview{display:block;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .vx-elxt-description{color:#66788a;font-weight:450}
       .vx-elxt-desc-btn{display:block;width:100%;text-align:left;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;overflow:hidden}
@@ -92,6 +99,8 @@
       .vx-elxt-created{color:#718096;font-size:11px;white-space:nowrap}
       .vx-elxt-status{display:inline-flex;align-items:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:750;color:#7a5b12;background:#fffaf0;border:1px solid #f2e5c4;border-radius:999px;padding:5px 9px;font-size:10px}
       .vx-elxt-status:before{content:'';width:6px;height:6px;border-radius:50%;background:#d69e2e;margin-right:6px;flex:0 0 auto}
+      .vx-elxt-status.done{color:#146c3a;background:#e8f7ee;border-color:#b7e4c7}
+      .vx-elxt-status.done:before{background:#22a861}
       .vx-elxt-ack{margin-top:10px;border:0;border-radius:6px;padding:7px 12px;background:#0c2340;color:#fff;font-size:11px;font-weight:800;cursor:pointer}
       .vx-elxt-ack:disabled{opacity:.5;cursor:default}
       .vx-elxt-new{display:inline-block;margin-left:7px;padding:3px 6px;border-radius:999px;background:#eaf3ff;color:#1769c2;font-size:8px;font-weight:900;letter-spacing:.04em}
@@ -127,6 +136,14 @@
   }
 
   function esc2(v){return typeof esc==='function'?esc(v):String(v??'');}
+  const dtDue=v=>{
+    if(!v)return'—';
+    const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v));
+    if(m)return `${m[3]}/${m[2]}/${m[1]}`; // só data: evita deslocar o dia por fuso
+    const d=new Date(v);return isNaN(d)?String(v):d.toLocaleString('pt-BR');
+  };
+  const isDone=label=>/conclu[ií]d/i.test(String(label||''));
+  const isNotStarted=t=>String(fieldsFor(t).status).toLocaleLowerCase('pt-BR')===NOT_STARTED.toLocaleLowerCase('pt-BR');
   const dtFull=v=>{if(!v)return'—';const d=new Date(v);return isNaN(d)?String(v):d.toLocaleString('pt-BR');};
 
   // Melhor palpite pros campos, baseado no formato REAL já confirmado de
@@ -142,6 +159,7 @@
       status:t.statusToLabel||t.status||'—',
       tipo:t.recordType?.name||t.orderType||t.taskType||t.type||'—',
       criada:t.createdDate||t.createdAt||t.CreatedDate||null,
+      vencimento:t.dueDate||t.activityDate||t.ActivityDate||t.dueDateTime||t.dueAt||null,
     };
   }
 
@@ -215,14 +233,14 @@
     if(!q){st.search='';st.searchResults=null;st.searching=false;render();return;}
     st.search=q;st.searching=true;st.error=null;render();
     try{
-      const [pending,assistance]=await Promise.all([fetchAllFrom(fetchPendingTasks),fetchAllFrom(fetchAssistanceTasks)]);
+      const [received,sent]=await Promise.all([fetchAllFrom(fetchReceivedTasks),fetchAllFrom(fetchAssistanceTasks)]);
       const seen=new Set(),merged=[];
-      [...pending.map(t=>({...t,__source:'Pendente'})),...assistance.map(t=>({...t,__source:'Assistência'}))].forEach(t=>{
+      [...received.map(t=>({...t,__source:'Recebida'})),...sent.map(t=>({...t,__source:'Enviada'}))].forEach(t=>{
         const key=taskIdentity(t);if(!key||seen.has(key))return;seen.add(key);merged.push(t);
       });
       const needle=q.toLocaleLowerCase('pt-BR');
       st.searchResults=merged.filter(t=>taskSearchText(t).includes(needle));
-      await syncTracking(pending);
+      await syncTracking(received.filter(isNotStarted));
     }catch(e){st.error=e.message||'Falha ao pesquisar tarefas.';st.searchResults=[];}
     st.searching=false;render();
   }
@@ -232,13 +250,17 @@
     render();
     const tabDef=TABS.find(x=>x.key===st.tab);
     try{
-      const data=await tabDef.fetch({page:st.page,pageSize:st.pageSize,orderBy:'CreatedDate',order:st.order});
+      const params={page:st.page,pageSize:st.pageSize,orderBy:'CreatedDate',order:st.order};
+      if(st.tab==='received'&&st.status)params.status=st.status;
+      const data=await tabDef.fetch(params);
       st.raw=data;
       // Formato de paginação também não documentado -- aceita tanto um
       // array puro quanto {items:[...]}/{data:[...]}/{results:[...]},
       // sem exigir um formato só.
       st.items=Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
-      if(st.tab==='pending')await syncTracking(st.items); else await refreshTracking();
+      // Só tarefas "Não iniciado" entram no controle de "NOVA"/ciência; as demais
+      // (ex.: já concluídas) não podem aparecer como novas só por estarem em Recebidas.
+      if(st.tab==='received')await syncTracking(st.items.filter(isNotStarted)); else await refreshTracking();
       st.error=null;
     }catch(e){
       st.error=e.message||'Falha ao carregar tarefas.';
@@ -274,6 +296,9 @@
           <div class="vx-elxt-searchbox"><span class="vx-elxt-search-icon">⌕</span><input id="vxElxTasksSearch" type="search" placeholder="Pesquisar em todas as tarefas: nº, caso, assunto ou conteúdo…" value="${esc2(st.search)}" autocomplete="off">${st.search?'<button type="button" class="vx-elxt-search-clear" id="vxElxTasksSearchClear" title="Limpar pesquisa">×</button>':''}</div>
           <button type="button" class="vx-elxt-search-btn" id="vxElxTasksSearchBtn">${st.searching?'Pesquisando…':'Pesquisar'}</button>
         </div>
+        ${st.tab==='received'?`<label style="font-size:12px;color:#516375">Status
+          <select id="vxElxTasksStatus"><option value="">Todos</option>${STATUS_OPTIONS.map(o=>`<option value="${esc2(o)}" ${o===st.status?'selected':''}>${esc2(o)}</option>`).join('')}</select>
+        </label>`:''}
         <label style="font-size:12px;color:#516375">Por página
           <select id="vxElxTasksPageSize">${[15,30,50,100].map(n=>`<option value="${n}" ${n===st.pageSize?'selected':''}>${n}</option>`).join('')}</select>
         </label>
@@ -297,6 +322,7 @@
     document.getElementById('vxElxTasksSearchBtn').onclick=()=>runGlobalSearch(searchInput.value);
     searchInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();runGlobalSearch(searchInput.value);}};
     document.getElementById('vxElxTasksSearchClear')?.addEventListener('click',()=>runGlobalSearch(''));
+    document.getElementById('vxElxTasksStatus')?.addEventListener('change',e=>{st.status=e.target.value;st.page=1;st.expanded=null;load();});
     document.getElementById('vxElxTasksPageSize').onchange=e=>{st.pageSize=Number(e.target.value)||15;st.page=1;load();};
     document.getElementById('vxElxTasksOrder').onclick=()=>{st.order=st.order==='desc'?'asc':'desc';st.page=1;load();};
     document.getElementById('vxElxTasksPrev').onclick=()=>{if(st.page>1){st.page--;load();}};
@@ -354,7 +380,7 @@
     }
     const searchSummary=st.searchResults!==null?'<div class="vx-elxt-search-summary">'+displayItems.length+' resultado'+(displayItems.length===1?'':'s')+' em todas as tarefas para “'+esc2(st.search)+'”</div>':'';
     return searchSummary+`<div class="desktop-table-wrap vx-elxt-table-wrap"><table class="desktop-table vx-elxt-table"><thead><tr>
-      <th style="width:12%">TAREFA</th><th style="width:9%">CASO</th><th style="width:17%">ASSUNTO</th><th class="vx-elxt-desc-cell">DESCRIÇÃO</th><th style="width:13%">CRIADA EM</th><th style="width:10%">STATUS</th>
+      <th style="width:11%">TAREFA</th><th style="width:8%">CASO</th><th style="width:15%">ASSUNTO</th><th class="vx-elxt-desc-cell">DESCRIÇÃO</th><th style="width:12%">CRIADA EM</th><th style="width:11%">DATA VENCIMENTO</th><th style="width:11%">STATUS</th>
       </tr></thead><tbody>${displayItems.map((t,i)=>{
         const f=fieldsFor(t);
         const id='row'+i;
@@ -367,8 +393,9 @@
           <td><span class="vx-elxt-desc-preview vx-elxt-subject" title="${esc2(f.assunto)}">${esc2(f.assunto)}</span></td>
           <td class="vx-elxt-desc-cell"><button type="button" class="vx-elxt-desc-btn" data-expand="${id}" title="Clique para ${open?'recolher':'ver a descrição completa'}"><span class="vx-elxt-desc-preview vx-elxt-description">${esc2(f.descricao)}</span></button></td>
           <td><span class="vx-elxt-created">${esc2(dtFull(f.criada))}</span></td>
-          <td><span class="vx-elxt-status">${esc2(f.status)}</span></td>
-        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="6"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div></div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
+          <td><span class="vx-elxt-created">${esc2(dtDue(f.vencimento))}</span></td>
+          <td><span class="vx-elxt-status${isDone(f.status)?' done':''}">${esc2(f.status)}</span></td>
+        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="7"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Vencimento <b>${esc2(dtDue(f.vencimento))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div></div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
       }).join('')}</tbody></table></div>`;
   }
 
@@ -383,13 +410,13 @@
   window.vxOpenElectroluxTasks=function(){
     window.vxElxStopPoll?.();
     installStyle();
-    st.tab='pending';st.page=1;st.pageSize=15;st.order='desc';st.expanded=null;st.search='';st.searchResults=null;
+    st.tab='received';st.status='';st.page=1;st.pageSize=15;st.order='desc';st.expanded=null;st.search='';st.searchResults=null;
     load();
     markSeenNow();
   };
 
   /* ---------- Indicador de "chegou tarefa nova" no botão TAREFAS ----------
-     Só cobre a aba Pendentes (é a fila que realmente precisa de ação).
+     Continua usando /tasks/pending ("Não iniciado"), a fila que realmente precisa de ação, independente da aba Recebidas.
      Assinatura = JSON da tarefa mais recente (page 1, pageSize 1, ordenada
      por CreatedDate desc) -- não depende de acertar o nome exato de nenhum
      campo, só de ela ter mudado desde a última vez que o usuário abriu a
