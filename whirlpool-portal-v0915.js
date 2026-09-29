@@ -91,6 +91,28 @@
       .vx-wpp2-list-table button.danger{border-color:#e0a8a8;color:#a13c3c}
       .vx-wpp2-list-table button.warn{border-color:#cdae55;color:#7a5c0f}
       .vx-wpp2-empty2{padding:28px;text-align:center;color:#7c8ba0;font-size:13px}
+      .vx-wpp2-viewtoggle{display:flex;border:1px solid #cfd7e1;border-radius:9px;overflow:hidden;margin-left:auto}
+      .vx-wpp2-view-btn{border:0;padding:8px 14px;font-size:11.5px;font-weight:800;background:#fff;color:#58708d;cursor:pointer}
+      .vx-wpp2-view-btn.active{background:#0c2340;color:#fff}
+      .vx-wpp2-situ-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+      .vx-wpp2-situ-chips .vx-wpp2-chip{padding:5px 10px;font-size:11px}
+      .vx-wpp2-list-table tr[data-item]{cursor:pointer}
+      .vx-wpp2-list-table tr[data-item]:hover td{background:#f7f9fb}
+      .vx-wpp2-pill{display:inline-block;border:1px solid #cfd7e1;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;color:#172033;white-space:nowrap}
+      .vx-wpp2-type{display:inline-block;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;background:#eef1f5;color:#58708d;white-space:nowrap}
+      .vx-wpp2-sla{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700}
+      .vx-wpp2-sla i{width:8px;height:8px;border-radius:50%;display:inline-block}
+      .vx-wpp2-sla.green i{background:#0b6f3c}.vx-wpp2-sla.green{color:#0b6f3c}
+      .vx-wpp2-sla.yellow i{background:#a35b00}.vx-wpp2-sla.yellow{color:#a35b00}
+      .vx-wpp2-sla.red i{background:#a63131}.vx-wpp2-sla.red{color:#a63131}
+      .vx-wpp2-kanban{display:flex;gap:10px;overflow-x:auto;align-items:flex-start;padding-bottom:6px}
+      .vx-wpp2-kcol{min-width:250px;max-width:250px;background:#f7f9fb;border:1px solid #e3e8ee;border-radius:10px;padding:8px}
+      .vx-wpp2-kcol-head{display:flex;justify-content:space-between;align-items:center;border-top:3px solid #8494a6;padding:4px 4px 8px;font-size:11px;font-weight:800;color:#172033}
+      .vx-wpp2-kcard{background:#fff;border:1px solid #e3e8ee;border-radius:8px;padding:9px 10px;margin-bottom:8px}
+      .vx-wpp2-kcard-top{display:flex;justify-content:space-between;align-items:center;gap:6px}
+      .vx-wpp2-kcard-top b{font-size:12.5px;color:#172033}
+      .vx-wpp2-kcard-client{font-size:12px;font-weight:700;color:#172033;margin-top:4px}
+      .vx-wpp2-kcard small{display:block;color:#7c8ba0;font-size:11px;margin-top:3px;line-height:1.3}
     `;
     document.head.appendChild(s);
   }
@@ -115,7 +137,9 @@
   ];
   const ORDER_TYPE_CHIPS=[['TODAS','Todas'],['GARANTIA','Garantia'],['FORA_GARANTIA','Fora de Garantia'],['SEGURADORA','Seguradora']];
 
-  let wp={tab:'os',loading:false,error:null,osFilter:'',osTypeChip:'TODAS',
+  let wp={tab:'os',screen:'home',activeBucket:null,osFilter:'',osTypeChip:'TODAS',
+    viewMode:(function(){try{return localStorage.getItem('vx_wpp_view_mode')||'list';}catch(_e){return'list';}})(),
+    loading:false,error:null,
     orders:[],external:[],queue:[],parts:new Set(),apptQueue:[],connStatus:null};
 
   function matchesWhirlpool(o){return BRAND_RE.test(o?.equipments?.brand||'');}
@@ -239,31 +263,114 @@
     return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><h3 style="margin:0">${esc(label)}</h3><button type="button" data-close style="margin-left:auto;border:0;background:transparent;font-size:20px;cursor:pointer;color:#7c8ba0">×</button></div>`;
   }
 
-  function rowsHtmlForOsBucket(key,items){
-    if(key==='CANCELADA'){
-      return `<table class="vx-wpp2-list-table"><thead><tr><th>Nº WHIRLPOOL</th><th>ENTRADA</th><th></th></tr></thead><tbody>${items.map(it=>`
-        <tr data-cancel-id="${esc(it.queue?.id||'')}">
-          <td>${esc(it.ext?.external_order_id||'—')}</td>
-          <td>${dtShort(it.ext?.entry_date)}</td>
-          <td style="display:flex;gap:6px">${isGestor()?`
-            <button type="button" data-action="import" class="warn">Importar</button>
-            <button type="button" data-action="delete" class="danger">Excluir definitivamente</button>`:'<span style="color:#94a3b8">Só GESTOR pode agir</span>'}</td>
-        </tr>`).join('')}</tbody></table>`;
-    }
-    if(key==='AGENDAR'||key==='EM_PROCESSO_AT'||key==='AGENDADO'){
-      return `<table class="vx-wpp2-list-table"><thead><tr><th>OS</th><th>Nº WHIRLPOOL</th><th>CLIENTE</th><th>TÉCNICO</th><th></th></tr></thead><tbody>${items.map(it=>{
-        if(it.kind==='order'){
-          const o=it.order;
-          return `<tr><td>#${esc(o.os_number||'—')}</td><td>${esc(externalByServiceOrder(o.id)?.external_order_id||o.manufacturer_os_number||'—')}</td><td>${esc(o.clients?.name||'—')}</td><td>${esc(o.profiles?.full_name||'—')}</td><td><button type="button" data-open-os="${esc(o.id)}">Abrir OS</button></td></tr>`;
-        }
-        return `<tr><td>—</td><td>${esc(it.ext.external_order_id)}</td><td colspan="2" style="color:#94a3b8">Ainda não importado — aguardando o robô</td><td></td></tr>`;
-      }).join('')}</tbody></table>`;
-    }
-    return `<table class="vx-wpp2-list-table"><thead><tr><th>OS</th><th>CLIENTE</th><th>TÉCNICO</th><th>DIAS PARADO</th><th></th></tr></thead><tbody>${items.map(it=>{
+  function slaLevel(d){if(d>=5)return'red';if(d>=3)return'yellow';return'green';}
+
+  // Cada item (OS já criada, catálogo ainda não importado, ou revisão de
+  // cancelamento) vira um registro plano com os mesmos campos, pra
+  // alimentar tanto a LISTA quanto o QUADRO sem duplicar lógica.
+  function normalizeItem(bucketKey,it){
+    if(it.kind==='order'){
       const o=it.order;
-      return `<tr><td>#${esc(o.os_number||'—')}</td><td>${esc(o.clients?.name||'—')}</td><td>${esc(o.profiles?.full_name||'—')}</td><td>${daysSince(o.updated_at)} dia(s)</td><td><button type="button" data-open-os="${esc(o.id)}">Abrir OS</button></td></tr>`;
-    }).join('')}</tbody></table>`;
+      return {id:'o-'+o.id,bucketKey,openId:o.id,openable:true,kind:'order',
+        label:'#'+(o.os_number||'—'),
+        whirlpoolNum:externalByServiceOrder(o.id)?.external_order_id||o.manufacturer_os_number||'—',
+        cliente:o.clients?.name||'—',
+        produtoDefeito:[o.equipments?.product_type,o.reported_defect].filter(Boolean).join(' — ')||'—',
+        tipo:orderTypeCategoryFor(o),tipoRaw:o.order_type,
+        agingDays:daysSince(o.opened_at),abertaEm:o.opened_at};
+    }
+    if(it.kind==='cancel'){
+      return {id:'c-'+it.queue.id,bucketKey,openable:false,kind:'cancel',cancelQueueId:it.queue.id,
+        label:'—',whirlpoolNum:it.ext.external_order_id,cliente:'—',
+        produtoDefeito:'Cancelada no portal — revisar antes de arquivar',
+        tipo:'OUTROS',tipoRaw:'—',agingDays:daysSince(it.ext.entry_date),abertaEm:it.ext.entry_date};
+    }
+    return {id:'e-'+it.ext.id,bucketKey,openable:false,kind:'catalog',
+      label:'—',whirlpoolNum:it.ext.external_order_id,cliente:'—',
+      produtoDefeito:'Ainda não importado — aguardando o robô',
+      tipo:'OUTROS',tipoRaw:'—',agingDays:daysSince(it.ext.entry_date),abertaEm:it.ext.entry_date};
   }
+  function boardItems(){
+    const groups=filteredGroups();
+    const keys=wp.activeBucket?[wp.activeBucket]:OS_BUCKETS.map(b=>b.key);
+    const out=[];
+    keys.forEach(k=>(groups[k]||[]).forEach(it=>out.push(normalizeItem(k,it))));
+    out.sort((a,b)=>new Date(b.abertaEm||0)-new Date(a.abertaEm||0));
+    return out;
+  }
+
+  function renderListView(){
+    const items=boardItems();
+    if(!items.length)return '<div class="vx-wpp2-empty2">Nenhuma OS corresponde aos filtros atuais.</div>';
+    return `<table class="vx-wpp2-list-table"><thead><tr>
+      <th>OS</th><th>Nº WHIRLPOOL</th><th>CLIENTE</th><th>PRODUTO / DEFEITO</th><th>SITUAÇÃO</th><th>TIPO</th><th>SLA</th><th>ABERTA EM</th><th></th>
+      </tr></thead><tbody>${items.map(it=>{
+        const bdef=OS_BUCKETS.find(b=>b.key===it.bucketKey);
+        const level=slaLevel(it.agingDays);
+        return `<tr ${it.openable?`data-item="${esc(it.id)}"`:''}>
+          <td><b>${esc(it.label)}</b></td>
+          <td>${esc(it.whirlpoolNum)}</td>
+          <td>${esc(it.cliente)}</td>
+          <td>${esc(it.produtoDefeito)}</td>
+          <td><span class="vx-wpp2-pill" style="border-color:${bdef.accent};color:${bdef.accent}">${esc(bdef.label)}</span></td>
+          <td>${it.tipo==='OUTROS'?'—':`<span class="vx-wpp2-type">${esc(it.tipo==='FORA_GARANTIA'?'Fora de Garantia':it.tipo==='SEGURADORA'?'Seguradora':'Garantia')}</span>`}</td>
+          <td><span class="vx-wpp2-sla ${level}"><i></i>${it.agingDays}d</span></td>
+          <td>${dtFull(it.abertaEm)}</td>
+          <td>${it.kind==='cancel'&&isGestor()?`<div style="display:flex;gap:6px"><button type="button" data-cancel-id="${esc(it.cancelQueueId)}" data-action="import" class="warn">Importar</button><button type="button" data-cancel-id="${esc(it.cancelQueueId)}" data-action="delete" class="danger">Excluir</button></div>`:''}</td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+  }
+  function kanbanCard(it){
+    const level=slaLevel(it.agingDays);
+    return `<div class="vx-wpp2-kcard" ${it.openable?`data-item="${esc(it.id)}" style="cursor:pointer"`:''}>
+      <div class="vx-wpp2-kcard-top"><b>${esc(it.label!=='—'?it.label:it.whirlpoolNum)}</b><span class="vx-wpp2-sla ${level}"><i></i>${it.agingDays}d</span></div>
+      <div class="vx-wpp2-kcard-client">${esc(it.cliente)}</div>
+      <small>${esc(it.produtoDefeito)}</small>
+      ${it.kind==='cancel'&&isGestor()?`<div style="display:flex;gap:6px;margin-top:8px"><button type="button" data-cancel-id="${esc(it.cancelQueueId)}" data-action="import" class="warn">Importar</button><button type="button" data-cancel-id="${esc(it.cancelQueueId)}" data-action="delete" class="danger">Excluir</button></div>`:''}
+    </div>`;
+  }
+  function renderKanbanView(){
+    const groups=filteredGroups();
+    const keys=wp.activeBucket?[wp.activeBucket]:OS_BUCKETS.map(b=>b.key);
+    const sections=keys.map(k=>{
+      const bdef=OS_BUCKETS.find(b=>b.key===k);
+      const items=(groups[k]||[]).map(it=>normalizeItem(k,it));
+      if(!items.length)return'';
+      return `<div class="vx-wpp2-kcol">
+        <div class="vx-wpp2-kcol-head" style="border-top-color:${bdef.accent}"><span>${esc(bdef.label)}</span><b>${items.length}</b></div>
+        <div>${items.map(kanbanCard).join('')}</div>
+      </div>`;
+    }).join('');
+    return sections||'<div class="vx-wpp2-empty2">Nenhuma OS corresponde aos filtros atuais.</div>';
+  }
+
+  function wireBoardActions(container){
+    container.querySelectorAll('[data-item]').forEach(el=>el.onclick=()=>{
+      const it=boardItems().find(x=>String(x.id)===el.dataset.item);
+      if(it?.openable)window.render('os:'+it.openId);
+    });
+    container.querySelectorAll('[data-action="import"]').forEach(b=>b.onclick=async(e)=>{
+      e.stopPropagation();
+      const qid=b.dataset.cancelId;if(!qid)return;
+      if(!confirm('Reabrir esta SVO para importação? Ela volta pra fila do robô e vira uma OS normal (Aguardando Análise) assim que for processada.'))return;
+      try{
+        await api(`whirlpool_import_queue?id=eq.${qid}`,{method:'PATCH',body:JSON.stringify({queue_reason:'ATIVA_NOVA',state:'PENDENTE',attempts:0,next_attempt_at:null,last_error_code:null,last_error_message:null})});
+        toast?.('Reaberta para importação.');
+        await refreshAndRender();
+      }catch(err){toast?.('Falha ao reabrir: '+err.message,'err');}
+    });
+    container.querySelectorAll('[data-action="delete"]').forEach(b=>b.onclick=async(e)=>{
+      e.stopPropagation();
+      const qid=b.dataset.cancelId;if(!qid)return;
+      if(!confirm('Excluir definitivamente esta revisão de cancelamento? Ela some desta lista (o histórico no catálogo Whirlpool continua existindo).'))return;
+      try{
+        await api(`whirlpool_import_queue?id=eq.${qid}`,{method:'PATCH',body:JSON.stringify({state:'IGNORADO'})});
+        toast?.('Removida da lista de revisão.');
+        await refreshAndRender();
+      }catch(err){toast?.('Falha ao excluir: '+err.message,'err');}
+    });
+  }
+
   function rowsHtmlForRobotBucket(key,items){
     if(key==='AG_OPERADOR'||key==='ERRO'){
       return `<table class="vx-wpp2-list-table"><thead><tr><th>Nº WHIRLPOOL</th><th>MOTIVO</th><th>TENTATIVAS</th><th>ENTROU NA FILA</th><th></th></tr></thead><tbody>${items.map(q=>{
@@ -299,29 +406,6 @@
 
   async function refreshAndRender(){await loadAll();await renderHome();}
 
-  function wireOsBucketActions(bg,key){
-    bg.querySelectorAll('[data-open-os]').forEach(b=>b.onclick=()=>{bg.remove();window.render('os:'+b.dataset.openOs);});
-    if(key==='CANCELADA'){
-      bg.querySelectorAll('[data-action="import"]').forEach(b=>b.onclick=async()=>{
-        const qid=b.closest('tr').dataset.cancelId;if(!qid)return;
-        if(!confirm('Reabrir esta SVO para importação? Ela volta pra fila do robô e vira uma OS normal (Aguardando Análise) assim que for processada.'))return;
-        try{
-          await api(`whirlpool_import_queue?id=eq.${qid}`,{method:'PATCH',body:JSON.stringify({queue_reason:'ATIVA_NOVA',state:'PENDENTE',attempts:0,next_attempt_at:null,last_error_code:null,last_error_message:null})});
-          toast?.('Reaberta para importação.');
-          bg.remove();await refreshAndRender();
-        }catch(e){toast?.('Falha ao reabrir: '+e.message,'err');}
-      });
-      bg.querySelectorAll('[data-action="delete"]').forEach(b=>b.onclick=async()=>{
-        const qid=b.closest('tr').dataset.cancelId;if(!qid)return;
-        if(!confirm('Excluir definitivamente esta revisão de cancelamento? Ela some desta lista (o histórico no catálogo Whirlpool continua existindo).'))return;
-        try{
-          await api(`whirlpool_import_queue?id=eq.${qid}`,{method:'PATCH',body:JSON.stringify({state:'IGNORADO'})});
-          toast?.('Removida da lista de revisão.');
-          bg.remove();await refreshAndRender();
-        }catch(e){toast?.('Falha ao excluir: '+e.message,'err');}
-      });
-    }
-  }
   function wireRobotBucketActions(bg){
     bg.querySelectorAll('[data-action="link"]').forEach(b=>b.onclick=async()=>{
       const qid=b.closest('tr').dataset.qid;
@@ -346,13 +430,7 @@
     });
   }
 
-  function openOsBucket(key){
-    const def=OS_BUCKETS.find(b=>b.key===key);
-    const items=filteredGroups()[key]||[];
-    const bg=modalWrap(modalHeader(def.label)+(items.length?rowsHtmlForOsBucket(key,items):'<div class="vx-wpp2-empty2">Nenhum item nesta situação.</div>'));
-    bg.querySelector('[data-close]').onclick=()=>bg.remove();
-    wireOsBucketActions(bg,key);
-  }
+  function openOsBucket(key){wp.activeBucket=key;wp.screen='board';renderHome();}
   function openRobotBucket(key){
     const def=ROBOT_BUCKETS.find(b=>b.key===key);
     const items=computeRobotBuckets()[key]||[];
@@ -363,6 +441,9 @@
 
   function renderOsTabBody(kpis,groups){
     return `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+        <button type="button" class="secondary" id="vxWpSeeAll">Ver todas as OS</button>
+      </div>
       <div class="vx-wpp2-filters">
         <input id="vxWpSearch" placeholder="Buscar por nº OS, nº Whirlpool ou cliente" value="${esc(wp.osFilter)}">
         ${ORDER_TYPE_CHIPS.map(([k,l])=>`<button type="button" class="vx-wpp2-chip ${wp.osTypeChip===k?'active':''}" data-chip="${k}">${esc(l)}</button>`).join('')}
@@ -391,6 +472,44 @@
     };
     document.querySelectorAll('[data-chip]').forEach(b=>b.onclick=()=>{wp.osTypeChip=b.dataset.chip;renderHome();});
     document.querySelectorAll('[data-bucket]').forEach(b=>b.onclick=()=>openOsBucket(b.dataset.bucket));
+    document.getElementById('vxWpSeeAll').onclick=()=>{wp.activeBucket=null;wp.screen='board';renderHome();};
+  }
+
+  function renderBoardScreen(){
+    const app=document.querySelector('#app');if(!app)return;
+    const activeDef=wp.activeBucket?OS_BUCKETS.find(b=>b.key===wp.activeBucket):null;
+    app.innerHTML=`<div class="module-home">
+      <div class="module-home-head">
+        <div><h2>Ordens de Serviço Whirlpool</h2><p>${activeDef?esc(activeDef.label):'TODAS AS SITUAÇÕES'}</p></div>
+        <div class="module-head-actions"><button class="secondary" id="vxWpBoardBack">← Voltar</button></div>
+      </div>
+      <div class="vx-wpp2-filters">
+        <input id="vxWpSearch" placeholder="Buscar por nº OS, nº Whirlpool ou cliente" value="${esc(wp.osFilter)}">
+        ${ORDER_TYPE_CHIPS.map(([k,l])=>`<button type="button" class="vx-wpp2-chip ${wp.osTypeChip===k?'active':''}" data-chip="${k}">${esc(l)}</button>`).join('')}
+        <div class="vx-wpp2-viewtoggle">
+          <button type="button" class="vx-wpp2-view-btn ${wp.viewMode==='kanban'?'active':''}" data-mode="kanban">▦ QUADRO</button>
+          <button type="button" class="vx-wpp2-view-btn ${wp.viewMode==='list'?'active':''}" data-mode="list">☰ LISTA</button>
+        </div>
+      </div>
+      <div class="vx-wpp2-situ-chips">
+        <button type="button" class="vx-wpp2-chip ${!wp.activeBucket?'active':''}" data-situ="">Todas</button>
+        ${OS_BUCKETS.map(b=>`<button type="button" class="vx-wpp2-chip ${wp.activeBucket===b.key?'active':''}" data-situ="${b.key}">${esc(b.label)}</button>`).join('')}
+      </div>
+      <div id="vxWpBoardBody" class="${wp.viewMode==='kanban'?'vx-wpp2-kanban':''}">${wp.viewMode==='list'?renderListView():renderKanbanView()}</div>
+    </div>`;
+    document.getElementById('vxWpBoardBack').onclick=()=>{wp.screen='home';renderHome();};
+    const inp=document.getElementById('vxWpSearch');
+    inp.oninput=e=>{
+      wp.osFilter=e.target.value;
+      const pos=e.target.selectionStart;
+      renderBoardScreen();
+      const inp2=document.getElementById('vxWpSearch');
+      if(inp2){inp2.focus();inp2.setSelectionRange(pos,pos);}
+    };
+    document.querySelectorAll('[data-chip]').forEach(b=>b.onclick=()=>{wp.osTypeChip=b.dataset.chip;renderBoardScreen();});
+    document.querySelectorAll('[data-situ]').forEach(b=>b.onclick=()=>{wp.activeBucket=b.dataset.situ||null;renderBoardScreen();});
+    document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{wp.viewMode=b.dataset.mode;try{localStorage.setItem('vx_wpp_view_mode',wp.viewMode);}catch(_e){}renderBoardScreen();});
+    wireBoardActions(document.getElementById('vxWpBoardBody'));
   }
 
   function renderRobotTabBody(robotGroups){
@@ -434,6 +553,7 @@
 
   async function renderHome(){
     const app=document.querySelector('#app');if(!app)return;
+    if(wp.screen==='board')return renderBoardScreen();
     const kpis=computeKpis();
     const groups=filteredGroups();
     const robotGroups=computeRobotBuckets();
@@ -462,6 +582,13 @@
     // pode ser lido de volta pelo botão "← Voltar" em tela (por isso o
     // botão usa state.__vxWpPrevView, guardado ANTES de sobrescrever).
     installStyle();
+    // Achado do usuário (2026-09-29): abrir o menu WP/Seguradora tem que
+    // sempre cair em "Ordens de Serviço" -- reseta aba/tela/filtro de
+    // situação toda vez que ENTRA no módulo vindo de fora (hub/menu),
+    // nunca quando é uma navegação interna (voltar do quadro pra home
+    // já passa por wp.screen='home'+renderHome() direto, sem passar
+    // por aqui de novo).
+    wp.tab='os';wp.screen='home';wp.activeBucket=null;
     if(!state.__vxWpPrevView)state.__vxWpPrevView=state.view;
     state.view=VIEW;
     const title=document.querySelector('#title');if(title)title.textContent='WP / Seguradora';
