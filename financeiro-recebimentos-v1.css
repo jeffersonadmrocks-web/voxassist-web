@@ -24,6 +24,14 @@
    nunca voltar a ocupar a linha inteira sozinho. */
 .vx-fin-filters select.vx-control{width:auto;flex:0 1 auto;border:1px solid #cbd7e3;border-radius:8px;padding:9px 12px;background:#fff;color:#172033;min-width:170px}
 
+/* Achado do usuário (2026-09-29): linhas ESTORNADO/ESTORNO riscadas
+   poluíam a lista mesmo já não valendo nada financeiramente (ver
+   .vx-fin-row-reversed). Ocultas por padrão -- este botão reexibe;
+   estado "active" (mostrando) fica destacado igual aos chips de período,
+   pra ficar óbvio que a visão atual inclui os estornos. */
+.vx-fin-toggle-btn{border:1px solid #cbd7e3;background:#f6f8fb;color:#3c4c5e;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:700;white-space:nowrap}
+.vx-fin-toggle-btn.active{background:#0c2340;border-color:#0c2340;color:#fff}
+
 .vx-fin-table-wrap{width:100%;overflow:auto;border-radius:12px;border:1px solid #e2e8ef;background:#fff;margin-bottom:14px}
 .vx-fin-table{border-collapse:collapse;width:100%}
 .vx-fin-table th,.vx-fin-table td{text-align:left;padding:11px 13px;border-bottom:1px solid #edf1f5;font-size:13px;white-space:nowrap}
@@ -62,6 +70,12 @@
 .vx-fin-day-total-breakdown{display:inline-flex;flex-wrap:wrap;gap:4px 12px;color:#5c6e82}
 .vx-fin-day-total-item b{color:#374b60;font-weight:800}
 .vx-fin-day-total-final{margin-left:12px;color:#0b6f3c;font-weight:800}
+
+/* Nota discreta no lugar das linhas de estorno ocultas naquele dia --
+   TOTAL DIA continua somando tudo (dayTotalHtml recebe day.rows cru),
+   esta nota só avisa que o total pode incluir estorno(s) não listados
+   aqui, sem duplicar o botão de alternar (já existe na barra de filtros). */
+.vx-fin-hidden-note-row td{background:#fbfaf5;color:#8a7a4a;font-size:11.5px;font-style:italic;padding:7px 13px;border-bottom:1px solid #e2e8ef;white-space:normal}
 .vx-fin-day-total-final b{font-weight:900}
 .vx-fin-subgroup-row td{background:#fbfcfe;color:#8494a6;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:6px 13px 6px 20px}
 .vx-fin-actions-cell{position:relative;text-align:right;white-space:nowrap}
