@@ -47,7 +47,7 @@
     {key:'assistance',label:'Da assistência',fetch:fetchAssistanceTasks,desc:'Tasks criadas por e atribuídas à nossa assistência.'},
   ];
 
-  let st={tab:'pending',page:1,pageSize:15,order:'desc',loading:false,error:null,items:[],raw:null,expanded:null};
+  let st={tab:'pending',page:1,pageSize:15,order:'desc',loading:false,error:null,items:[],raw:null,expanded:null,tracking:{}};
 
   function installStyle(){
     if(document.getElementById('vxElxTasksStyle'))return;
@@ -78,6 +78,9 @@
       .vx-elxt-task-row{cursor:pointer}
       .vx-elxt-task-row:hover{background:#f6f9fc}
       .vx-elxt-status{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;color:#516375}
+      .vx-elxt-ack{margin-top:10px;border:0;border-radius:6px;padding:7px 12px;background:#0c2340;color:#fff;font-size:11px;font-weight:800;cursor:pointer}
+      .vx-elxt-ack:disabled{opacity:.5;cursor:default}
+      .vx-elxt-new{display:inline-block;margin-left:6px;padding:2px 6px;border-radius:9px;background:#fff1f2;color:#b42332;font-size:9px;font-weight:900}
     `;
     document.head.appendChild(s);
   }
@@ -101,6 +104,53 @@
     };
   }
 
+  async function currentCompanyId(){
+    const {data,error}=await sb.rpc('current_company_id');
+    if(error)throw error;
+    return data;
+  }
+  async function syncTracking(items){
+    if(!items?.length)return;
+    const companyId=await currentCompanyId();
+    const rows=items.map(t=>({
+      company_id:companyId,
+      external_task_id:taskIdentity(t),
+      task_number:t.taskNumber||null,
+      case_number:t.what?.name||null,
+      subject:t.subject||t.subjectToLabel||null,
+      external_created_at:t.createdDate||null
+    })).filter(x=>x.external_task_id);
+    if(rows.length){
+      const {error}=await sb.from('electrolux_task_tracking').upsert(rows,{onConflict:'company_id,external_task_id',ignoreDuplicates:true});
+      if(error)throw error;
+    }
+    await refreshTracking();
+  }
+  async function refreshTracking(){
+    const companyId=await currentCompanyId();
+    const {data,error}=await sb.from('electrolux_task_tracking').select('id,external_task_id,acknowledged_at,acknowledged_by,first_seen_at').eq('company_id',companyId);
+    if(error)throw error;
+    st.tracking=Object.fromEntries((data||[]).map(x=>[x.external_task_id,x]));
+    return data||[];
+  }
+  async function markViewed(t){
+    const track=st.tracking[taskIdentity(t)]; if(!track)return;
+    const {data:{user}}=await sb.auth.getUser(); if(!user)return;
+    const {data:old}=await sb.from('electrolux_task_views').select('id,view_count').eq('task_tracking_id',track.id).eq('user_id',user.id).maybeSingle();
+    if(old){
+      await sb.from('electrolux_task_views').update({last_viewed_at:new Date().toISOString(),view_count:(old.view_count||0)+1}).eq('id',old.id);
+    }else{
+      await sb.from('electrolux_task_views').insert({task_tracking_id:track.id,user_id:user.id});
+    }
+  }
+  async function acknowledgeTask(t){
+    const track=st.tracking[taskIdentity(t)]; if(!track)return;
+    const {data:{user}}=await sb.auth.getUser(); if(!user)return;
+    const {error}=await sb.from('electrolux_task_tracking').update({acknowledged_at:new Date().toISOString(),acknowledged_by:user.id,updated_at:new Date().toISOString()}).eq('id',track.id).is('acknowledged_at',null);
+    if(error)throw error;
+    await refreshTracking(); await refreshSharedBadge(); render();
+  }
+
   async function load(){
     st.loading=true;st.error=null;
     render();
@@ -112,6 +162,7 @@
       // array puro quanto {items:[...]}/{data:[...]}/{results:[...]},
       // sem exigir um formato só.
       st.items=Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
+      if(st.tab==='pending')await syncTracking(st.items); else await refreshTracking();
       st.error=null;
     }catch(e){
       st.error=e.message||'Falha ao carregar tarefas.';
@@ -180,9 +231,18 @@
     });
     document.querySelectorAll('#vxElxTasksBody [data-row-expand]').forEach(row=>{
       row.onclick=()=>{
+        const item=st.items[Number(row.dataset.itemIndex)]; if(item)markViewed(item).catch(()=>{});
         st.expanded=st.expanded===row.dataset.rowExpand?null:row.dataset.rowExpand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
+      };
+    });
+    document.querySelectorAll('#vxElxTasksBody [data-ack-index]').forEach(b=>{
+      b.onclick=async(e)=>{
+        e.preventDefault();e.stopPropagation();
+        b.disabled=true;
+        try{await acknowledgeTask(st.items[Number(b.dataset.ackIndex)]);}
+        catch(err){b.disabled=false;alert('Não foi possível marcar como ciente: '+(err.message||err));}
       };
     });
   }
@@ -210,14 +270,16 @@
         const f=fieldsFor(t);
         const id='row'+i;
         const open=st.expanded===id;
-        return `<tr class="vx-elxt-task-row" data-row-expand="${id}" title="Clique para ${open?'recolher':'ver os detalhes completos'}">
-          <td><b>${esc2(f.tarefa)}</b></td>
+        const track=st.tracking[taskIdentity(t)];
+        const isNew=!!track&&!track.acknowledged_at;
+        return `<tr class="vx-elxt-task-row" data-row-expand="${id}" data-item-index="${i}" title="Clique para ${open?'recolher':'ver os detalhes completos'}">
+          <td><b>${esc2(f.tarefa)}</b>${isNew?'<span class="vx-elxt-new">NOVA</span>':''}</td>
           <td class="vx-elxt-case"><b>${esc2(f.caso)}</b></td>
           <td><span class="vx-elxt-desc-preview" title="${esc2(f.assunto)}">${esc2(f.assunto)}</span></td>
           <td class="vx-elxt-desc-cell"><button type="button" class="vx-elxt-desc-btn" data-expand="${id}" title="Clique para ${open?'recolher':'ver a descrição completa'}"><span class="vx-elxt-desc-preview">${esc2(f.descricao)}</span></button></td>
           <td>${esc2(dtFull(f.criada))}</td>
           <td><span class="vx-elxt-status">${esc2(f.status)}</span></td>
-        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="6"><div class="vx-elxt-desc-full"><b>${esc2(f.assunto)}</b><br><br>${esc2(f.descricao)}</div></td></tr>`:''}`;
+        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="6"><div class="vx-elxt-desc-full"><b>${esc2(f.assunto)}</b><br><br>${esc2(f.descricao)}${isNew?`<br><button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Ciente</button>`:''}</div></td></tr>`:''}`;
       }).join('')}</tbody></table></div>`;
   }
 
@@ -244,57 +306,31 @@
      campo, só de ela ter mudado desde a última vez que o usuário abriu a
      tela. Guardado em localStorage (por navegador/dispositivo, não por
      empresa -- suficiente pro aviso visual, sem exigir uma tabela nova). */
-  const SEEN_KEY='vx_elx_tasks_seen_id';
   let newCount=0;
-
-  function taskIdentity(t){
-    return String(t?.id||t?.taskNumber||t?.createdDate||'');
-  }
+  function taskIdentity(t){return String(t?.id||t?.taskNumber||t?.createdDate||'');}
   async function latestPendingTasks(){
     const data=await fetchPendingTasks({page:1,pageSize:100,orderBy:'CreatedDate',order:'desc'});
     return Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
   }
-  async function markSeenNow(){
+  async function refreshSharedBadge(){
     try{
       const items=await latestPendingTasks();
-      const latest=items[0]?taskIdentity(items[0]):'';
-      if(latest)localStorage.setItem(SEEN_KEY,latest);
-    }catch(_e){/* próxima checagem tenta de novo */}
-    newCount=0;
-    paintBadge();
+      await syncTracking(items);
+      newCount=Object.values(st.tracking).filter(x=>!x.acknowledged_at).length;
+      paintBadge();
+    }catch(_e){/* mantém badge anterior em falha de rede */}
   }
-  async function checkForNew(){
-    let items;
-    try{items=await latestPendingTasks();}
-    catch(_e){return;}
-    let seen=null;
-    try{seen=localStorage.getItem(SEEN_KEY);}catch(_e){/* ignore */}
-    if(seen===null){
-      const latest=items[0]?taskIdentity(items[0]):'';
-      try{if(latest)localStorage.setItem(SEEN_KEY,latest);}catch(_e){/* ignore */}
-      newCount=0;
-    }else{
-      const idx=items.findIndex(t=>taskIdentity(t)===seen);
-      newCount=idx===-1?items.length:idx;
-    }
-    paintBadge();
-  }
+  async function markSeenNow(){await refreshSharedBadge();}
+  async function checkForNew(){await refreshSharedBadge();}
   function paintBadge(){
-    const btn=document.getElementById('vxElxTasksBtn');
-    if(!btn)return;
+    const btn=document.getElementById('vxElxTasksBtn');if(!btn)return;
     let badge=btn.querySelector('.vx-elxt-badge');
     if(newCount>0){
       installStyle();
-      if(!badge){
-        badge=document.createElement('span');
-        badge.className='vx-elxt-badge';
-        btn.appendChild(badge);
-      }
+      if(!badge){badge=document.createElement('span');badge.className='vx-elxt-badge';btn.appendChild(badge);}
       badge.textContent=newCount>99?'99+':String(newCount);
-      badge.title=newCount===1?'1 nova tarefa':newCount+' novas tarefas';
-    }else{
-      badge?.remove();
-    }
+      badge.title=newCount===1?'1 tarefa nova aguardando ciência':newCount+' tarefas novas aguardando ciência';
+    }else badge?.remove();
   }
 
   new MutationObserver(()=>paintBadge()).observe(document.body,{childList:true,subtree:true});
