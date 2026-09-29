@@ -80,10 +80,10 @@
   // sempre mostra a verdade completa ao lado.
   function fieldsFor(t){
     return {
-      svo:t.svoNumber||t.externalOrderNumber||t.id||'—',
-      cliente:t.clientName||t.customerName||'—',
-      produto:[t.productName,t.claimedDefect].filter(Boolean).join(' — ')||t.title||t.description||'—',
-      tipo:t.orderType||t.taskType||t.type||'—',
+      svo:t.taskNumber||t.svoNumber||t.externalOrderNumber||t.what?.name||t.id||'—',
+      cliente:t.assignedTo?.assistanceName||t.clientName||t.customerName||'—',
+      produto:[t.subject||t.subjectToLabel,t.description].filter(Boolean).join(' — ')||'—',
+      tipo:t.recordType?.name||t.orderType||t.taskType||t.type||'—',
       criada:t.createdDate||t.createdAt||t.CreatedDate||null,
     };
   }
@@ -98,7 +98,7 @@
       // Formato de paginação também não documentado -- aceita tanto um
       // array puro quanto {items:[...]}/{data:[...]}/{results:[...]},
       // sem exigir um formato só.
-      st.items=Array.isArray(data)?data:(data?.items||data?.data||data?.results||[]);
+      st.items=Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
       st.error=null;
     }catch(e){
       st.error=e.message||'Falha ao carregar tarefas.';
@@ -228,7 +228,7 @@
 
   async function latestPendingSig(){
     const data=await fetchPendingTasks({page:1,pageSize:1,orderBy:'CreatedDate',order:'desc'});
-    const items=Array.isArray(data)?data:(data?.items||data?.data||data?.results||[]);
+    const items=Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
     return items.length?JSON.stringify(items[0]):'';
   }
   async function markSeenNow(){
