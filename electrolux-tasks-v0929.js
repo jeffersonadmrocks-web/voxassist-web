@@ -61,6 +61,32 @@
   }
   const REPLY_MAX=4000;
 
+  /* ---------- Resposta já registrada na tarefa ----------
+     GET /api/dashboard/tasks/{id}/answers -> { answer: string|null } (campo `answer` do detalhe
+     da tarefa na Electrolux). Carrega sob demanda ao expandir e fica em cache até nova resposta. */
+  const answersCache={}; // taskId -> {loading,error,answer}
+  async function loadAnswers(task){
+    const id=task?.id;if(!id)return;
+    answersCache[id]={loading:true,error:null,answer:null};
+    refreshAnswersBox(task);
+    try{
+      const data=await getJson('/api/dashboard/tasks/'+encodeURIComponent(id)+'/answers');
+      answersCache[id]={loading:false,error:null,answer:data?.answer||null};
+    }catch(e){answersCache[id]={loading:false,error:e.message||'Falha ao carregar a resposta.',answer:null};}
+    refreshAnswersBox(task);
+  }
+  function answersHtml(task){
+    const c=answersCache[task?.id];
+    if(!c||c.loading)return '<div class="vx-elxt-answers-empty">Carregando respostas…</div>';
+    if(c.error)return `<div class="vx-elxt-answers-empty" style="color:#a63131">Não foi possível carregar a resposta (${esc2(c.error)}).</div>`;
+    if(!c.answer)return '<div class="vx-elxt-answers-empty">Nenhuma resposta registrada nesta tarefa.</div>';
+    return `<div class="vx-elxt-answer"><div class="vx-elxt-answer-text">${esc2(c.answer)}</div></div>`;
+  }
+  function refreshAnswersBox(task){
+    const box=document.getElementById('vxElxAnswers'+task.id);
+    if(box)box.innerHTML=answersHtml(task);
+  }
+
   const TABS=[
     {key:'received',label:'Recebidas',fetch:fetchReceivedTasks,desc:'Tasks do tipo Serviço Autorizado atribuídas à nossa assistência (todas ou por status).'},
     {key:'sent',label:'Enviadas',fetch:fetchAssistanceTasks,desc:'Tasks criadas por e atribuídas à nossa assistência.'},
@@ -120,6 +146,13 @@
       .vx-elxt-reply textarea{width:100%;box-sizing:border-box;min-height:74px;resize:vertical;border:1px solid #dce4ed;border-radius:8px;padding:9px 11px;font:inherit;font-size:12px;color:#243b53;background:#fff;outline:none}
       .vx-elxt-reply textarea:focus{border-color:#7bb1ee;box-shadow:0 0 0 3px rgba(47,128,237,.09)}
       .vx-elxt-reply-msg{font-size:11px;margin-top:6px;color:#a63131}
+      .vx-elxt-answers{margin-top:14px;padding-top:12px;border-top:1px solid #e5ebf1}
+      .vx-elxt-answers-empty{font-size:11px;color:#7b8da1}
+      .vx-elxt-answer{background:#fff;border:1px solid #e3e9f0;border-radius:8px;padding:9px 12px;margin-top:8px}
+      .vx-elxt-answer-meta{display:flex;gap:10px;align-items:baseline;font-size:10px;color:#7b8da1;margin-bottom:4px}
+      .vx-elxt-answer-meta b{color:#42566d}
+      .vx-elxt-answer-text{font-size:12px;line-height:1.5;color:#33475b;white-space:pre-wrap;word-break:break-word}
+      .vx-elxt-answer-text code{font-size:11px}
       .vx-elxt-ack{margin-top:10px;border:0;border-radius:6px;padding:7px 12px;background:#0c2340;color:#fff;font-size:11px;font-weight:800;cursor:pointer}
       .vx-elxt-ack:disabled{opacity:.5;cursor:default}
       .vx-elxt-new{display:inline-block;margin-left:7px;padding:3px 6px;border-radius:999px;background:#eaf3ff;color:#1769c2;font-size:8px;font-weight:900;letter-spacing:.04em}
@@ -356,6 +389,7 @@
         st.expanded=st.expanded===b.dataset.expand?null:b.dataset.expand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
+        if(st.expanded){const src=st.searchResults!==null?st.searchResults:st.items,it=src[Number(st.expanded.replace('row',''))];if(it&&!answersCache[it.id])loadAnswers(it);}
       };
     });
     document.querySelectorAll('#vxElxTasksBody [data-row-expand]').forEach(row=>{
@@ -364,6 +398,7 @@
         st.expanded=st.expanded===row.dataset.rowExpand?null:row.dataset.rowExpand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
+        if(st.expanded&&item&&!answersCache[item.id])loadAnswers(item);
       };
     });
     document.querySelectorAll('#vxElxTasksBody [data-reply-index]').forEach(b=>{
@@ -382,8 +417,9 @@
         try{
           await replyToTask(task.id,answer);
           if(typeof toast==='function')toast('Resposta enviada à Electrolux.');
-          st.expanded=null;
-          if(st.searchResults!==null)render(); else load();
+          delete answersCache[task.id];
+          box.value='';box.disabled=false;b.disabled=false;b.textContent='Enviar resposta';
+          loadAnswers(task);
         }catch(err){
           b.disabled=false;box.disabled=false;b.textContent='Enviar resposta';
           if(msg)msg.textContent='Não foi possível enviar: '+(err.message||err);
@@ -441,7 +477,7 @@
           <td><span class="vx-elxt-created">${esc2(dtFull(f.criada))}</span></td>
           <td><span class="vx-elxt-created">${esc2(dtDue(f.vencimento))}</span></td>
           <td><span class="vx-elxt-status${isDone(f.status)?' done':''}">${esc2(f.status)}</span></td>
-        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="7"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Vencimento <b>${esc2(dtDue(f.vencimento))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div>${canReply(t)?`<div class="vx-elxt-reply"><div class="vx-elxt-detail-label">Responder tarefa</div><textarea id="vxElxReply${i}" maxlength="${REPLY_MAX}" placeholder="Escreva a resposta que será enviada à Electrolux…"></textarea><div class="vx-elxt-reply-msg" id="vxElxReplyMsg${i}"></div><button type="button" class="vx-elxt-ack" data-reply-index="${i}">Enviar resposta</button></div>`:''}</div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
+        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="7"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Vencimento <b>${esc2(dtDue(f.vencimento))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div>${t.id?`<div class="vx-elxt-answers"><div class="vx-elxt-detail-label">Resposta</div><div id="vxElxAnswers${esc2(t.id)}">${answersHtml(t)}</div></div>`:''}${canReply(t)?`<div class="vx-elxt-reply"><div class="vx-elxt-detail-label">Responder tarefa</div><textarea id="vxElxReply${i}" maxlength="${REPLY_MAX}" placeholder="Escreva a resposta que será enviada à Electrolux…"></textarea><div class="vx-elxt-reply-msg" id="vxElxReplyMsg${i}"></div><button type="button" class="vx-elxt-ack" data-reply-index="${i}">Enviar resposta</button></div>`:''}</div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
       }).join('')}</tbody></table></div>`;
   }
 
