@@ -9,8 +9,8 @@
         <div class="brand desktop-brand">VOX <span>ASSIST</span></div>
         <div class="user-card"><b>${esc(state.profile?.role||'ADMINISTRADOR')}</b><small>${esc(state.profile?.role||'ADMINISTRADOR')} • Online</small></div>
         <div class="desktop-menu">
-          <button class="nav active" data-view="dashboard">⌂ <span>VISÃO GERAL</span></button>
-          <button class="nav" data-view="os">▣ <span>ATENDIMENTO</span></button>
+          <button class="nav active" data-view="dashboard">⌂ <span>DASHBOARD</span></button>
+          <button class="nav" data-view="os">▣ <span>ORDEM DE SERVIÇO</span></button>
           <button class="nav" data-view="oficina">⚒ <span>OFICINA</span></button>
           <button class="nav" data-view="agenda">☑ <span>ATIVIDADES</span></button>
           <button class="nav" data-view="financeiro">$ <span>FINANCEIRO</span></button>
