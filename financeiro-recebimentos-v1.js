@@ -263,6 +263,16 @@
     // 'horario' (padrão): cronológico ascendente dentro do dia.
     return { kind: 'flat', rows: rows.slice().sort(byTimeAsc) };
   }
+  // Achado do usuário (2026-09-29): um dia cujas ÚNICAS linhas são
+  // estornos ocultos (rowVisible) mostrava um "TOTAL DIA" negativo (o
+  // estorno caiu num dia diferente do recebimento original -- ver
+  // comentário em filteredRows) sempre na MESMA cor verde de um total
+  // positivo, sem nenhuma linha visível explicando o motivo -- lido como
+  // erro/sinal de alarme, não como "dinheiro que saiu por estorno".
+  // negClass() é a única regra de cor por sinal (nunca duplicada abaixo
+  // nem na caixa "RECEBIMENTOS DO PERÍODO", mesma f. money() de sempre).
+  const negClass = (v) => (Number(v) < 0 ? ' vx-fin-negative' : '');
+
   // Fechamento de CADA dia -- reaproveita a MESMA computeTotals() do
   // bloco "Recebimentos do período", só que escopada às linhas daquele
   // dia. Como cada linha pertence a exatamente um grupo de dia, a soma
@@ -270,11 +280,11 @@
   // período por construção (mesma função, partição exaustiva).
   function dayTotalHtml(rows, shortLabel) {
     const t = computeTotals(rows);
-    const parts = BUCKETS.map((b) => `<span class="vx-fin-day-total-item">${b} <b>${money(t.totals[b])}</b></span>`).join('');
-    return `<tr class="vx-fin-day-total-row"><td colspan="9">
+    const parts = BUCKETS.map((b) => `<span class="vx-fin-day-total-item">${b} <b class="${negClass(t.totals[b]).trim()}">${money(t.totals[b])}</b></span>`).join('');
+    return `<tr class="vx-fin-day-total-row${t.total < 0 ? ' vx-fin-day-total-row-negative' : ''}"><td colspan="9">
       <span class="vx-fin-day-total-label">TOTAL DIA ${esc(shortLabel)}</span>
       <span class="vx-fin-day-total-breakdown">${parts}</span>
-      <span class="vx-fin-day-total-final">TOTAL <b>${money(t.total)}</b></span>
+      <span class="vx-fin-day-total-final${negClass(t.total)}">${t.total < 0 ? '↩ ESTORNADO NO DIA' : 'TOTAL'} <b>${money(t.total)}</b></span>
     </td></tr>`;
   }
 
@@ -326,8 +336,8 @@
   }
 
   function totalsHtml(t) {
-    return `<div class="vx-fin-totals-grid">${BUCKETS.map((b) => `<div class="vx-fin-total-row"><span>${b}</span><b>${money(t.totals[b])}</b></div>`).join('')}</div>
-      <div class="vx-fin-total-line"><span>TOTAL RECEBIDO</span><b>${money(t.total)}</b></div>
+    return `<div class="vx-fin-totals-grid">${BUCKETS.map((b) => `<div class="vx-fin-total-row"><span>${b}</span><b class="${negClass(t.totals[b]).trim()}">${money(t.totals[b])}</b></div>`).join('')}</div>
+      <div class="vx-fin-total-line${negClass(t.total)}"><span>TOTAL RECEBIDO</span><b>${money(t.total)}</b></div>
       <div class="vx-fin-count">${t.count} lançamento${t.count === 1 ? '' : 's'}</div>`;
   }
 
@@ -373,8 +383,13 @@
     const rowsHtml = ordered.kind === 'flat'
       ? ordered.rows.map(rowHtml).join('')
       : ordered.groups.map((g) => `<tr class="vx-fin-subgroup-row"><td colspan="9">${esc(g.label)}</td></tr>${g.rows.map(rowHtml).join('')}`).join('');
+    // Soma só da PARTE oculta (nunca precisa bater com o TOTAL DIA
+    // abaixo, que soma tudo) -- é exatamente o que explica um TOTAL DIA
+    // negativo/estranho quando não sobrou nenhuma linha visível pra
+    // justificar: "sumiu" porque foi estornado, não é erro.
+    const hiddenSum = day.rows.filter((p) => !rowVisible(p)).reduce((s, p) => s + Number(p.amount || 0), 0);
     const hiddenNote = hiddenCount
-      ? `<tr class="vx-fin-hidden-note-row"><td colspan="9">🙈 ${hiddenCount} estorno${hiddenCount === 1 ? '' : 's'} oculto${hiddenCount === 1 ? '' : 's'} neste dia — use "MOSTRAR ESTORNOS" pra conferir</td></tr>`
+      ? `<tr class="vx-fin-hidden-note-row${negClass(hiddenSum)}"><td colspan="9">↩ ${hiddenCount} estorno${hiddenCount === 1 ? '' : 's'} oculto${hiddenCount === 1 ? '' : 's'} neste dia (<b>${money(hiddenSum)}</b>) — use "MOSTRAR ESTORNOS" pra conferir</td></tr>`
       : '';
     return `<tr class="vx-fin-day-header-row"><td colspan="9">${esc(full)}</td></tr>${rowsHtml}${hiddenNote}${dayTotalHtml(day.rows, short)}`;
   }
