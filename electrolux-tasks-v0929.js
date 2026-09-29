@@ -169,7 +169,20 @@
   function bodyHtml(){
     if(st.loading)return '<div class="vx-elx-empty-board">Carregando tarefas…</div>';
     if(st.error)return '<div class="vx-elx-empty-board">Não foi possível carregar. Use "Tentar de novo" acima.</div>';
-    if(!st.items.length)return '<div class="vx-elx-empty-board">Nenhuma tarefa encontrada nesta situação.</div>';
+    if(!st.items.length){
+      // Achado do usuário (2026-09-29): a chamada parou de dar erro (proxy
+      // já publicado), mas continuou sem mostrar nenhuma tarefa -- sem
+      // saber ainda se é porque não há tarefa mesmo ou porque a resposta
+      // real usa um formato diferente do que Array.isArray/.items/.data/
+      // .results cobrem. Em vez de adivinhar de novo, mostra a resposta
+      // bruta aqui mesmo -- um print desta tela já mostra o formato real
+      // pra eu corrigir fieldsFor()/o parsing de paginação sem chute.
+      const rawInfo=st.raw!=null?`<div style="margin-top:14px;text-align:left;max-width:860px;margin-left:auto;margin-right:auto">
+        <small style="color:#8494a6">Resposta bruta do backend (pra conferência caso devesse ter tarefa aqui):</small>
+        <pre class="vx-elxt-json" style="margin-top:6px">${esc2(JSON.stringify(st.raw,null,2))}</pre>
+      </div>`:'';
+      return `<div class="vx-elx-empty-board">Nenhuma tarefa encontrada nesta situação.</div>${rawInfo}`;
+    }
     return `<div class="desktop-table-wrap"><table class="desktop-table"><thead><tr>
       <th>SVO</th><th>CLIENTE</th><th>PRODUTO / DEFEITO</th><th>TIPO</th><th>CRIADA EM</th><th></th>
       </tr></thead><tbody>${st.items.map((t,i)=>{
