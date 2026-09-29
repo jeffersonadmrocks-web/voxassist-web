@@ -75,6 +75,9 @@
       .vx-elxt-desc-btn{display:block;width:100%;text-align:left;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;overflow:hidden}
       .vx-elxt-desc-full{white-space:pre-wrap;word-break:break-word;line-height:1.45;color:#33475b;padding:12px 14px;background:#f7f9fb}
       .vx-elxt-case{white-space:nowrap}
+      .vx-elxt-task-row{cursor:pointer}
+      .vx-elxt-task-row:hover{background:#f6f9fc}
+      .vx-elxt-status{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;color:#516375}
     `;
     document.head.appendChild(s);
   }
@@ -92,6 +95,7 @@
       caso:t.what?.name||'—',
       assunto:t.subject||t.subjectToLabel||'—',
       descricao:t.description||'—',
+      status:t.statusToLabel||t.status||'—',
       tipo:t.recordType?.name||t.orderType||t.taskType||t.type||'—',
       criada:t.createdDate||t.createdAt||t.CreatedDate||null,
     };
@@ -167,8 +171,16 @@
 
   function wireBodyToggles(){
     document.querySelectorAll('#vxElxTasksBody [data-expand]').forEach(b=>{
-      b.onclick=()=>{
+      b.onclick=(e)=>{
+        e.preventDefault();e.stopPropagation();
         st.expanded=st.expanded===b.dataset.expand?null:b.dataset.expand;
+        document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
+        wireBodyToggles();
+      };
+    });
+    document.querySelectorAll('#vxElxTasksBody [data-row-expand]').forEach(row=>{
+      row.onclick=()=>{
+        st.expanded=st.expanded===row.dataset.rowExpand?null:row.dataset.rowExpand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
       };
@@ -193,18 +205,18 @@
       return `<div class="vx-elx-empty-board">Nenhuma tarefa encontrada nesta situação.</div>${rawInfo}`;
     }
     return `<div class="desktop-table-wrap vx-elxt-table-wrap"><table class="desktop-table vx-elxt-table"><thead><tr>
-      <th style="width:11%">TAREFA</th><th style="width:9%">CASO</th><th style="width:16%">ASSUNTO</th><th class="vx-elxt-desc-cell">DESCRIÇÃO</th><th style="width:12%">CRIADA EM</th><th style="width:7%"></th>
+      <th style="width:11%">TAREFA</th><th style="width:9%">CASO</th><th style="width:16%">ASSUNTO</th><th class="vx-elxt-desc-cell">DESCRIÇÃO</th><th style="width:12%">CRIADA EM</th><th style="width:11%">STATUS</th>
       </tr></thead><tbody>${st.items.map((t,i)=>{
         const f=fieldsFor(t);
         const id='row'+i;
         const open=st.expanded===id;
-        return `<tr>
+        return `<tr class="vx-elxt-task-row" data-row-expand="${id}" title="Clique para ${open?'recolher':'ver os detalhes completos'}">
           <td><b>${esc2(f.tarefa)}</b></td>
           <td class="vx-elxt-case"><b>${esc2(f.caso)}</b></td>
           <td><span class="vx-elxt-desc-preview" title="${esc2(f.assunto)}">${esc2(f.assunto)}</span></td>
           <td class="vx-elxt-desc-cell"><button type="button" class="vx-elxt-desc-btn" data-expand="${id}" title="Clique para ${open?'recolher':'ver a descrição completa'}"><span class="vx-elxt-desc-preview">${esc2(f.descricao)}</span></button></td>
           <td>${esc2(dtFull(f.criada))}</td>
-          <td><button type="button" class="vx-elxt-toggle" data-expand="${id}">${open?'Fechar':'...'}</button></td>
+          <td><span class="vx-elxt-status">${esc2(f.status)}</span></td>
         </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="6"><div class="vx-elxt-desc-full"><b>${esc2(f.assunto)}</b><br><br>${esc2(f.descricao)}</div></td></tr>`:''}`;
       }).join('')}</tbody></table></div>`;
   }
