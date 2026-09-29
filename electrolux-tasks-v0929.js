@@ -46,6 +46,21 @@
   // Recebidas = /api/dashboard/tasks (todos os status por padrão; `status` opcional).
   const fetchReceivedTasks=params=>getJson('/api/dashboard/tasks'+qs(params));
 
+  // POST via electrolux-proxy (a allowlist só aceita /api/dashboard/tasks/{id}/reply com { answer }).
+  function replyToTask(taskId,answer){
+    return fetch(CFG.url+'/functions/v1/electrolux-proxy?path='+encodeURIComponent('/api/dashboard/tasks/'+encodeURIComponent(taskId)+'/reply'),
+      {method:'POST',cache:'no-store',headers:authHeaders(true),body:JSON.stringify({answer})})
+      .catch(()=>{throw new Error('Não foi possível conectar ao Electrolux (proxy VoxAssist fora do ar).');})
+      .then(async r=>{
+        if(!r.ok){
+          const body=await r.json().catch(()=>null);
+          throw new Error(body?.error||('HTTP '+r.status));
+        }
+        return r.json().catch(()=>({ok:true}));
+      });
+  }
+  const REPLY_MAX=4000;
+
   const TABS=[
     {key:'received',label:'Recebidas',fetch:fetchReceivedTasks,desc:'Tasks do tipo Serviço Autorizado atribuídas à nossa assistência (todas ou por status).'},
     {key:'sent',label:'Enviadas',fetch:fetchAssistanceTasks,desc:'Tasks criadas por e atribuídas à nossa assistência.'},
@@ -101,6 +116,10 @@
       .vx-elxt-status:before{content:'';width:6px;height:6px;border-radius:50%;background:#d69e2e;margin-right:6px;flex:0 0 auto}
       .vx-elxt-status.done{color:#146c3a;background:#e8f7ee;border-color:#b7e4c7}
       .vx-elxt-status.done:before{background:#22a861}
+      .vx-elxt-reply{margin-top:14px;padding-top:12px;border-top:1px solid #e5ebf1}
+      .vx-elxt-reply textarea{width:100%;box-sizing:border-box;min-height:74px;resize:vertical;border:1px solid #dce4ed;border-radius:8px;padding:9px 11px;font:inherit;font-size:12px;color:#243b53;background:#fff;outline:none}
+      .vx-elxt-reply textarea:focus{border-color:#7bb1ee;box-shadow:0 0 0 3px rgba(47,128,237,.09)}
+      .vx-elxt-reply-msg{font-size:11px;margin-top:6px;color:#a63131}
       .vx-elxt-ack{margin-top:10px;border:0;border-radius:6px;padding:7px 12px;background:#0c2340;color:#fff;font-size:11px;font-weight:800;cursor:pointer}
       .vx-elxt-ack:disabled{opacity:.5;cursor:default}
       .vx-elxt-new{display:inline-block;margin-left:7px;padding:3px 6px;border-radius:999px;background:#eaf3ff;color:#1769c2;font-size:8px;font-weight:900;letter-spacing:.04em}
@@ -347,6 +366,30 @@
         wireBodyToggles();
       };
     });
+    document.querySelectorAll('#vxElxTasksBody [data-reply-index]').forEach(b=>{
+      b.onclick=async(e)=>{
+        e.preventDefault();e.stopPropagation();
+        const i=Number(b.dataset.replyIndex);
+        const source=st.searchResults!==null?st.searchResults:st.items;
+        const task=source[i];
+        const box=document.getElementById('vxElxReply'+i),msg=document.getElementById('vxElxReplyMsg'+i);
+        const answer=(box?.value||'').trim();
+        if(msg)msg.textContent='';
+        if(!task||!box)return;
+        if(!answer){if(msg)msg.textContent='Escreva a resposta antes de enviar.';return;}
+        if(!confirm('Enviar esta resposta à Electrolux?\n\nEla será registrada na tarefa '+fieldsFor(task).tarefa+' e não pode ser desfeita por aqui.'))return;
+        b.disabled=true;box.disabled=true;b.textContent='Enviando…';
+        try{
+          await replyToTask(task.id,answer);
+          if(typeof toast==='function')toast('Resposta enviada à Electrolux.');
+          st.expanded=null;
+          if(st.searchResults!==null)render(); else load();
+        }catch(err){
+          b.disabled=false;box.disabled=false;b.textContent='Enviar resposta';
+          if(msg)msg.textContent='Não foi possível enviar: '+(err.message||err);
+        }
+      };
+    });
     document.querySelectorAll('#vxElxTasksBody [data-ack-index]').forEach(b=>{
       b.onclick=async(e)=>{
         e.preventDefault();e.stopPropagation();
@@ -356,6 +399,9 @@
       };
     });
   }
+
+  // Só tarefas recebidas (aba Recebidas ou origem "Recebida" na busca global) podem ser respondidas.
+  const canReply=t=>t.__source?t.__source==='Recebida':st.tab==='received';
 
   function bodyHtml(){
     if(st.searching)return '<div class="vx-elx-empty-board">Pesquisando em todas as tarefas…</div>';
@@ -395,7 +441,7 @@
           <td><span class="vx-elxt-created">${esc2(dtFull(f.criada))}</span></td>
           <td><span class="vx-elxt-created">${esc2(dtDue(f.vencimento))}</span></td>
           <td><span class="vx-elxt-status${isDone(f.status)?' done':''}">${esc2(f.status)}</span></td>
-        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="7"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Vencimento <b>${esc2(dtDue(f.vencimento))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div></div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
+        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="7"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Vencimento <b>${esc2(dtDue(f.vencimento))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div>${canReply(t)?`<div class="vx-elxt-reply"><div class="vx-elxt-detail-label">Responder tarefa</div><textarea id="vxElxReply${i}" maxlength="${REPLY_MAX}" placeholder="Escreva a resposta que será enviada à Electrolux…"></textarea><div class="vx-elxt-reply-msg" id="vxElxReplyMsg${i}"></div><button type="button" class="vx-elxt-ack" data-reply-index="${i}">Enviar resposta</button></div>`:''}</div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
       }).join('')}</tbody></table></div>`;
   }
 
