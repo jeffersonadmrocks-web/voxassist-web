@@ -317,7 +317,14 @@
     try{
       const params={page:st.page,pageSize:st.pageSize,orderBy:'CreatedDate',order:st.order};
       if(st.tab==='received'&&st.status)params.status=st.status;
-      const data=await tabDef.fetch(params);
+      let data;
+      if(st.tab==='received'&&!st.status&&!st.showDone){
+        // A API filtra por um status só e não tem "excluir": busca tudo, tira as concluídas e
+        // pagina aqui mesmo, para as páginas não ficarem com menos linhas nem contarem errado.
+        const all=(await fetchAllFrom(fetchReceivedTasks)).filter(t=>!isDone(fieldsFor(t).status));
+        if(st.order==='asc')all.reverse();
+        data={totalItems:all.length,records:all.slice((st.page-1)*st.pageSize,st.page*st.pageSize)};
+      }else data=await tabDef.fetch(params);
       st.raw=data;
       // Formato de paginação também não documentado -- aceita tanto um
       // array puro quanto {items:[...]}/{data:[...]}/{results:[...]},
@@ -363,6 +370,9 @@
         </div>
         ${st.tab==='received'?`<label style="font-size:12px;color:#516375">Status
           <select id="vxElxTasksStatus"><option value="">Todos</option>${STATUS_OPTIONS.map(o=>`<option value="${esc2(o)}" ${o===st.status?'selected':''}>${esc2(o)}</option>`).join('')}</select>
+        </label>
+        <label style="font-size:12px;color:#516375;display:inline-flex;align-items:center;gap:5px;${st.status?'opacity:.5':''}" title="${st.status?'Já filtrado por um status específico':'Mostrar também as tarefas concluídas'}">
+          <input type="checkbox" id="vxElxTasksShowDone" ${st.showDone||st.status?'checked':''} ${st.status?'disabled':''}> Mostrar concluídas
         </label>`:''}
         <label style="font-size:12px;color:#516375">Por página
           <select id="vxElxTasksPageSize">${[15,30,50,100].map(n=>`<option value="${n}" ${n===st.pageSize?'selected':''}>${n}</option>`).join('')}</select>
@@ -388,6 +398,7 @@
     searchInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();runGlobalSearch(searchInput.value);}};
     document.getElementById('vxElxTasksSearchClear')?.addEventListener('click',()=>runGlobalSearch(''));
     document.getElementById('vxElxTasksStatus')?.addEventListener('change',e=>{st.status=e.target.value;st.page=1;st.expanded=null;load();});
+    document.getElementById('vxElxTasksShowDone')?.addEventListener('change',e=>{st.showDone=e.target.checked;st.page=1;st.expanded=null;load();});
     document.getElementById('vxElxTasksPageSize').onchange=e=>{st.pageSize=Number(e.target.value)||15;st.page=1;load();};
     document.getElementById('vxElxTasksOrder').onclick=()=>{st.order=st.order==='desc'?'asc':'desc';st.page=1;load();};
     document.getElementById('vxElxTasksPrev').onclick=()=>{if(st.page>1){st.page--;load();}};
@@ -511,7 +522,7 @@
   window.vxOpenElectroluxTasks=function(){
     window.vxElxStopPoll?.();
     installStyle();
-    st.tab='received';st.status='';st.page=1;st.pageSize=15;st.order='desc';st.expanded=null;st.search='';st.searchResults=null;
+    st.tab='received';st.status='';st.showDone=false;st.page=1;st.pageSize=15;st.order='desc';st.expanded=null;st.search='';st.searchResults=null;
     load();
     markSeenNow();
   };
