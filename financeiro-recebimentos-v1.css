@@ -74,8 +74,20 @@
 /* Nota discreta no lugar das linhas de estorno ocultas naquele dia --
    TOTAL DIA continua somando tudo (dayTotalHtml recebe day.rows cru),
    esta nota só avisa que o total pode incluir estorno(s) não listados
-   aqui, sem duplicar o botão de alternar (já existe na barra de filtros). */
+   aqui, sem duplicar o botão de alternar (já existe na barra de filtros).
+   Quando a soma dos ocultos é negativa, ganha a mesma cor/fundo de
+   vx-fin-negative -- é exatamente essa nota que explica um TOTAL DIA
+   negativo sem nenhuma linha visível por baixo dele. */
 .vx-fin-hidden-note-row td{background:#fbfaf5;color:#8a7a4a;font-size:11.5px;font-style:italic;padding:7px 13px;border-bottom:1px solid #e2e8ef;white-space:normal}
+.vx-fin-hidden-note-row.vx-fin-negative td{background:#fdf1f0;color:#a63131;font-style:normal;font-weight:700}
+
+/* Achado do usuário (2026-09-29): um TOTAL DIA/TOTAL RECEBIDO negativo
+   (estorno de um recebimento de outro dia/período) saía sempre na MESMA
+   cor verde de um total positivo -- lido como "entrou dinheiro" quando na
+   verdade é o oposto. Única regra de cor por sinal, usada em toda linha
+   de total desta tela (dia e período) via negClass(). */
+.vx-fin-negative{color:#a63131!important}
+.vx-fin-day-total-row-negative td{background:#fdf1f0}
 .vx-fin-day-total-final b{font-weight:900}
 .vx-fin-subgroup-row td{background:#fbfcfe;color:#8494a6;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:6px 13px 6px 20px}
 .vx-fin-actions-cell{position:relative;text-align:right;white-space:nowrap}
