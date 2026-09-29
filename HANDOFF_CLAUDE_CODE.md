@@ -108,6 +108,52 @@ Em ordem de prioridade:
 for f in *.js; do node --check "$f" || echo "ERRO em $f"; done
 ```
 
+## Mudanças recentes
+
+### 2026-09-29 — Tela "Tarefas" no módulo Electrolux
+
+Nova tela dentro do módulo Electrolux (`window.vxOpenElectroluxTasks()`),
+acessível pelo botão "TAREFAS" na Home do Electrolux, mostrando as tasks
+de duas rotas novas do backend Vox Analytics:
+
+- `GET /api/dashboard/tasks/pending` — tasks "Não iniciado", tipo
+  "Serviço Autorizado", atribuídas à nossa assistência.
+- `GET /api/dashboard/tasks/assistance` — tasks criadas por e
+  atribuídas à nossa assistência.
+
+Arquivos:
+- `electrolux-tasks-v0929.js` (novo) — tela isolada, duas abas
+  (Pendentes / Da assistência), paginação (`page`/`pageSize`),
+  alternância de ordem por `CreatedDate`, estados de carregamento/vazio/
+  erro com "Tentar de novo". Reusa o mesmo `electrolux-proxy` (nunca
+  chama o backend Electrolux direto), com seu próprio `getJson` local
+  (self-contido, mesmo padrão de chamada de `electrolux-reports-v0813.js`).
+- `electrolux-reports-v0813.js` — só ganhou o botão "TAREFAS" na Home
+  (`vxElxTasksBtn`) chamando `window.vxOpenElectroluxTasks?.()`; nenhuma
+  outra linha alterada.
+- `supabase/functions/electrolux-proxy/index.ts` — `ALLOWED_GET_PATTERNS`
+  ganhou `/^\/api\/dashboard\/tasks\/(pending|assistance)(\?[A-Za-z0-9_=&%.-]*)?$/`.
+  **Precisa de `supabase functions deploy electrolux-proxy` pra valer em
+  produção** — sem isso toda chamada às duas rotas novas volta
+  `400 path_not_allowed`. Este repositório não tem CI publicando Edge
+  Functions (ver comentário em `supabase/config.toml`), então esse
+  deploy é sempre manual.
+- `index.html` — nova tag `<script defer src="electrolux-tasks-v0929.js">`.
+
+**Formato dos dados — pendência real:** a rota nunca foi documentada, e
+não havia acesso de rede/credencial Electrolux disponível no ambiente
+de desenvolvimento para fazer uma chamada real antes de shipar. Os
+nomes de campo usados na tela (`svoNumber`, `clientName`, `productName`,
+`claimedDefect`, `orderType`, `createdDate`) são os mesmos já
+confirmados de verdade em `GET /api/dashboard/service-orders` (mesmo
+backend) — um palpite fundamentado, não um chute às cegas — mas cada
+linha da tela tem um botão "Ver JSON" com o objeto bruto completo,
+então nenhum dado fica escondido mesmo se algum nome de campo estiver
+errado. **Ação pendente:** depois do deploy da function, abrir a tela
+em produção, conferir "Ver JSON" numa tarefa real e, se algum campo de
+`fieldsFor()` (em `electrolux-tasks-v0929.js`) estiver errado, é um
+ajuste local de nomes, sem mexer em mais nada.
+
 ## Prompt sugerido para abrir a sessão no Claude Code
 
 > Estou continuando uma auditoria do repositório voxassist-web
