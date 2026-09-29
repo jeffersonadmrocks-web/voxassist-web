@@ -824,6 +824,7 @@
           <span id="vxElxLastSync" style="align-self:center;color:#60728a;font-size:11px;margin-right:2px"></span>
           <button class="blue" id="vxElxSync">↻ SINCRONIZAR AGORA</button>
           <button class="gray" id="vxElxViewAll">VER TODAS AS SVOs</button>
+          <button class="gray" id="vxElxTasksBtn">TAREFAS</button>
           <button class="gray" id="vxElxClosedBtn">✔ ENCERRADAS</button>
         </div>
       </div>
@@ -862,6 +863,7 @@
       renderHome();
     });
     document.getElementById('vxElxViewAll').onclick=()=>renderBoardScreen({label:'Todas as SVOs',...homeFilterToBoardOpts()});
+    document.getElementById('vxElxTasksBtn').onclick=()=>window.vxOpenElectroluxTasks?.();
     document.getElementById('vxElxClosedBtn').onclick=()=>renderClosedScreen();
     bindHomeSearch();
     document.getElementById('vxElxSync').onclick=async()=>{
