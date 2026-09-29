@@ -47,16 +47,18 @@
     {key:'assistance',label:'Da assistência',fetch:fetchAssistanceTasks,desc:'Tasks criadas por e atribuídas à nossa assistência.'},
   ];
 
-  let st={tab:'pending',page:1,pageSize:15,order:'desc',loading:false,error:null,items:[],raw:null,expanded:null};
+  let st={tab:'pending',page:1,pageSize:15,order:'desc',loading:false,error:null,items:[],raw:null,expanded:null,tracking:{},search:'',searching:false,searchResults:null};
 
   function installStyle(){
     if(document.getElementById('vxElxTasksStyle'))return;
     const s=document.createElement('style');
     s.id='vxElxTasksStyle';
     s.textContent=`
-      .vx-elxt-tabs{display:flex;gap:4px;background:#eef1f5;border-radius:9px;padding:4px;margin-bottom:12px;width:fit-content}
-      .vx-elxt-tabs button{border:0;border-radius:6px;padding:8px 16px;font-size:12.5px;font-weight:800;background:transparent;color:#58708d;cursor:pointer}
-      .vx-elxt-tabs button.active{background:#0c2340;color:#fff}
+      .vx-elxt-tabs{display:flex;gap:22px;background:transparent;border-radius:0;padding:0;margin:2px 0 16px;width:fit-content;border-bottom:1px solid #e3e9f0}
+      .vx-elxt-tabs button{position:relative}
+      .vx-elxt-tabs button{border:0;border-radius:0;padding:9px 2px 10px;font-size:12px;font-weight:750;background:transparent;color:#708196;cursor:pointer}
+      .vx-elxt-tabs button.active{background:transparent;color:#0c2340}
+      .vx-elxt-tabs button.active:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#2f80ed;border-radius:2px 2px 0 0}
       .vx-elxt-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
       .vx-elxt-toolbar select{border:1px solid #cad3dc;border-radius:6px;padding:6px 8px;font-size:12px}
       .vx-elxt-toolbar button{border:1px solid #cad3dc;border-radius:6px;padding:7px 12px;font-size:12px;font-weight:700;background:#fff;color:#0c2340;cursor:pointer}
@@ -66,7 +68,60 @@
       .vx-elxt-json-row td{padding:0!important}
       .vx-elxt-json-wrap{padding:10px 14px}
       .vx-elxt-toggle{background:none;border:0;color:#1876d2;font-size:11.5px;font-weight:700;cursor:pointer;padding:0}
-      .vx-elxt-badge{position:absolute;top:-4px;right:-4px;width:9px;height:9px;border-radius:50%;background:#cf3542;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+      .vx-elxt-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:7px;border-radius:10px;background:#cf3542;color:#fff;font-size:10px;font-weight:900;line-height:1;vertical-align:middle;box-shadow:0 0 0 1px rgba(0,0,0,.06)}
+      .vx-elxt-table-wrap{width:100%;max-width:100%;overflow:hidden;background:#fff;border:1px solid #dde5ee;border-radius:14px;box-shadow:0 3px 14px rgba(12,35,64,.05)}
+      .vx-elxt-table-wrap .desktop-table{border-collapse:separate;border-spacing:0}
+      .vx-elxt-table{width:100%;max-width:100%;table-layout:fixed;border:0!important}
+      .vx-elxt-table thead th{background:#f7f9fc!important;color:#718096!important;border:0!important;border-bottom:1px solid #e4eaf1!important;padding:11px 14px!important;font-size:10px!important;font-weight:800!important;letter-spacing:.055em;text-align:left}
+      .vx-elxt-table tbody td{border:0!important;border-bottom:1px solid #edf1f5!important;padding:14px 14px!important;vertical-align:middle;color:#27384a;font-size:12px}
+      .vx-elxt-table tbody tr.vx-elxt-task-row:nth-child(4n+3){background:#fcfdff}
+      .vx-elxt-table tbody tr:last-child td{border-bottom:0!important}
+      .vx-elxt-table th,.vx-elxt-table td{overflow:hidden}
+      .vx-elxt-desc-cell{width:38%}
+      .vx-elxt-desc-preview{display:block;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .vx-elxt-description{color:#66788a;font-weight:450}
+      .vx-elxt-desc-btn{display:block;width:100%;text-align:left;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;overflow:hidden}
+      .vx-elxt-desc-full{white-space:pre-wrap;word-break:break-word;line-height:1.45;color:#33475b;padding:12px 14px;background:#f7f9fb}
+      .vx-elxt-case{white-space:nowrap}
+      .vx-elxt-task-row{cursor:pointer;background:#fff;transition:background .15s ease,box-shadow .15s ease}
+      .vx-elxt-task-row:hover{background:#f8fbff}
+      .vx-elxt-task-row:hover td:first-child{box-shadow:inset 3px 0 0 #2f80ed}
+      .vx-elxt-task-id{font-weight:850;color:#102a43;letter-spacing:.01em}
+      .vx-elxt-case{font-weight:800;color:#2f80ed}
+      .vx-elxt-subject{font-weight:750;color:#243b53}
+      .vx-elxt-created{color:#718096;font-size:11px;white-space:nowrap}
+      .vx-elxt-status{display:inline-flex;align-items:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:750;color:#7a5b12;background:#fffaf0;border:1px solid #f2e5c4;border-radius:999px;padding:5px 9px;font-size:10px}
+      .vx-elxt-status:before{content:'';width:6px;height:6px;border-radius:50%;background:#d69e2e;margin-right:6px;flex:0 0 auto}
+      .vx-elxt-ack{margin-top:10px;border:0;border-radius:6px;padding:7px 12px;background:#0c2340;color:#fff;font-size:11px;font-weight:800;cursor:pointer}
+      .vx-elxt-ack:disabled{opacity:.5;cursor:default}
+      .vx-elxt-new{display:inline-block;margin-left:7px;padding:3px 6px;border-radius:999px;background:#eaf3ff;color:#1769c2;font-size:8px;font-weight:900;letter-spacing:.04em}
+      .vx-elxt-toolbar{background:transparent;border:0;border-radius:0;padding:0;margin-bottom:12px!important}
+      .vx-elxt-toolbar label{display:flex;align-items:center;gap:7px}
+      .vx-elxt-toolbar select{background:#fff;color:#334e68;min-width:62px}
+      #vxElxTasksOrder{background:#fff;box-shadow:0 1px 2px rgba(12,35,64,.03)}
+      .vx-elxt-pager{background:#fff;border:1px solid #e3e9f0;border-radius:9px;padding:3px}
+      .vx-elxt-pager button{border:0!important;height:30px!important;padding:0 10px!important}
+      .vx-elxt-pager span{padding:0 6px;white-space:nowrap}
+      .vx-elxt-toolbar select,.vx-elxt-toolbar button{height:34px;border-color:#dce4ed!important;border-radius:8px!important}
+      .vx-elxt-pager button{background:#fff!important}
+      .vx-elxt-pager span{font-weight:700;color:#60728a}
+      .vx-elxt-desc-full{border-top:0!important;background:#f8fafc!important;padding:18px 22px 20px!important;box-shadow:inset 3px 0 0 #2f80ed}
+      .vx-elxt-detail-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:start}
+      .vx-elxt-detail-meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #e5ebf1}
+      .vx-elxt-detail-meta span{font-size:10px;color:#7b8da1}
+      .vx-elxt-detail-meta b{color:#42566d;font-weight:800}
+      .vx-elxt-detail-label{font-size:9px;font-weight:900;letter-spacing:.07em;color:#8a9aad;text-transform:uppercase;margin-bottom:4px}
+      .vx-elxt-detail-subject{font-size:13px;font-weight:800;color:#243b53;margin-bottom:8px}
+      .vx-elxt-detail-text{font-size:12px;line-height:1.55;color:#52667a}
+      .vx-elxt-searchbar{display:flex;align-items:center;gap:8px;flex:1;max-width:560px}
+      .vx-elxt-searchbox{position:relative;flex:1}
+      .vx-elxt-searchbox input{width:100%;height:36px;box-sizing:border-box;border:1px solid #dce4ed;border-radius:9px;background:#fff;padding:0 38px 0 34px;font-size:12px;color:#243b53;outline:none;transition:border-color .15s,box-shadow .15s}
+      .vx-elxt-searchbox input:focus{border-color:#7bb1ee;box-shadow:0 0 0 3px rgba(47,128,237,.09)}
+      .vx-elxt-search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#8496aa;font-size:14px;pointer-events:none}
+      .vx-elxt-search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);border:0!important;background:transparent!important;height:26px!important;padding:0 7px!important;color:#7b8da1!important;cursor:pointer}
+      .vx-elxt-search-btn{height:36px!important;background:#0c2340!important;color:#fff!important;border:1px solid #0c2340!important;padding:0 15px!important}
+      .vx-elxt-search-summary{font-size:11px;color:#60728a;font-weight:700;margin:0 0 10px 2px}
+      .vx-elxt-source{display:inline-flex;margin-left:6px;padding:2px 6px;border-radius:999px;background:#f0f4f8;color:#65788c;font-size:8px;font-weight:800}
     `;
     document.head.appendChild(s);
   }
@@ -80,12 +135,96 @@
   // sempre mostra a verdade completa ao lado.
   function fieldsFor(t){
     return {
-      svo:t.taskNumber||t.svoNumber||t.externalOrderNumber||t.what?.name||t.id||'—',
-      cliente:t.assignedTo?.assistanceName||t.clientName||t.customerName||'—',
-      produto:[t.subject||t.subjectToLabel,t.description].filter(Boolean).join(' — ')||'—',
+      tarefa:t.taskNumber||t.id||'—',
+      caso:t.what?.name||'—',
+      assunto:t.subject||t.subjectToLabel||'—',
+      descricao:t.description||'—',
+      status:t.statusToLabel||t.status||'—',
       tipo:t.recordType?.name||t.orderType||t.taskType||t.type||'—',
       criada:t.createdDate||t.createdAt||t.CreatedDate||null,
     };
+  }
+
+  function rpc(name,body={}){
+    return fetch(CFG.url+'/rest/v1/rpc/'+name,{method:'POST',headers:authHeaders(),body:JSON.stringify(body)})
+      .then(async r=>{if(!r.ok)throw new Error((await r.text())||('HTTP '+r.status));const t=await r.text();return t?JSON.parse(t):null;});
+  }
+  async function currentCompanyId(){
+    return rpc('current_company_id');
+  }
+  function userId(){
+    return state?.session?.user?.id||state?.profile?.id||null;
+  }
+  async function syncTracking(items){
+    if(!items?.length)return;
+    const companyId=await currentCompanyId();
+    const rows=items.map(t=>({
+      company_id:companyId,external_task_id:taskIdentity(t),task_number:t.taskNumber||null,
+      case_number:t.what?.name||null,subject:t.subject||t.subjectToLabel||null,
+      external_created_at:t.createdDate||null
+    })).filter(x=>x.external_task_id);
+    if(rows.length){
+      await api('electrolux_task_tracking?on_conflict=company_id,external_task_id',{
+        method:'POST',headers:{Prefer:'resolution=ignore-duplicates,return=minimal'},body:JSON.stringify(rows)
+      });
+    }
+    await refreshTracking();
+  }
+  async function refreshTracking(){
+    const companyId=await currentCompanyId();
+    const data=await api('electrolux_task_tracking?company_id=eq.'+encodeURIComponent(companyId)+'&select=id,external_task_id,acknowledged_at,acknowledged_by,first_seen_at');
+    st.tracking=Object.fromEntries((data||[]).map(x=>[x.external_task_id,x]));
+    return data||[];
+  }
+  async function markViewed(t){
+    const track=st.tracking[taskIdentity(t)],uid=userId(); if(!track||!uid)return;
+    const old=await api('electrolux_task_views?task_tracking_id=eq.'+encodeURIComponent(track.id)+'&user_id=eq.'+encodeURIComponent(uid)+'&select=id,view_count&limit=1');
+    if(old?.[0]){
+      await api('electrolux_task_views?id=eq.'+encodeURIComponent(old[0].id),{
+        method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({last_viewed_at:new Date().toISOString(),view_count:(old[0].view_count||0)+1})
+      });
+    }else{
+      await api('electrolux_task_views',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({task_tracking_id:track.id,user_id:uid})});
+    }
+  }
+  async function acknowledgeTask(t){
+    const track=st.tracking[taskIdentity(t)],uid=userId(); if(!track||!uid)return;
+    await api('electrolux_task_tracking?id=eq.'+encodeURIComponent(track.id)+'&acknowledged_at=is.null',{
+      method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({acknowledged_at:new Date().toISOString(),acknowledged_by:uid,updated_at:new Date().toISOString()})
+    });
+    await refreshTracking(); await refreshSharedBadge(); render();
+  }
+
+  function taskSearchText(t){
+    return [t?.id,t?.taskNumber,t?.what?.name,t?.subject,t?.subjectToLabel,t?.description,t?.status,t?.statusToLabel,t?.assignedTo?.assistanceName,t?.recordType?.name]
+      .filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
+  }
+  async function fetchAllFrom(fetcher){
+    const first=await fetcher({page:1,pageSize:100,orderBy:'CreatedDate',order:'desc'});
+    const records=Array.isArray(first)?first:(first?.records||first?.items||first?.data||first?.results||[]);
+    const totalPages=Array.isArray(first)?1:(first?.totalPages||Math.max(1,Math.ceil((first?.totalItems||records.length)/100)));
+    const all=[...records];
+    for(let page=2;page<=totalPages;page++){
+      const d=await fetcher({page,pageSize:100,orderBy:'CreatedDate',order:'desc'});
+      all.push(...(Array.isArray(d)?d:(d?.records||d?.items||d?.data||d?.results||[])));
+    }
+    return all;
+  }
+  async function runGlobalSearch(term){
+    const q=String(term||'').trim();
+    if(!q){st.search='';st.searchResults=null;st.searching=false;render();return;}
+    st.search=q;st.searching=true;st.error=null;render();
+    try{
+      const [pending,assistance]=await Promise.all([fetchAllFrom(fetchPendingTasks),fetchAllFrom(fetchAssistanceTasks)]);
+      const seen=new Set(),merged=[];
+      [...pending.map(t=>({...t,__source:'Pendente'})),...assistance.map(t=>({...t,__source:'Assistência'}))].forEach(t=>{
+        const key=taskIdentity(t);if(!key||seen.has(key))return;seen.add(key);merged.push(t);
+      });
+      const needle=q.toLocaleLowerCase('pt-BR');
+      st.searchResults=merged.filter(t=>taskSearchText(t).includes(needle));
+      await syncTracking(pending);
+    }catch(e){st.error=e.message||'Falha ao pesquisar tarefas.';st.searchResults=[];}
+    st.searching=false;render();
   }
 
   async function load(){
@@ -99,6 +238,7 @@
       // array puro quanto {items:[...]}/{data:[...]}/{results:[...]},
       // sem exigir um formato só.
       st.items=Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
+      if(st.tab==='pending')await syncTracking(st.items); else await refreshTracking();
       st.error=null;
     }catch(e){
       st.error=e.message||'Falha ao carregar tarefas.';
@@ -130,6 +270,10 @@
       </div>
       <div class="vx-elx-error" style="display:${st.error?'block':'none'}">${st.error?esc2(st.error)+' <button type="button" id="vxElxTasksRetry" class="vx-elxt-toggle" style="color:#a63131;text-decoration:underline">Tentar de novo</button>':''}</div>
       <div class="vx-elxt-toolbar">
+        <div class="vx-elxt-searchbar">
+          <div class="vx-elxt-searchbox"><span class="vx-elxt-search-icon">⌕</span><input id="vxElxTasksSearch" type="search" placeholder="Pesquisar em todas as tarefas: nº, caso, assunto ou conteúdo…" value="${esc2(st.search)}" autocomplete="off">${st.search?'<button type="button" class="vx-elxt-search-clear" id="vxElxTasksSearchClear" title="Limpar pesquisa">×</button>':''}</div>
+          <button type="button" class="vx-elxt-search-btn" id="vxElxTasksSearchBtn">${st.searching?'Pesquisando…':'Pesquisar'}</button>
+        </div>
         <label style="font-size:12px;color:#516375">Por página
           <select id="vxElxTasksPageSize">${[15,30,50,100].map(n=>`<option value="${n}" ${n===st.pageSize?'selected':''}>${n}</option>`).join('')}</select>
         </label>
@@ -149,6 +293,10 @@
       st.tab=b.dataset.tab;st.page=1;st.expanded=null;load();
     });
     document.getElementById('vxElxTasksRetry')?.addEventListener('click',load);
+    const searchInput=document.getElementById('vxElxTasksSearch');
+    document.getElementById('vxElxTasksSearchBtn').onclick=()=>runGlobalSearch(searchInput.value);
+    searchInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();runGlobalSearch(searchInput.value);}};
+    document.getElementById('vxElxTasksSearchClear')?.addEventListener('click',()=>runGlobalSearch(''));
     document.getElementById('vxElxTasksPageSize').onchange=e=>{st.pageSize=Number(e.target.value)||15;st.page=1;load();};
     document.getElementById('vxElxTasksOrder').onclick=()=>{st.order=st.order==='desc'?'asc':'desc';st.page=1;load();};
     document.getElementById('vxElxTasksPrev').onclick=()=>{if(st.page>1){st.page--;load();}};
@@ -158,18 +306,39 @@
 
   function wireBodyToggles(){
     document.querySelectorAll('#vxElxTasksBody [data-expand]').forEach(b=>{
-      b.onclick=()=>{
+      b.onclick=(e)=>{
+        e.preventDefault();e.stopPropagation();
         st.expanded=st.expanded===b.dataset.expand?null:b.dataset.expand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
       };
     });
+    document.querySelectorAll('#vxElxTasksBody [data-row-expand]').forEach(row=>{
+      row.onclick=()=>{
+        const source=st.searchResults!==null?st.searchResults:st.items; const item=source[Number(row.dataset.itemIndex)]; if(item)markViewed(item).catch(()=>{});
+        st.expanded=st.expanded===row.dataset.rowExpand?null:row.dataset.rowExpand;
+        document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
+        wireBodyToggles();
+      };
+    });
+    document.querySelectorAll('#vxElxTasksBody [data-ack-index]').forEach(b=>{
+      b.onclick=async(e)=>{
+        e.preventDefault();e.stopPropagation();
+        b.disabled=true;
+        try{const source=st.searchResults!==null?st.searchResults:st.items;await acknowledgeTask(source[Number(b.dataset.ackIndex)]);}
+        catch(err){b.disabled=false;alert('Não foi possível marcar como ciente: '+(err.message||err));}
+      };
+    });
   }
 
   function bodyHtml(){
+    if(st.searching)return '<div class="vx-elx-empty-board">Pesquisando em todas as tarefas…</div>';
     if(st.loading)return '<div class="vx-elx-empty-board">Carregando tarefas…</div>';
     if(st.error)return '<div class="vx-elx-empty-board">Não foi possível carregar. Use "Tentar de novo" acima.</div>';
-    if(!st.items.length){
+    const displayItems=st.searchResults!==null?st.searchResults:st.items;
+    if(!displayItems.length){
+      if(st.searchResults!==null)return '<div class="vx-elx-empty-board">Nenhuma tarefa encontrada para “'+esc2(st.search)+'”.</div>';
+
       // Achado do usuário (2026-09-29): a chamada parou de dar erro (proxy
       // já publicado), mas continuou sem mostrar nenhuma tarefa -- sem
       // saber ainda se é porque não há tarefa mesmo ou porque a resposta
@@ -183,20 +352,23 @@
       </div>`:'';
       return `<div class="vx-elx-empty-board">Nenhuma tarefa encontrada nesta situação.</div>${rawInfo}`;
     }
-    return `<div class="desktop-table-wrap"><table class="desktop-table"><thead><tr>
-      <th>SVO</th><th>CLIENTE</th><th>PRODUTO / DEFEITO</th><th>TIPO</th><th>CRIADA EM</th><th></th>
-      </tr></thead><tbody>${st.items.map((t,i)=>{
+    const searchSummary=st.searchResults!==null?'<div class="vx-elxt-search-summary">'+displayItems.length+' resultado'+(displayItems.length===1?'':'s')+' em todas as tarefas para “'+esc2(st.search)+'”</div>':'';
+    return searchSummary+`<div class="desktop-table-wrap vx-elxt-table-wrap"><table class="desktop-table vx-elxt-table"><thead><tr>
+      <th style="width:12%">TAREFA</th><th style="width:9%">CASO</th><th style="width:17%">ASSUNTO</th><th class="vx-elxt-desc-cell">DESCRIÇÃO</th><th style="width:13%">CRIADA EM</th><th style="width:10%">STATUS</th>
+      </tr></thead><tbody>${displayItems.map((t,i)=>{
         const f=fieldsFor(t);
         const id='row'+i;
         const open=st.expanded===id;
-        return `<tr>
-          <td><b>${esc2(f.svo)}</b></td>
-          <td>${esc2(f.cliente)}</td>
-          <td>${esc2(f.produto)}</td>
-          <td>${esc2(f.tipo)}</td>
-          <td>${esc2(dtFull(f.criada))}</td>
-          <td><button type="button" class="vx-elxt-toggle" data-expand="${id}">${open?'Ocultar JSON':'Ver JSON'}</button></td>
-        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="6"><div class="vx-elxt-json-wrap"><pre class="vx-elxt-json">${esc2(JSON.stringify(t,null,2))}</pre></div></td></tr>`:''}`;
+        const track=st.tracking[taskIdentity(t)];
+        const isNew=!!track&&!track.acknowledged_at;
+        return `<tr class="vx-elxt-task-row" data-row-expand="${id}" data-item-index="${i}" title="Clique para ${open?'recolher':'ver os detalhes completos'}">
+          <td><span class="vx-elxt-task-id">${esc2(f.tarefa)}</span>${t.__source?`<span class="vx-elxt-source">${esc2(t.__source)}</span>`:''}${isNew?'<span class="vx-elxt-new">NOVA</span>':''}</td>
+          <td><span class="vx-elxt-case">${esc2(f.caso)}</span></td>
+          <td><span class="vx-elxt-desc-preview vx-elxt-subject" title="${esc2(f.assunto)}">${esc2(f.assunto)}</span></td>
+          <td class="vx-elxt-desc-cell"><button type="button" class="vx-elxt-desc-btn" data-expand="${id}" title="Clique para ${open?'recolher':'ver a descrição completa'}"><span class="vx-elxt-desc-preview vx-elxt-description">${esc2(f.descricao)}</span></button></td>
+          <td><span class="vx-elxt-created">${esc2(dtFull(f.criada))}</span></td>
+          <td><span class="vx-elxt-status">${esc2(f.status)}</span></td>
+        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="6"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div></div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
       }).join('')}</tbody></table></div>`;
   }
 
@@ -211,7 +383,7 @@
   window.vxOpenElectroluxTasks=function(){
     window.vxElxStopPoll?.();
     installStyle();
-    st.tab='pending';st.page=1;st.pageSize=15;st.order='desc';st.expanded=null;
+    st.tab='pending';st.page=1;st.pageSize=15;st.order='desc';st.expanded=null;st.search='';st.searchResults=null;
     load();
     markSeenNow();
   };
@@ -223,57 +395,43 @@
      campo, só de ela ter mudado desde a última vez que o usuário abriu a
      tela. Guardado em localStorage (por navegador/dispositivo, não por
      empresa -- suficiente pro aviso visual, sem exigir uma tabela nova). */
-  const SEEN_KEY='vx_elx_tasks_seen_sig';
-  let hasNew=false;
-
-  async function latestPendingSig(){
-    const data=await fetchPendingTasks({page:1,pageSize:1,orderBy:'CreatedDate',order:'desc'});
-    const items=Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
-    return items.length?JSON.stringify(items[0]):'';
+  let newCount=0;
+  function taskIdentity(t){return String(t?.id||t?.taskNumber||t?.createdDate||'');}
+  async function latestPendingTasks(){
+    const data=await fetchPendingTasks({page:1,pageSize:15,orderBy:'CreatedDate',order:'desc'});
+    return Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
   }
-  async function markSeenNow(){
+  let badgeCheckRunning=false;
+  async function refreshSharedBadge(){
+    if(badgeCheckRunning||document.visibilityState==='hidden')return;
+    badgeCheckRunning=true;
     try{
-      const sig=await latestPendingSig();
-      localStorage.setItem(SEEN_KEY,sig);
-    }catch(_e){/* sem rede/credencial ainda -- próxima checagem tenta de novo */}
-    hasNew=false;
-    paintBadge();
+      // Fora da tela de tarefas, sincroniza apenas as 15 mais recentes.
+      // Evita buscar/gravar 100 registros a cada checagem do badge.
+      const items=await latestPendingTasks();
+      await syncTracking(items);
+      newCount=Object.values(st.tracking).filter(x=>!x.acknowledged_at).length;
+      paintBadge();
+    }catch(_e){/* mantém badge anterior em falha de rede */}
+    finally{badgeCheckRunning=false;}
   }
-  async function checkForNew(){
-    let sig;
-    try{ sig=await latestPendingSig(); }
-    catch(_e){ return; } // falha de rede não deve acender nem apagar o aviso
-    let seen=null;
-    try{ seen=localStorage.getItem(SEEN_KEY); }catch(_e){/* ignore */}
-    if(seen===null){
-      // primeira vez que este navegador roda a checagem -- só grava a
-      // referência, nunca acende o aviso do nada no primeiro carregamento.
-      try{localStorage.setItem(SEEN_KEY,sig);}catch(_e){/* ignore */}
-      hasNew=false;
-    }else{
-      hasNew=!!sig&&sig!==seen;
-    }
-    paintBadge();
-  }
+  async function markSeenNow(){await refreshSharedBadge();}
+  async function checkForNew(){await refreshSharedBadge();}
   function paintBadge(){
-    const btn=document.getElementById('vxElxTasksBtn');
-    if(!btn)return;
-    let dot=btn.querySelector('.vx-elxt-badge');
-    if(hasNew){
-      if(!dot){
-        installStyle();
-        btn.style.position='relative';
-        dot=document.createElement('span');
-        dot.className='vx-elxt-badge';
-        btn.appendChild(dot);
-      }
-    }else{
-      dot?.remove();
-    }
+    const btn=document.getElementById('vxElxTasksBtn');if(!btn)return;
+    let badge=btn.querySelector('.vx-elxt-badge');
+    if(newCount>0){
+      installStyle();
+      if(!badge){badge=document.createElement('span');badge.className='vx-elxt-badge';btn.appendChild(badge);}
+      badge.textContent=newCount>99?'99+':String(newCount);
+      badge.title=newCount===1?'1 tarefa nova aguardando ciência':newCount+' tarefas novas aguardando ciência';
+    }else badge?.remove();
   }
 
-  new MutationObserver(()=>paintBadge()).observe(document.body,{childList:true,subtree:true});
+  // Não observa o document.body: o VoxAssist altera o DOM com frequência e
+  // isso fazia o callback do badge rodar centenas/milhares de vezes sem necessidade.
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkForNew();});
-  setTimeout(checkForNew,4000);
-  setInterval(checkForNew,2*60*1000);
+  window.addEventListener('focus',()=>paintBadge(),{passive:true});
+  setTimeout(checkForNew,8000);
+  setInterval(checkForNew,5*60*1000);
 })();
