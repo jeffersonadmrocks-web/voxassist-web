@@ -526,6 +526,20 @@
       }
       return;
     }
+    // P0 de segurança WhatsApp (2026-09-29, investigação de banimento):
+    // connect/reconnect/disconnect nunca desabilitavam o botão antes do
+    // await (só "delete" fazia isso) -- um duplo clique real (ou um
+    // clique repetido enquanto o usuário espera a resposta) disparava
+    // DOIS connect/reconnect concorrentes pro MESMO connectionId. Do lado
+    // do VoxAssist isso já não bloqueia nada sozinho (o gate de
+    // pausa/conflito não cobre corrida entre dois cliques legítimos do
+    // mesmo GESTOR) -- se o gateway (Railway) não for idempotente pra
+    // connect concorrente na mesma sessão, é exatamente o cenário que a
+    // proteção "uma única instância ativa por número" deveria impedir.
+    // Mesmo padrão de "delete" acima: desabilita ANTES do await, sempre
+    // reabilitado no catch (o try recarrega a lista inteira, que já
+    // reconstrói o botão do zero).
+    if(btn)btn.disabled=true;
     try{
       if(action==='connect'||action==='reconnect'){
         await gatewayAction(action,{connectionId});
@@ -537,6 +551,7 @@
       await loadConexoesData();
       renderConexoesScreen();
     }catch(err){
+      if(btn)btn.disabled=false;
       // Achado real (2026-09-28): "Reconectar" falhava com
       // "Conexão não encontrada" e o card ficava travado na tela --
       // a function rejeita (posse: company_id da conexão não bate mais
