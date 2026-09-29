@@ -28,11 +28,15 @@ const ALLOWED_GET_PATTERNS: RegExp[] = [
   // 2026-09-29: tela "Tarefas" do Electrolux (electrolux-tasks-v0929.js)
   // -- query string opcional (page/pageSize/orderBy/order), sempre
   // codificada pelo próprio getJson antes de chegar aqui.
-  /^\/api\/dashboard\/tasks\/(pending|assistance)(\?[A-Za-z0-9_=&%.-]*)?$/,
+  /^\/api\/dashboard\/tasks(\/(pending|assistance))?(\?[A-Za-z0-9_=&%.-]*)?$/,
 ];
 const ALLOWED_POST_PATTERNS: RegExp[] = [
   /^\/api\/admin\/sync-now$/,
+  // Responder tarefa da Electrolux -- corpo { answer } validado abaixo.
+  /^\/api\/dashboard\/tasks\/[A-Za-z0-9]{15,18}\/reply$/,
 ];
+const TASK_REPLY_PATTERN = /^\/api\/dashboard\/tasks\/[A-Za-z0-9]{15,18}\/reply$/;
+const TASK_ANSWER_MAX_LENGTH = 4000;
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
@@ -95,6 +99,18 @@ Deno.serve(async (req) => {
     // Content-Type. Acessando o painel Electrolux direto (sessão do
     // navegador) funciona -- só a chamada server-to-server via proxy
     // que ia sem esses cabeçalhos.
+    // Único POST que repassa corpo do cliente: a resposta da tarefa. Só o campo
+    // "answer" (texto, até 4000 chars) passa -- nada mais do navegador vai adiante.
+    let postBody = "{}";
+    if (req.method === "POST" && TASK_REPLY_PATTERN.test(path)) {
+      const payload = await req.json().catch(() => null);
+      const answer = typeof payload?.answer === "string" ? payload.answer.trim() : "";
+      if (!answer || answer.length > TASK_ANSWER_MAX_LENGTH) {
+        return respond({ ok: false, error: "resposta_invalida" }, 400);
+      }
+      postBody = JSON.stringify({ answer });
+    }
+
     const basicAuth = "Basic " + btoa(`${credential.username}:${credential.password}`);
     const upstream = await fetch(`${credential.apiUrl}${path}`, {
       method: req.method,
@@ -102,7 +118,7 @@ Deno.serve(async (req) => {
         Authorization: basicAuth,
         ...(req.method === "POST" ? { "Content-Type": "application/json" } : {}),
       },
-      ...(req.method === "POST" ? { body: "{}" } : {}),
+      ...(req.method === "POST" ? { body: postBody } : {}),
     }).catch((e) => {
       throw new Error("upstream_fetch_failed: " + (e as Error).message);
     });
