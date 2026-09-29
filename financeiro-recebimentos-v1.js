@@ -83,6 +83,18 @@
   const RANGE_KEY = 'vx_fin_last_range';
   function loadLastRange() { try { return localStorage.getItem(RANGE_KEY) || 'mes'; } catch (e) { return 'mes'; } }
   function saveLastRange(r) { try { localStorage.setItem(RANGE_KEY, r); } catch (e) { /* per-viewer conveniência apenas */ } }
+
+  // Achado do usuário (2026-09-29): a lista ficava poluída com linhas
+  // riscadas (ESTORNADO) e suas transações de estorno (ESTORNO) --
+  // dinheiro que já deixou de existir financeiramente (as duas se
+  // cancelam exatamente nos totais, ver computeTotals). Ocultas por
+  // padrão, com um botão pra reexibir quando precisar conferir/auditar.
+  // PARCIAL_ESTORNADO fica de fora dessa ocultação -- ainda representa
+  // dinheiro de verdade (o restante não estornado), nunca foi riscada.
+  const SHOW_REVERSED_KEY = 'vx_fin_show_reversed';
+  function loadShowReversed() { try { return localStorage.getItem(SHOW_REVERSED_KEY) === '1'; } catch (e) { return false; } }
+  function saveShowReversed(v) { try { localStorage.setItem(SHOW_REVERSED_KEY, v ? '1' : '0'); } catch (e) { /* per-viewer conveniência apenas */ } }
+  const REVERSED_SITUACOES = ['ESTORNADO', 'ESTORNO'];
   const hhmm = (v) => (v ? new Date(v).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—');
   const dtFull = (v) => (v ? new Date(v).toLocaleString('pt-BR') : '—');
   const isoDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -151,7 +163,7 @@
 
   // Estado só desta tela (filtro/busca) -- nunca em window.state, que é o
   // contrato global do app (ver PWA-0.1).
-  let ui = { range: loadLastRange(), from: null, to: null, q: '', userId: '', method: '', situacao: '', sortBy: 'horario', rows: [], methods: [], users: [], companyName: 'EMPRESA', canReverse: false };
+  let ui = { range: loadLastRange(), from: null, to: null, q: '', userId: '', method: '', situacao: '', sortBy: 'horario', showReversed: loadShowReversed(), rows: [], methods: [], users: [], companyName: 'EMPRESA', canReverse: false };
 
   async function loadPaymentMethods() {
     const rows = await api(`payment_methods?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=sort_order`).catch(() => []);
@@ -319,6 +331,13 @@
       <div class="vx-fin-count">${t.count} lançamento${t.count === 1 ? '' : 's'}</div>`;
   }
 
+  // Nunca aplica "mostrar estornos" aqui -- é a base de TODOS os totais
+  // (período e por dia). O botão de ocultar estornos é só de exibição da
+  // lista de linhas (dayBlockHtml/rowVisible abaixo); se um ESTORNO caiu
+  // num dia diferente do lançamento original (ex.: recebido no mês
+  // passado, estornado agora), o total deste período PRECISA continuar
+  // refletindo essa saída de caixa real, nunca sumir por causa de uma
+  // preferência de exibição.
   function filteredRows() {
     const q = up(ui.q);
     return ui.rows.filter((p) => matchesSearch(p, q)
@@ -327,20 +346,37 @@
       && (!ui.situacao || situacaoOf(p) === ui.situacao));
   }
 
+  // Só pra decidir quais linhas GANHAM UMA <tr> na lista -- nunca entra
+  // no cálculo de totais (ver comentário acima). Se o usuário escolheu
+  // explicitamente Situação=Estornado/Estorno no filtro, isso vale mesmo
+  // com "mostrar estornos" desligado.
+  function rowVisible(p) {
+    const situacao = situacaoOf(p);
+    if (!REVERSED_SITUACOES.includes(situacao)) return true;
+    return ui.showReversed || ui.situacao === situacao;
+  }
+
   // Monta o corpo da tabela: um bloco por DIA (cabeçalho + linhas + fechamento
   // do dia), na ordem em que os dias aparecem (sempre crescente -- ver
   // buildDayGroups). Dentro de cada dia, ui.sortBy decide se as linhas ficam
   // num fluxo cronológico único ou subagrupadas por forma/OS -- em
   // qualquer caso, rowHtml(p) é reaproveitada sem alteração (menu ⋮,
   // permissão de estorno, riscado de estornado etc. continuam intactos).
+  // dayTotalHtml sempre soma TODAS as linhas do dia (day.rows, cru) --
+  // só a lista visível (visibleDayRows) respeita o toggle de estornos.
   function dayBlockHtml(day) {
     const full = new Date(day.rows[0].paid_at).toLocaleDateString('pt-BR');
     const short = full.slice(0, 5);
-    const ordered = orderWithinDay(day.rows, ui.sortBy);
+    const visibleDayRows = day.rows.filter(rowVisible);
+    const hiddenCount = day.rows.length - visibleDayRows.length;
+    const ordered = orderWithinDay(visibleDayRows, ui.sortBy);
     const rowsHtml = ordered.kind === 'flat'
       ? ordered.rows.map(rowHtml).join('')
       : ordered.groups.map((g) => `<tr class="vx-fin-subgroup-row"><td colspan="9">${esc(g.label)}</td></tr>${g.rows.map(rowHtml).join('')}`).join('');
-    return `<tr class="vx-fin-day-header-row"><td colspan="9">${esc(full)}</td></tr>${rowsHtml}${dayTotalHtml(day.rows, short)}`;
+    const hiddenNote = hiddenCount
+      ? `<tr class="vx-fin-hidden-note-row"><td colspan="9">🙈 ${hiddenCount} estorno${hiddenCount === 1 ? '' : 's'} oculto${hiddenCount === 1 ? '' : 's'} neste dia — use "MOSTRAR ESTORNOS" pra conferir</td></tr>`
+      : '';
+    return `<tr class="vx-fin-day-header-row"><td colspan="9">${esc(full)}</td></tr>${rowsHtml}${hiddenNote}${dayTotalHtml(day.rows, short)}`;
   }
 
   function repaint() {
@@ -806,6 +842,7 @@
           <option value="forma" ${ui.sortBy === 'forma' ? 'selected' : ''}>Ordem: Forma de pagamento</option>
           <option value="os" ${ui.sortBy === 'os' ? 'selected' : ''}>Ordem: OS</option>
         </select>
+        <button type="button" class="vx-fin-toggle-btn ${ui.showReversed ? 'active' : ''}" id="vxFinToggleReversed">${ui.showReversed ? '🙈 OCULTAR ESTORNOS' : '👁 MOSTRAR ESTORNOS'}</button>
       </div>
       <div class="vx-fin-table-wrap"><table class="vx-fin-table"><thead><tr><th>Hora</th><th>OS</th><th>Cliente</th><th>Descrição</th><th>Forma</th><th>Valor</th><th>Usuário</th><th>Situação</th><th></th></tr></thead><tbody id="vxFinRows"></tbody></table></div>
       <div class="vx-fin-totals-box"><h3>RECEBIMENTOS DO PERÍODO</h3><div id="vxFinTotals"></div></div>
@@ -824,6 +861,13 @@
     $('#vxFinFilterMethod').onchange = (e) => { ui.method = e.target.value; repaint(); };
     $('#vxFinFilterSituacao').onchange = (e) => { ui.situacao = e.target.value; repaint(); };
     $('#vxFinSortBy').onchange = (e) => { ui.sortBy = e.target.value; repaint(); };
+    $('#vxFinToggleReversed').onclick = (e) => {
+      ui.showReversed = !ui.showReversed;
+      saveShowReversed(ui.showReversed);
+      e.currentTarget.classList.toggle('active', ui.showReversed);
+      e.currentTarget.textContent = ui.showReversed ? '🙈 OCULTAR ESTORNOS' : '👁 MOSTRAR ESTORNOS';
+      repaint();
+    };
     $('#vxFinNewAvulso').onclick = openAvulsoModal;
 
     await reload();
