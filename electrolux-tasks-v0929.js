@@ -155,11 +155,11 @@
       .vx-elxt-reply textarea:focus{border-color:#7bb1ee;box-shadow:0 0 0 3px rgba(47,128,237,.09)}
       .vx-elxt-reply-msg{font-size:11px;margin-top:6px;color:#a63131}
       .vx-elxt-answers{margin-top:14px;padding-top:12px;border-top:1px solid #e5ebf1}
-      .vx-elxt-answers-empty{font-size:11px;color:#7b8da1}
-      .vx-elxt-answer{background:#fff;border:1px solid #e3e9f0;border-radius:8px;padding:9px 12px;margin-top:8px}
+      .vx-elxt-answers-empty{font-size:12px;line-height:1.55;color:#7b8da1}
+      .vx-elxt-answer{margin:0}
       .vx-elxt-answer-meta{display:flex;gap:10px;align-items:baseline;font-size:10px;color:#7b8da1;margin-bottom:4px}
       .vx-elxt-answer-meta b{color:#42566d}
-      .vx-elxt-answer-text{font-size:12px;line-height:1.5;color:#33475b;white-space:pre-wrap;word-break:break-word}
+      .vx-elxt-answer-text{font-size:12px;line-height:1.55;color:#52667a;white-space:pre-wrap;word-break:break-word}
       .vx-elxt-answer-text code{font-size:11px}
       .vx-elxt-ack{margin-top:10px;border:0;border-radius:6px;padding:7px 12px;background:#0c2340;color:#fff;font-size:11px;font-weight:800;cursor:pointer}
       .vx-elxt-ack:disabled{opacity:.5;cursor:default}
