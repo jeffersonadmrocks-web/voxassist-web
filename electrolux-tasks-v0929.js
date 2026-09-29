@@ -61,6 +61,45 @@
   }
   const REPLY_MAX=4000;
 
+  /* ---------- Resposta já registrada na tarefa ----------
+     GET /api/dashboard/tasks/{id}/answers -> { answer: string|null } (campo `answer` do detalhe
+     da tarefa na Electrolux). Carrega sob demanda ao expandir e fica em cache até nova resposta. */
+  const answersCache={}; // taskId -> {loading,error,answer}
+  async function loadAnswers(task){
+    const id=task?.id;if(!id)return;
+    answersCache[id]={loading:true,error:null,answer:null};
+    refreshAnswersBox(task);
+    try{
+      const data=await getJson('/api/dashboard/tasks/'+encodeURIComponent(id)+'/answers');
+      answersCache[id]={loading:false,error:null,answer:data?.answer||null};
+    }catch(e){answersCache[id]={loading:false,error:e.message||'Falha ao carregar a resposta.',answer:null};}
+    // Re-renderiza o corpo inteiro: o campo "Responder tarefa" depende do resultado.
+    const body=document.getElementById('vxElxTasksBody');
+    if(body&&st.expanded){body.innerHTML=bodyHtml();wireBodyToggles();}
+  }
+  // Só libera responder depois de confirmar que a tarefa ainda não tem resposta
+  // (carregando ou erro na consulta = escondido, para não sobrescrever uma existente).
+  function replyOpen(t){
+    const c=answersCache[t?.id];
+    return canReply(t)&&!!c&&!c.loading&&!c.error&&!c.answer;
+  }
+  // Seção "Resposta" só existe quando há resposta (ou erro ao consultar); sem resposta, só o "Responder tarefa".
+  function answerShown(t){
+    const c=answersCache[t?.id];
+    return !!c&&!c.loading&&(!!c.answer||!!c.error);
+  }
+  function answersHtml(task){
+    const c=answersCache[task?.id];
+    if(!c||c.loading)return '<div class="vx-elxt-answers-empty">Carregando respostas…</div>';
+    if(c.error)return `<div class="vx-elxt-answers-empty" style="color:#a63131">Não foi possível carregar a resposta (${esc2(c.error)}). Feche e reabra a tarefa para tentar de novo.</div>`;
+    if(!c.answer)return '<div class="vx-elxt-answers-empty">Nenhuma resposta registrada nesta tarefa.</div>';
+    return `<div class="vx-elxt-answer"><div class="vx-elxt-answer-text">${esc2(c.answer)}</div></div>`;
+  }
+  function refreshAnswersBox(task){
+    const box=document.getElementById('vxElxAnswers'+task.id);
+    if(box)box.innerHTML=answersHtml(task);
+  }
+
   const TABS=[
     {key:'received',label:'Recebidas',fetch:fetchReceivedTasks,desc:'Tasks do tipo Serviço Autorizado atribuídas à nossa assistência (todas ou por status).'},
     {key:'sent',label:'Enviadas',fetch:fetchAssistanceTasks,desc:'Tasks criadas por e atribuídas à nossa assistência.'},
@@ -120,6 +159,13 @@
       .vx-elxt-reply textarea{width:100%;box-sizing:border-box;min-height:74px;resize:vertical;border:1px solid #dce4ed;border-radius:8px;padding:9px 11px;font:inherit;font-size:12px;color:#243b53;background:#fff;outline:none}
       .vx-elxt-reply textarea:focus{border-color:#7bb1ee;box-shadow:0 0 0 3px rgba(47,128,237,.09)}
       .vx-elxt-reply-msg{font-size:11px;margin-top:6px;color:#a63131}
+      .vx-elxt-answers{margin-top:14px;padding-top:12px;border-top:1px solid #e5ebf1}
+      .vx-elxt-answers-empty{font-size:12px;line-height:1.55;color:#7b8da1}
+      .vx-elxt-answer{margin:0}
+      .vx-elxt-answer-meta{display:flex;gap:10px;align-items:baseline;font-size:10px;color:#7b8da1;margin-bottom:4px}
+      .vx-elxt-answer-meta b{color:#42566d}
+      .vx-elxt-answer-text{font-size:12px;line-height:1.55;color:#52667a;white-space:pre-wrap;word-break:break-word}
+      .vx-elxt-answer-text code{font-size:11px}
       .vx-elxt-ack{margin-top:10px;border:0;border-radius:6px;padding:7px 12px;background:#0c2340;color:#fff;font-size:11px;font-weight:800;cursor:pointer}
       .vx-elxt-ack:disabled{opacity:.5;cursor:default}
       .vx-elxt-new{display:inline-block;margin-left:7px;padding:3px 6px;border-radius:999px;background:#eaf3ff;color:#1769c2;font-size:8px;font-weight:900;letter-spacing:.04em}
@@ -271,7 +317,25 @@
     try{
       const params={page:st.page,pageSize:st.pageSize,orderBy:'CreatedDate',order:st.order};
       if(st.tab==='received'&&st.status)params.status=st.status;
-      const data=await tabDef.fetch(params);
+      let data;
+      if(st.tab==='received'&&!st.status&&!st.showDone){
+        // A API filtra por um status só e não tem "excluir": busca páginas do tamanho escolhido,
+        // descarta as concluídas e só pede a próxima página da API quando ainda faltam itens para
+        // preencher a página atual (+1, para saber se existe "Próxima"). Páginas já buscadas
+        // ficam em cache (st.doneCache), então voltar é instantâneo.
+        const key=st.order+'|'+st.pageSize;
+        if(!st.doneCache||st.doneCache.key!==key)st.doneCache={key,nextRaw:1,buffer:[],exhausted:false};
+        const c=st.doneCache,need=st.page*st.pageSize+1;
+        while(c.buffer.length<need&&!c.exhausted){
+          const d=await fetchReceivedTasks({page:c.nextRaw,pageSize:st.pageSize,orderBy:'CreatedDate',order:st.order});
+          const rows=Array.isArray(d)?d:(d?.records||d?.items||d?.data||d?.results||[]);
+          c.buffer.push(...rows.filter(t=>!isDone(fieldsFor(t).status)));
+          const totalPages=Array.isArray(d)?1:d?.totalPages;
+          c.exhausted=rows.length<st.pageSize||(totalPages!=null&&c.nextRaw>=totalPages);
+          c.nextRaw++;
+        }
+        data={records:c.buffer.slice((st.page-1)*st.pageSize,st.page*st.pageSize),__hasMore:c.buffer.length>st.page*st.pageSize};
+      }else data=await tabDef.fetch(params);
       st.raw=data;
       // Formato de paginação também não documentado -- aceita tanto um
       // array puro quanto {items:[...]}/{data:[...]}/{results:[...]},
@@ -300,7 +364,7 @@
     const app=document.querySelector('#app');if(!app)return;
     const tabDef=TABS.find(x=>x.key===st.tab);
     const total=totalHint();
-    const hasNext=total!=null?(st.page*st.pageSize)<total:st.items.length>=st.pageSize;
+    const hasNext=st.raw?.__hasMore!==undefined?st.raw.__hasMore:total!=null?(st.page*st.pageSize)<total:st.items.length>=st.pageSize;
     app.innerHTML=`<div class="vx-elx-page">
       <div class="vx-elx-board-head">
         <div><button type="button" class="vx-elx-back" id="vxElxTasksBack">← VOLTAR</button><h2>Tarefas Electrolux</h2></div>
@@ -317,6 +381,9 @@
         </div>
         ${st.tab==='received'?`<label style="font-size:12px;color:#516375">Status
           <select id="vxElxTasksStatus"><option value="">Todos</option>${STATUS_OPTIONS.map(o=>`<option value="${esc2(o)}" ${o===st.status?'selected':''}>${esc2(o)}</option>`).join('')}</select>
+        </label>
+        <label style="font-size:12px;color:#516375;display:inline-flex;align-items:center;gap:5px;${st.status?'opacity:.5':''}" title="${st.status?'Já filtrado por um status específico':'Mostrar também as tarefas concluídas'}">
+          <input type="checkbox" id="vxElxTasksShowDone" ${st.showDone||st.status?'checked':''} ${st.status?'disabled':''}> Mostrar concluídas
         </label>`:''}
         <label style="font-size:12px;color:#516375">Por página
           <select id="vxElxTasksPageSize">${[15,30,50,100].map(n=>`<option value="${n}" ${n===st.pageSize?'selected':''}>${n}</option>`).join('')}</select>
@@ -342,6 +409,7 @@
     searchInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();runGlobalSearch(searchInput.value);}};
     document.getElementById('vxElxTasksSearchClear')?.addEventListener('click',()=>runGlobalSearch(''));
     document.getElementById('vxElxTasksStatus')?.addEventListener('change',e=>{st.status=e.target.value;st.page=1;st.expanded=null;load();});
+    document.getElementById('vxElxTasksShowDone')?.addEventListener('change',e=>{st.showDone=e.target.checked;st.page=1;st.expanded=null;load();});
     document.getElementById('vxElxTasksPageSize').onchange=e=>{st.pageSize=Number(e.target.value)||15;st.page=1;load();};
     document.getElementById('vxElxTasksOrder').onclick=()=>{st.order=st.order==='desc'?'asc':'desc';st.page=1;load();};
     document.getElementById('vxElxTasksPrev').onclick=()=>{if(st.page>1){st.page--;load();}};
@@ -356,6 +424,7 @@
         st.expanded=st.expanded===b.dataset.expand?null:b.dataset.expand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
+        if(st.expanded){const src=st.searchResults!==null?st.searchResults:st.items,it=src[Number(st.expanded.replace('row',''))];if(it&&(!answersCache[it.id]||answersCache[it.id].error))loadAnswers(it);}
       };
     });
     document.querySelectorAll('#vxElxTasksBody [data-row-expand]').forEach(row=>{
@@ -364,6 +433,7 @@
         st.expanded=st.expanded===row.dataset.rowExpand?null:row.dataset.rowExpand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
+        if(st.expanded&&item&&(!answersCache[item.id]||answersCache[item.id].error))loadAnswers(item);
       };
     });
     document.querySelectorAll('#vxElxTasksBody [data-reply-index]').forEach(b=>{
@@ -382,8 +452,16 @@
         try{
           await replyToTask(task.id,answer);
           if(typeof toast==='function')toast('Resposta enviada à Electrolux.');
-          st.expanded=null;
-          if(st.searchResults!==null)render(); else load();
+          delete answersCache[task.id];
+          // Recarrega a lista (o status pode ter mudado) e reabre a mesma tarefa pelo id,
+          // já que o índice da linha muda -- ou fecha, se ela saiu do filtro atual.
+          st.doneCache=null;
+          if(st.searchResults!==null)await runGlobalSearch(st.search); else await load();
+          const src=st.searchResults!==null?st.searchResults:st.items;
+          const idx=src.findIndex(x=>x.id===task.id);
+          st.expanded=idx>=0?'row'+idx:null;
+          render();
+          if(idx>=0)loadAnswers(src[idx]);
         }catch(err){
           b.disabled=false;box.disabled=false;b.textContent='Enviar resposta';
           if(msg)msg.textContent='Não foi possível enviar: '+(err.message||err);
@@ -441,7 +519,7 @@
           <td><span class="vx-elxt-created">${esc2(dtFull(f.criada))}</span></td>
           <td><span class="vx-elxt-created">${esc2(dtDue(f.vencimento))}</span></td>
           <td><span class="vx-elxt-status${isDone(f.status)?' done':''}">${esc2(f.status)}</span></td>
-        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="7"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Vencimento <b>${esc2(dtDue(f.vencimento))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div>${canReply(t)?`<div class="vx-elxt-reply"><div class="vx-elxt-detail-label">Responder tarefa</div><textarea id="vxElxReply${i}" maxlength="${REPLY_MAX}" placeholder="Escreva a resposta que será enviada à Electrolux…"></textarea><div class="vx-elxt-reply-msg" id="vxElxReplyMsg${i}"></div><button type="button" class="vx-elxt-ack" data-reply-index="${i}">Enviar resposta</button></div>`:''}</div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
+        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="7"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Vencimento <b>${esc2(dtDue(f.vencimento))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div>${answerShown(t)?`<div class="vx-elxt-answers"><div class="vx-elxt-detail-label">Resposta</div><div id="vxElxAnswers${esc2(t.id)}">${answersHtml(t)}</div></div>`:''}${replyOpen(t)?`<div class="vx-elxt-reply"><div class="vx-elxt-detail-label">Responder tarefa</div><textarea id="vxElxReply${i}" maxlength="${REPLY_MAX}" placeholder="Escreva a resposta que será enviada à Electrolux…"></textarea><div class="vx-elxt-reply-msg" id="vxElxReplyMsg${i}"></div><button type="button" class="vx-elxt-ack" data-reply-index="${i}">Enviar resposta</button></div>`:''}</div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
       }).join('')}</tbody></table></div>`;
   }
 
@@ -456,7 +534,7 @@
   window.vxOpenElectroluxTasks=function(){
     window.vxElxStopPoll?.();
     installStyle();
-    st.tab='received';st.status='';st.page=1;st.pageSize=15;st.order='desc';st.expanded=null;st.search='';st.searchResults=null;
+    st.tab='received';st.status='';st.showDone=false;st.page=1;st.pageSize=15;st.order='desc';st.expanded=null;st.search='';st.searchResults=null;
     load();
     markSeenNow();
   };

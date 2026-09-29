@@ -29,6 +29,7 @@ const ALLOWED_GET_PATTERNS: RegExp[] = [
   // -- query string opcional (page/pageSize/orderBy/order), sempre
   // codificada pelo próprio getJson antes de chegar aqui.
   /^\/api\/dashboard\/tasks(\/(pending|assistance))?(\?[A-Za-z0-9_=&%.-]*)?$/,
+  /^\/api\/dashboard\/tasks\/[A-Za-z0-9]{15,18}\/answers$/,
 ];
 const ALLOWED_POST_PATTERNS: RegExp[] = [
   /^\/api\/admin\/sync-now$/,
