@@ -136,50 +136,53 @@
     };
   }
 
+  function rpc(name,body={}){
+    return fetch(CFG.url+'/rest/v1/rpc/'+name,{method:'POST',headers:authHeaders(),body:JSON.stringify(body)})
+      .then(async r=>{if(!r.ok)throw new Error((await r.text())||('HTTP '+r.status));const t=await r.text();return t?JSON.parse(t):null;});
+  }
   async function currentCompanyId(){
-    const {data,error}=await sb.rpc('current_company_id');
-    if(error)throw error;
-    return data;
+    return rpc('current_company_id');
+  }
+  function userId(){
+    return state?.session?.user?.id||state?.profile?.id||null;
   }
   async function syncTracking(items){
     if(!items?.length)return;
     const companyId=await currentCompanyId();
     const rows=items.map(t=>({
-      company_id:companyId,
-      external_task_id:taskIdentity(t),
-      task_number:t.taskNumber||null,
-      case_number:t.what?.name||null,
-      subject:t.subject||t.subjectToLabel||null,
+      company_id:companyId,external_task_id:taskIdentity(t),task_number:t.taskNumber||null,
+      case_number:t.what?.name||null,subject:t.subject||t.subjectToLabel||null,
       external_created_at:t.createdDate||null
     })).filter(x=>x.external_task_id);
     if(rows.length){
-      const {error}=await sb.from('electrolux_task_tracking').upsert(rows,{onConflict:'company_id,external_task_id',ignoreDuplicates:true});
-      if(error)throw error;
+      await api('electrolux_task_tracking?on_conflict=company_id,external_task_id',{
+        method:'POST',headers:{Prefer:'resolution=ignore-duplicates,return=minimal'},body:JSON.stringify(rows)
+      });
     }
     await refreshTracking();
   }
   async function refreshTracking(){
     const companyId=await currentCompanyId();
-    const {data,error}=await sb.from('electrolux_task_tracking').select('id,external_task_id,acknowledged_at,acknowledged_by,first_seen_at').eq('company_id',companyId);
-    if(error)throw error;
+    const data=await api('electrolux_task_tracking?company_id=eq.'+encodeURIComponent(companyId)+'&select=id,external_task_id,acknowledged_at,acknowledged_by,first_seen_at');
     st.tracking=Object.fromEntries((data||[]).map(x=>[x.external_task_id,x]));
     return data||[];
   }
   async function markViewed(t){
-    const track=st.tracking[taskIdentity(t)]; if(!track)return;
-    const {data:{user}}=await sb.auth.getUser(); if(!user)return;
-    const {data:old}=await sb.from('electrolux_task_views').select('id,view_count').eq('task_tracking_id',track.id).eq('user_id',user.id).maybeSingle();
-    if(old){
-      await sb.from('electrolux_task_views').update({last_viewed_at:new Date().toISOString(),view_count:(old.view_count||0)+1}).eq('id',old.id);
+    const track=st.tracking[taskIdentity(t)],uid=userId(); if(!track||!uid)return;
+    const old=await api('electrolux_task_views?task_tracking_id=eq.'+encodeURIComponent(track.id)+'&user_id=eq.'+encodeURIComponent(uid)+'&select=id,view_count&limit=1');
+    if(old?.[0]){
+      await api('electrolux_task_views?id=eq.'+encodeURIComponent(old[0].id),{
+        method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({last_viewed_at:new Date().toISOString(),view_count:(old[0].view_count||0)+1})
+      });
     }else{
-      await sb.from('electrolux_task_views').insert({task_tracking_id:track.id,user_id:user.id});
+      await api('electrolux_task_views',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({task_tracking_id:track.id,user_id:uid})});
     }
   }
   async function acknowledgeTask(t){
-    const track=st.tracking[taskIdentity(t)]; if(!track)return;
-    const {data:{user}}=await sb.auth.getUser(); if(!user)return;
-    const {error}=await sb.from('electrolux_task_tracking').update({acknowledged_at:new Date().toISOString(),acknowledged_by:user.id,updated_at:new Date().toISOString()}).eq('id',track.id).is('acknowledged_at',null);
-    if(error)throw error;
+    const track=st.tracking[taskIdentity(t)],uid=userId(); if(!track||!uid)return;
+    await api('electrolux_task_tracking?id=eq.'+encodeURIComponent(track.id)+'&acknowledged_at=is.null',{
+      method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({acknowledged_at:new Date().toISOString(),acknowledged_by:uid,updated_at:new Date().toISOString()})
+    });
     await refreshTracking(); await refreshSharedBadge(); render();
   }
 
