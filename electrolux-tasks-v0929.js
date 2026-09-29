@@ -47,7 +47,7 @@
     {key:'assistance',label:'Da assistência',fetch:fetchAssistanceTasks,desc:'Tasks criadas por e atribuídas à nossa assistência.'},
   ];
 
-  let st={tab:'pending',page:1,pageSize:15,order:'desc',loading:false,error:null,items:[],raw:null,expanded:null,tracking:{}};
+  let st={tab:'pending',page:1,pageSize:15,order:'desc',loading:false,error:null,items:[],raw:null,expanded:null,tracking:{},search:'',searching:false,searchResults:null};
 
   function installStyle(){
     if(document.getElementById('vxElxTasksStyle'))return;
@@ -113,6 +113,15 @@
       .vx-elxt-detail-label{font-size:9px;font-weight:900;letter-spacing:.07em;color:#8a9aad;text-transform:uppercase;margin-bottom:4px}
       .vx-elxt-detail-subject{font-size:13px;font-weight:800;color:#243b53;margin-bottom:8px}
       .vx-elxt-detail-text{font-size:12px;line-height:1.55;color:#52667a}
+      .vx-elxt-searchbar{display:flex;align-items:center;gap:8px;flex:1;max-width:560px}
+      .vx-elxt-searchbox{position:relative;flex:1}
+      .vx-elxt-searchbox input{width:100%;height:36px;box-sizing:border-box;border:1px solid #dce4ed;border-radius:9px;background:#fff;padding:0 38px 0 34px;font-size:12px;color:#243b53;outline:none;transition:border-color .15s,box-shadow .15s}
+      .vx-elxt-searchbox input:focus{border-color:#7bb1ee;box-shadow:0 0 0 3px rgba(47,128,237,.09)}
+      .vx-elxt-search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#8496aa;font-size:14px;pointer-events:none}
+      .vx-elxt-search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);border:0!important;background:transparent!important;height:26px!important;padding:0 7px!important;color:#7b8da1!important;cursor:pointer}
+      .vx-elxt-search-btn{height:36px!important;background:#0c2340!important;color:#fff!important;border:1px solid #0c2340!important;padding:0 15px!important}
+      .vx-elxt-search-summary{font-size:11px;color:#60728a;font-weight:700;margin:0 0 10px 2px}
+      .vx-elxt-source{display:inline-flex;margin-left:6px;padding:2px 6px;border-radius:999px;background:#f0f4f8;color:#65788c;font-size:8px;font-weight:800}
     `;
     document.head.appendChild(s);
   }
@@ -186,6 +195,38 @@
     await refreshTracking(); await refreshSharedBadge(); render();
   }
 
+  function taskSearchText(t){
+    return [t?.id,t?.taskNumber,t?.what?.name,t?.subject,t?.subjectToLabel,t?.description,t?.status,t?.statusToLabel,t?.assignedTo?.assistanceName,t?.recordType?.name]
+      .filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
+  }
+  async function fetchAllFrom(fetcher){
+    const first=await fetcher({page:1,pageSize:100,orderBy:'CreatedDate',order:'desc'});
+    const records=Array.isArray(first)?first:(first?.records||first?.items||first?.data||first?.results||[]);
+    const totalPages=Array.isArray(first)?1:(first?.totalPages||Math.max(1,Math.ceil((first?.totalItems||records.length)/100)));
+    const all=[...records];
+    for(let page=2;page<=totalPages;page++){
+      const d=await fetcher({page,pageSize:100,orderBy:'CreatedDate',order:'desc'});
+      all.push(...(Array.isArray(d)?d:(d?.records||d?.items||d?.data||d?.results||[])));
+    }
+    return all;
+  }
+  async function runGlobalSearch(term){
+    const q=String(term||'').trim();
+    if(!q){st.search='';st.searchResults=null;st.searching=false;render();return;}
+    st.search=q;st.searching=true;st.error=null;render();
+    try{
+      const [pending,assistance]=await Promise.all([fetchAllFrom(fetchPendingTasks),fetchAllFrom(fetchAssistanceTasks)]);
+      const seen=new Set(),merged=[];
+      [...pending.map(t=>({...t,__source:'Pendente'})),...assistance.map(t=>({...t,__source:'Assistência'}))].forEach(t=>{
+        const key=taskIdentity(t);if(!key||seen.has(key))return;seen.add(key);merged.push(t);
+      });
+      const needle=q.toLocaleLowerCase('pt-BR');
+      st.searchResults=merged.filter(t=>taskSearchText(t).includes(needle));
+      await syncTracking(pending);
+    }catch(e){st.error=e.message||'Falha ao pesquisar tarefas.';st.searchResults=[];}
+    st.searching=false;render();
+  }
+
   async function load(){
     st.loading=true;st.error=null;
     render();
@@ -229,6 +270,10 @@
       </div>
       <div class="vx-elx-error" style="display:${st.error?'block':'none'}">${st.error?esc2(st.error)+' <button type="button" id="vxElxTasksRetry" class="vx-elxt-toggle" style="color:#a63131;text-decoration:underline">Tentar de novo</button>':''}</div>
       <div class="vx-elxt-toolbar">
+        <div class="vx-elxt-searchbar">
+          <div class="vx-elxt-searchbox"><span class="vx-elxt-search-icon">⌕</span><input id="vxElxTasksSearch" type="search" placeholder="Pesquisar em todas as tarefas: nº, caso, assunto ou conteúdo…" value="${esc2(st.search)}" autocomplete="off">${st.search?'<button type="button" class="vx-elxt-search-clear" id="vxElxTasksSearchClear" title="Limpar pesquisa">×</button>':''}</div>
+          <button type="button" class="vx-elxt-search-btn" id="vxElxTasksSearchBtn">${st.searching?'Pesquisando…':'Pesquisar'}</button>
+        </div>
         <label style="font-size:12px;color:#516375">Por página
           <select id="vxElxTasksPageSize">${[15,30,50,100].map(n=>`<option value="${n}" ${n===st.pageSize?'selected':''}>${n}</option>`).join('')}</select>
         </label>
@@ -248,6 +293,10 @@
       st.tab=b.dataset.tab;st.page=1;st.expanded=null;load();
     });
     document.getElementById('vxElxTasksRetry')?.addEventListener('click',load);
+    const searchInput=document.getElementById('vxElxTasksSearch');
+    document.getElementById('vxElxTasksSearchBtn').onclick=()=>runGlobalSearch(searchInput.value);
+    searchInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();runGlobalSearch(searchInput.value);}};
+    document.getElementById('vxElxTasksSearchClear')?.addEventListener('click',()=>runGlobalSearch(''));
     document.getElementById('vxElxTasksPageSize').onchange=e=>{st.pageSize=Number(e.target.value)||15;st.page=1;load();};
     document.getElementById('vxElxTasksOrder').onclick=()=>{st.order=st.order==='desc'?'asc':'desc';st.page=1;load();};
     document.getElementById('vxElxTasksPrev').onclick=()=>{if(st.page>1){st.page--;load();}};
@@ -266,7 +315,7 @@
     });
     document.querySelectorAll('#vxElxTasksBody [data-row-expand]').forEach(row=>{
       row.onclick=()=>{
-        const item=st.items[Number(row.dataset.itemIndex)]; if(item)markViewed(item).catch(()=>{});
+        const source=st.searchResults!==null?st.searchResults:st.items; const item=source[Number(row.dataset.itemIndex)]; if(item)markViewed(item).catch(()=>{});
         st.expanded=st.expanded===row.dataset.rowExpand?null:row.dataset.rowExpand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
@@ -276,16 +325,20 @@
       b.onclick=async(e)=>{
         e.preventDefault();e.stopPropagation();
         b.disabled=true;
-        try{await acknowledgeTask(st.items[Number(b.dataset.ackIndex)]);}
+        try{const source=st.searchResults!==null?st.searchResults:st.items;await acknowledgeTask(source[Number(b.dataset.ackIndex)]);}
         catch(err){b.disabled=false;alert('Não foi possível marcar como ciente: '+(err.message||err));}
       };
     });
   }
 
   function bodyHtml(){
+    if(st.searching)return '<div class="vx-elx-empty-board">Pesquisando em todas as tarefas…</div>';
     if(st.loading)return '<div class="vx-elx-empty-board">Carregando tarefas…</div>';
     if(st.error)return '<div class="vx-elx-empty-board">Não foi possível carregar. Use "Tentar de novo" acima.</div>';
-    if(!st.items.length){
+    const displayItems=st.searchResults!==null?st.searchResults:st.items;
+    if(!displayItems.length){
+      if(st.searchResults!==null)return '<div class="vx-elx-empty-board">Nenhuma tarefa encontrada para “'+esc2(st.search)+'”.</div>';
+
       // Achado do usuário (2026-09-29): a chamada parou de dar erro (proxy
       // já publicado), mas continuou sem mostrar nenhuma tarefa -- sem
       // saber ainda se é porque não há tarefa mesmo ou porque a resposta
@@ -299,16 +352,17 @@
       </div>`:'';
       return `<div class="vx-elx-empty-board">Nenhuma tarefa encontrada nesta situação.</div>${rawInfo}`;
     }
-    return `<div class="desktop-table-wrap vx-elxt-table-wrap"><table class="desktop-table vx-elxt-table"><thead><tr>
+    const searchSummary=st.searchResults!==null?'<div class="vx-elxt-search-summary">'+displayItems.length+' resultado'+(displayItems.length===1?'':'s')+' em todas as tarefas para “'+esc2(st.search)+'”</div>':'';
+    return searchSummary+`<div class="desktop-table-wrap vx-elxt-table-wrap"><table class="desktop-table vx-elxt-table"><thead><tr>
       <th style="width:12%">TAREFA</th><th style="width:9%">CASO</th><th style="width:17%">ASSUNTO</th><th class="vx-elxt-desc-cell">DESCRIÇÃO</th><th style="width:13%">CRIADA EM</th><th style="width:10%">STATUS</th>
-      </tr></thead><tbody>${st.items.map((t,i)=>{
+      </tr></thead><tbody>${displayItems.map((t,i)=>{
         const f=fieldsFor(t);
         const id='row'+i;
         const open=st.expanded===id;
         const track=st.tracking[taskIdentity(t)];
         const isNew=!!track&&!track.acknowledged_at;
         return `<tr class="vx-elxt-task-row" data-row-expand="${id}" data-item-index="${i}" title="Clique para ${open?'recolher':'ver os detalhes completos'}">
-          <td><span class="vx-elxt-task-id">${esc2(f.tarefa)}</span>${isNew?'<span class="vx-elxt-new">NOVA</span>':''}</td>
+          <td><span class="vx-elxt-task-id">${esc2(f.tarefa)}</span>${t.__source?`<span class="vx-elxt-source">${esc2(t.__source)}</span>`:''}${isNew?'<span class="vx-elxt-new">NOVA</span>':''}</td>
           <td><span class="vx-elxt-case">${esc2(f.caso)}</span></td>
           <td><span class="vx-elxt-desc-preview vx-elxt-subject" title="${esc2(f.assunto)}">${esc2(f.assunto)}</span></td>
           <td class="vx-elxt-desc-cell"><button type="button" class="vx-elxt-desc-btn" data-expand="${id}" title="Clique para ${open?'recolher':'ver a descrição completa'}"><span class="vx-elxt-desc-preview vx-elxt-description">${esc2(f.descricao)}</span></button></td>
@@ -329,7 +383,7 @@
   window.vxOpenElectroluxTasks=function(){
     window.vxElxStopPoll?.();
     installStyle();
-    st.tab='pending';st.page=1;st.pageSize=15;st.order='desc';st.expanded=null;
+    st.tab='pending';st.page=1;st.pageSize=15;st.order='desc';st.expanded=null;st.search='';st.searchResults=null;
     load();
     markSeenNow();
   };
