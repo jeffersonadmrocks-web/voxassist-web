@@ -73,12 +73,20 @@
       const data=await getJson('/api/dashboard/tasks/'+encodeURIComponent(id)+'/answers');
       answersCache[id]={loading:false,error:null,answer:data?.answer||null};
     }catch(e){answersCache[id]={loading:false,error:e.message||'Falha ao carregar a resposta.',answer:null};}
-    refreshAnswersBox(task);
+    // Re-renderiza o corpo inteiro: o campo "Responder tarefa" depende do resultado.
+    const body=document.getElementById('vxElxTasksBody');
+    if(body&&st.expanded){body.innerHTML=bodyHtml();wireBodyToggles();}
+  }
+  // Só libera responder depois de confirmar que a tarefa ainda não tem resposta
+  // (carregando ou erro na consulta = escondido, para não sobrescrever uma existente).
+  function replyOpen(t){
+    const c=answersCache[t?.id];
+    return canReply(t)&&!!c&&!c.loading&&!c.error&&!c.answer;
   }
   function answersHtml(task){
     const c=answersCache[task?.id];
     if(!c||c.loading)return '<div class="vx-elxt-answers-empty">Carregando respostas…</div>';
-    if(c.error)return `<div class="vx-elxt-answers-empty" style="color:#a63131">Não foi possível carregar a resposta (${esc2(c.error)}).</div>`;
+    if(c.error)return `<div class="vx-elxt-answers-empty" style="color:#a63131">Não foi possível carregar a resposta (${esc2(c.error)}). Feche e reabra a tarefa para tentar de novo.</div>`;
     if(!c.answer)return '<div class="vx-elxt-answers-empty">Nenhuma resposta registrada nesta tarefa.</div>';
     return `<div class="vx-elxt-answer"><div class="vx-elxt-answer-text">${esc2(c.answer)}</div></div>`;
   }
@@ -389,7 +397,7 @@
         st.expanded=st.expanded===b.dataset.expand?null:b.dataset.expand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
-        if(st.expanded){const src=st.searchResults!==null?st.searchResults:st.items,it=src[Number(st.expanded.replace('row',''))];if(it&&!answersCache[it.id])loadAnswers(it);}
+        if(st.expanded){const src=st.searchResults!==null?st.searchResults:st.items,it=src[Number(st.expanded.replace('row',''))];if(it&&(!answersCache[it.id]||answersCache[it.id].error))loadAnswers(it);}
       };
     });
     document.querySelectorAll('#vxElxTasksBody [data-row-expand]').forEach(row=>{
@@ -398,7 +406,7 @@
         st.expanded=st.expanded===row.dataset.rowExpand?null:row.dataset.rowExpand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
-        if(st.expanded&&item&&!answersCache[item.id])loadAnswers(item);
+        if(st.expanded&&item&&(!answersCache[item.id]||answersCache[item.id].error))loadAnswers(item);
       };
     });
     document.querySelectorAll('#vxElxTasksBody [data-reply-index]').forEach(b=>{
@@ -483,7 +491,7 @@
           <td><span class="vx-elxt-created">${esc2(dtFull(f.criada))}</span></td>
           <td><span class="vx-elxt-created">${esc2(dtDue(f.vencimento))}</span></td>
           <td><span class="vx-elxt-status${isDone(f.status)?' done':''}">${esc2(f.status)}</span></td>
-        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="7"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Vencimento <b>${esc2(dtDue(f.vencimento))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div>${t.id?`<div class="vx-elxt-answers"><div class="vx-elxt-detail-label">Resposta</div><div id="vxElxAnswers${esc2(t.id)}">${answersHtml(t)}</div></div>`:''}${canReply(t)?`<div class="vx-elxt-reply"><div class="vx-elxt-detail-label">Responder tarefa</div><textarea id="vxElxReply${i}" maxlength="${REPLY_MAX}" placeholder="Escreva a resposta que será enviada à Electrolux…"></textarea><div class="vx-elxt-reply-msg" id="vxElxReplyMsg${i}"></div><button type="button" class="vx-elxt-ack" data-reply-index="${i}">Enviar resposta</button></div>`:''}</div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
+        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="7"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Vencimento <b>${esc2(dtDue(f.vencimento))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div>${t.id?`<div class="vx-elxt-answers"><div class="vx-elxt-detail-label">Resposta</div><div id="vxElxAnswers${esc2(t.id)}">${answersHtml(t)}</div></div>`:''}${replyOpen(t)?`<div class="vx-elxt-reply"><div class="vx-elxt-detail-label">Responder tarefa</div><textarea id="vxElxReply${i}" maxlength="${REPLY_MAX}" placeholder="Escreva a resposta que será enviada à Electrolux…"></textarea><div class="vx-elxt-reply-msg" id="vxElxReplyMsg${i}"></div><button type="button" class="vx-elxt-ack" data-reply-index="${i}">Enviar resposta</button></div>`:''}</div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
       }).join('')}</tbody></table></div>`;
   }
 
