@@ -319,11 +319,22 @@
       if(st.tab==='received'&&st.status)params.status=st.status;
       let data;
       if(st.tab==='received'&&!st.status&&!st.showDone){
-        // A API filtra por um status só e não tem "excluir": busca tudo, tira as concluídas e
-        // pagina aqui mesmo, para as páginas não ficarem com menos linhas nem contarem errado.
-        const all=(await fetchAllFrom(fetchReceivedTasks)).filter(t=>!isDone(fieldsFor(t).status));
-        if(st.order==='asc')all.reverse();
-        data={totalItems:all.length,records:all.slice((st.page-1)*st.pageSize,st.page*st.pageSize)};
+        // A API filtra por um status só e não tem "excluir": busca páginas do tamanho escolhido,
+        // descarta as concluídas e só pede a próxima página da API quando ainda faltam itens para
+        // preencher a página atual (+1, para saber se existe "Próxima"). Páginas já buscadas
+        // ficam em cache (st.doneCache), então voltar é instantâneo.
+        const key=st.order+'|'+st.pageSize;
+        if(!st.doneCache||st.doneCache.key!==key)st.doneCache={key,nextRaw:1,buffer:[],exhausted:false};
+        const c=st.doneCache,need=st.page*st.pageSize+1;
+        while(c.buffer.length<need&&!c.exhausted){
+          const d=await fetchReceivedTasks({page:c.nextRaw,pageSize:st.pageSize,orderBy:'CreatedDate',order:st.order});
+          const rows=Array.isArray(d)?d:(d?.records||d?.items||d?.data||d?.results||[]);
+          c.buffer.push(...rows.filter(t=>!isDone(fieldsFor(t).status)));
+          const totalPages=Array.isArray(d)?1:d?.totalPages;
+          c.exhausted=rows.length<st.pageSize||(totalPages!=null&&c.nextRaw>=totalPages);
+          c.nextRaw++;
+        }
+        data={records:c.buffer.slice((st.page-1)*st.pageSize,st.page*st.pageSize),__hasMore:c.buffer.length>st.page*st.pageSize};
       }else data=await tabDef.fetch(params);
       st.raw=data;
       // Formato de paginação também não documentado -- aceita tanto um
@@ -353,7 +364,7 @@
     const app=document.querySelector('#app');if(!app)return;
     const tabDef=TABS.find(x=>x.key===st.tab);
     const total=totalHint();
-    const hasNext=total!=null?(st.page*st.pageSize)<total:st.items.length>=st.pageSize;
+    const hasNext=st.raw?.__hasMore!==undefined?st.raw.__hasMore:total!=null?(st.page*st.pageSize)<total:st.items.length>=st.pageSize;
     app.innerHTML=`<div class="vx-elx-page">
       <div class="vx-elx-board-head">
         <div><button type="button" class="vx-elx-back" id="vxElxTasksBack">← VOLTAR</button><h2>Tarefas Electrolux</h2></div>
@@ -444,6 +455,7 @@
           delete answersCache[task.id];
           // Recarrega a lista (o status pode ter mudado) e reabre a mesma tarefa pelo id,
           // já que o índice da linha muda -- ou fecha, se ela saiu do filtro atual.
+          st.doneCache=null;
           if(st.searchResults!==null)await runGlobalSearch(st.search); else await load();
           const src=st.searchResults!==null?st.searchResults:st.items;
           const idx=src.findIndex(x=>x.id===task.id);
