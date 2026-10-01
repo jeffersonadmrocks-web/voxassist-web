@@ -57,6 +57,20 @@
   const techName=id=>techs.find(t=>t.id===id)?.full_name||'—';
   const osNumber=id=>serviceOrders.find(o=>o.id===id)?.os_number||id?.slice(0,8)||'—';
   const myStock=isTecnico()?held.filter(h=>h.technician_id===myId()):[];
+  // Achado do usuário em 2026-10-01: "Fiscal" era um número digitado à
+  // mão no cadastro, podendo divergir do saldo de verdade (ex.: 9 no
+  // fiscal, 6 disponível) -- nunca mais editável à mão. Vira a soma das
+  // ENTRADAS que tiveram nota fiscal preenchida (stock_movements.
+  // invoice_number, migration 20261001030000) -- um registro histórico
+  // de quanto já entrou documentado por NF, nunca um segundo saldo
+  // competindo com available_quantity. Recalculado a cada draw() (não
+  // uma vez só) pra refletir na hora um registro novo empurrado em
+  // moves.push(...) logo após uma entrada com NF, sem esperar reload.
+  function computeWithNfByItem(){
+   const map=new Map();
+   moves.filter(m=>m.movement_type==='ENTRY'&&m.invoice_number).forEach(m=>map.set(m.item_id,(map.get(m.item_id)||0)+Number(m.quantity||0)));
+   return map;
+  }
 
   app.innerHTML=`<div class="vx-op"><div class="vx-op-head"><div><h2>Estoque e Cadastro de Peças</h2><p>Cadastro, saldos por posição, retirada/entrega/devolução e rastreabilidade por OS.</p></div><button class="vx-primary" id="vxNewPart">+ Cadastrar peça</button></div><div class="vx-kpis"><div><b>${items.length}</b><span>Itens cadastrados</span></div><div><b>${items.reduce((s,i)=>s+Number(i.available_quantity||0),0)}</b><span>Saldo disponível</span></div><div><b>${held.reduce((s,i)=>s+Number(i.quantity||0),0)}</b><span>Com técnicos</span></div><div><b>${moves.filter(m=>m.fiscal_pending).length}</b><span>Pendências fiscais</span></div></div>
   ${isTecnico()&&myStock.length?`<div class="vx-op-hint" style="background:#fff6e6;color:#8b5200"><b>MINHAS PEÇAS (sob minha responsabilidade)</b></div><div class="vx-table" style="margin-bottom:14px"><div class="vx-tr vx-th" style="grid-template-columns:2fr 1fr auto"><span>Peça</span><span>Quantidade</span><span></span></div>${myStock.map(h=>{const it=items.find(i=>i.id===h.stock_item_id);return `<div class="vx-tr" style="grid-template-columns:2fr 1fr auto"><span>${E(it?.code||'—')} — ${E(it?.description||'')}</span><span>${E(h.quantity)}</span><span><button type="button" class="vx-mini-btn" data-apply="${h.stock_item_id}">Aplicar nesta OS</button></span></div>`}).join('')}</div>`:''}
@@ -69,7 +83,7 @@
     <p class="vx-op-hint" id="vxPartModalHint">O cadastro só define a IDENTIDADE da peça -- saldo nasce zero. Para ter saldo, use "+ Entrada" depois de cadastrar.</p>
     <div class="vx-form-grid"><label>Código<input id="pCode"></label><label>Descrição<input id="pDesc"></label><label class="full">Fabricante (opcional -- pode confirmar depois)<input id="pMaker"></label></div>
     <details class="vx-op-details"><summary>+ Mais detalhes (opcional)</summary>
-    <div class="vx-form-grid"><label>Grupo<input id="pGroup"></label><label>Fornecedor<input id="pSupplier"></label><label>Localização (legado/exibição)<input id="pLoc"></label><label>Qtd. fiscal<input id="pFiscal" type="number" step="0.01" value="0"></label><label>Custo<input id="pCost" data-currency value="0"></label><label>Preço referência<input id="pPrice" data-currency value="0"></label><label>Estoque mínimo (alerta de reposição)<input id="pMin" type="number" step="0.01" placeholder="Ex.: 2"></label><label>Margem (%)<input id="pMargin" type="number" step="0.01"></label><label>Desconto (%)<input id="pDiscount" type="number" step="0.01"></label><label>IPI (%)<input id="pIpi" type="number" step="0.01"></label><label>ICMS (%)<input id="pIcms" type="number" step="0.01"></label><label class="full">Modelos compatíveis<input id="pModels"></label></div>
+    <div class="vx-form-grid"><label>Grupo<input id="pGroup"></label><label>Fornecedor<input id="pSupplier"></label><label>Localização (legado/exibição)<input id="pLoc"></label><label>Custo<input id="pCost" data-currency value="0"></label><label>Preço referência<input id="pPrice" data-currency value="0"></label><label>Estoque mínimo (alerta de reposição)<input id="pMin" type="number" step="0.01" placeholder="Ex.: 2"></label><label>Margem (%)<input id="pMargin" type="number" step="0.01"></label><label>Desconto (%)<input id="pDiscount" type="number" step="0.01"></label><label>IPI (%)<input id="pIpi" type="number" step="0.01"></label><label>ICMS (%)<input id="pIcms" type="number" step="0.01"></label><label class="full">Modelos compatíveis<input id="pModels"></label></div>
     </details>
     <div class="vx-op-actions"><button type="button" class="vx-secondary-btn" id="vxCancelPart">Cancelar</button><button class="vx-primary" id="vxSavePart">Salvar peça</button></div>
   </div></div>
@@ -79,6 +93,7 @@
       <label>Local<select id="eLocation">${locations.map(l=>`<option value="${l.id}">${E(l.name)}</option>`).join('')}</select></label>
       <label>Posição<input id="ePosition" placeholder="Ex.: A-03"></label>
       <label>Quantidade<input id="eQuantity" type="number" step="0.01" min="0.01"></label>
+      <label>Nota Fiscal nº (opcional)<input id="eInvoice" placeholder="Deixe em branco se vier de aparelho sucateado"></label>
       <label class="full">Observação<input id="eNotes" placeholder="Opcional"></label>
     </div>
     <button class="vx-primary" id="vxConfirmEntry">Confirmar entrada</button>
@@ -128,9 +143,10 @@
    let list=items;
    if(maker)list=list.filter(i=>String(i.manufacturer||'').trim()===maker);
    if(q)list=list.filter(i=>[i.code,i.description,i.manufacturer,i.compatible_models].join(' ').toUpperCase().includes(q));
-   document.querySelector('#vxPartsList').innerHTML=`<div class="vx-table"><div class="vx-tr vx-tr-stock vx-th"><span>Código</span><span>Descrição</span><span>Fabricante</span><span>Disponível</span><span>Fiscal</span><span></span></div>${list.map(i=>{
+   const withNfByItem=computeWithNfByItem();
+   document.querySelector('#vxPartsList').innerHTML=`<div class="vx-table"><div class="vx-tr vx-tr-stock vx-th"><span>Código</span><span>Descrição</span><span>Fabricante</span><span>Disponível</span><span title="Soma das entradas que tiveram nota fiscal -- registro histórico, nunca editável à mão">Com NF</span><span></span></div>${list.map(i=>{
     const belowMin=i.minimum_quantity!=null&&Number(i.minimum_quantity)>0&&Number(i.available_quantity||0)<Number(i.minimum_quantity);
-    return `<div class="vx-tr vx-tr-stock"><span>${E(i.code||'—')}</span><span>${E(i.description||'')}</span><span>${E(i.manufacturer||'')}</span><span>${E(i.available_quantity||0)}${belowMin?` <span class="vx-stock-low-badge" title="Abaixo do estoque mínimo (${E(i.minimum_quantity)})">⚠ abaixo do mínimo</span>`:''}</span><span>${E(i.fiscal_quantity||0)}</span><span class="vx-stock-row-actions"><button type="button" class="vx-mini-btn" data-entry="${i.id}">+ Entrada</button>${isGestorOrEstoque()?`<button type="button" class="vx-mini-btn" data-withdraw="${i.id}">Retirar</button><button type="button" class="vx-mini-btn" data-kebab="${i.id}">⋮</button>`:''}</span></div>`;
+    return `<div class="vx-tr vx-tr-stock"><span>${E(i.code||'—')}</span><span>${E(i.description||'')}</span><span>${E(i.manufacturer||'')}</span><span>${E(i.available_quantity||0)}${belowMin?` <span class="vx-stock-low-badge" title="Abaixo do estoque mínimo (${E(i.minimum_quantity)})">⚠ abaixo do mínimo</span>`:''}</span><span>${E(withNfByItem.get(i.id)||0)}</span><span class="vx-stock-row-actions"><button type="button" class="vx-mini-btn" data-entry="${i.id}">+ Entrada</button>${isGestorOrEstoque()?`<button type="button" class="vx-mini-btn" data-withdraw="${i.id}">Retirar</button><button type="button" class="vx-mini-btn" data-kebab="${i.id}">⋮</button>`:''}</span></div>`;
    }).join('')}</div>`;
    document.querySelectorAll('[data-entry]').forEach(b=>b.onclick=()=>openEntryModal(items.find(i=>i.id===b.dataset.entry)));
    document.querySelectorAll('[data-withdraw]').forEach(b=>b.onclick=()=>openWithdrawModal(items.find(i=>i.id===b.dataset.withdraw)));
@@ -152,7 +168,7 @@
    const set=(id,v)=>{const el=document.querySelector(id);if(el)el.value=v??''};
    set('#pCode',item?.code);set('#pDesc',item?.description);set('#pMaker',item?.manufacturer);
    set('#pGroup',item?.product_group);set('#pSupplier',item?.supplier);set('#pLoc',item?.storage_location);
-   set('#pFiscal',item?.fiscal_quantity??0);set('#pCost',item?.unit_cost??0);set('#pPrice',item?.reference_price??0);
+   set('#pCost',item?.unit_cost??0);set('#pPrice',item?.reference_price??0);
    set('#pMin',item?.minimum_quantity);set('#pMargin',item?.margin_percent);set('#pDiscount',item?.discount_percent);
    set('#pIpi',item?.ipi_percent);set('#pIcms',item?.icms_percent);set('#pModels',item?.compatible_models);
    document.querySelector('#vxPartModalTitle').textContent=item?'Editar peça':'Cadastrar peça';
@@ -173,7 +189,6 @@
     code:document.querySelector('#pCode').value.trim(),description:document.querySelector('#pDesc').value.trim(),
     manufacturer:document.querySelector('#pMaker').value.trim(),product_group:document.querySelector('#pGroup').value.trim(),
     supplier:document.querySelector('#pSupplier').value.trim(),storage_location:document.querySelector('#pLoc').value.trim(),
-    fiscal_quantity:Number(document.querySelector('#pFiscal').value||0),
     unit_cost:money('#pCost'),reference_price:money('#pPrice'),
     minimum_quantity:num('#pMin'),margin_percent:num('#pMargin'),discount_percent:num('#pDiscount'),
     ipi_percent:num('#pIpi'),icms_percent:num('#pIcms'),
@@ -203,6 +218,7 @@
    entryModal.querySelector('#eItemLabel').value=`${item.code||'—'} — ${item.description||''}`;
    entryModal.querySelector('#ePosition').value='';
    entryModal.querySelector('#eQuantity').value='';
+   entryModal.querySelector('#eInvoice').value='';
    entryModal.querySelector('#eNotes').value='';
    entryModal.hidden=false;
   }
@@ -214,6 +230,7 @@
    const locationId=entryModal.querySelector('#eLocation').value;
    const position=entryModal.querySelector('#ePosition').value.trim();
    const quantity=Number(String(entryModal.querySelector('#eQuantity').value||'0').replace(',','.'));
+   const invoiceNumber=entryModal.querySelector('#eInvoice').value.trim();
    const notes=entryModal.querySelector('#eNotes').value.trim();
    if(!locationId)return toast('Selecione o local.','err');
    if(!position)return toast('Informe a posição.','err');
@@ -222,10 +239,13 @@
    try{
     const result=await api('rpc/stock_register_entry',{method:'POST',body:JSON.stringify({
      p_stock_item_id:itemId,p_location_id:locationId,p_position_code:position,
-     p_quantity:quantity,p_notes:notes||null,p_idempotency_key:idem()
+     p_quantity:quantity,p_notes:notes||null,p_idempotency_key:idem(),p_invoice_number:invoiceNumber||null
     })});
     const newQty=result?.[0]?.out_new_quantity;
     toast(`Entrada registrada. Quantidade resultante na posição: ${newQty ?? '—'}.`);
+    // Reflete a NF na coluna "Com NF" sem esperar um reload completo da
+    // tela -- mesmo princípio de items.push() após cadastrar peça acima.
+    if(invoiceNumber)moves.push({item_id:itemId,movement_type:'ENTRY',quantity,invoice_number:invoiceNumber});
     entryModal.hidden=true;
     await refreshItem(itemId);
    }catch(e){toast('Erro ao registrar entrada: '+e.message,'err');}
@@ -369,7 +389,12 @@
    const list=moves.filter(m=>m.item_id===item.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
    const label=m=>({ENTRY:'Entrada',WITHDRAWAL:'Retirada',TECH_RETURN:'Devolução',APPLICATION:'Aplicação/consumo',QUARANTINE_RELEASE:'Liberação de quarentena'}[m.movement_type]||m.movement_type);
    const dest=m=>m.service_order_id?`OS ${osNumber(m.service_order_id)}`:m.technician_id?`Técnico ${techName(m.technician_id)}`:'—';
-   historyModal.querySelector('#vxHistoryList').innerHTML=list.length?`<div class="vx-table"><div class="vx-tr vx-th" style="grid-template-columns:1fr 1fr .8fr 1.2fr 1.5fr"><span>Data</span><span>Tipo</span><span>Qtd.</span><span>Destino/origem</span><span>Observação</span></div>${list.map(m=>`<div class="vx-tr" style="grid-template-columns:1fr 1fr .8fr 1.2fr 1.5fr"><span>${E(new Date(m.created_at).toLocaleString('pt-BR'))}</span><span>${E(label(m))}</span><span>${E(m.quantity)}</span><span>${E(dest(m))}</span><span>${E(m.notes||'—')}</span></div>`).join('')}</div>`:'<div class="vx-empty">Nenhuma movimentação registrada.</div>';
+   // Achado do usuário em 2026-10-01: NF vira informação DA ENTRADA
+   // (invoice_number), não um saldo solto -- mostrada aqui junto da
+   // observação, pra conferir qual entrada tinha nota fiscal e qual
+   // veio de aparelho sucateado (sem NF).
+   const obs=m=>[m.movement_type==='ENTRY'&&m.invoice_number?`NF nº ${m.invoice_number}`:null,m.notes].filter(Boolean).join(' — ')||'—';
+   historyModal.querySelector('#vxHistoryList').innerHTML=list.length?`<div class="vx-table"><div class="vx-tr vx-th" style="grid-template-columns:1fr 1fr .8fr 1.2fr 1.5fr"><span>Data</span><span>Tipo</span><span>Qtd.</span><span>Destino/origem</span><span>Observação</span></div>${list.map(m=>`<div class="vx-tr" style="grid-template-columns:1fr 1fr .8fr 1.2fr 1.5fr"><span>${E(new Date(m.created_at).toLocaleString('pt-BR'))}</span><span>${E(label(m))}</span><span>${E(m.quantity)}</span><span>${E(dest(m))}</span><span>${E(obs(m))}</span></div>`).join('')}</div>`:'<div class="vx-empty">Nenhuma movimentação registrada.</div>';
    historyModal.hidden=false;
   }
   historyModal.querySelector('.vx-close').onclick=()=>historyModal.hidden=true;
