@@ -2,6 +2,27 @@
 (function(){
  const E=window.esc||((v='')=>String(v??''));
  const today=()=>new Date().toISOString().slice(0,10);
+ // Achado do usuário em 2026-10-01: estas 3 telas (Agenda Externa,
+ // Estoque/Peças, Venda de Peças) são abertas por chamada DIRETA de
+ // função a partir do listener de clique logo abaixo (nunca por
+ // window.render) -- o retrofit de "← Voltar" feito em
+ // all-menus-layout.js (renderOperational) nunca alcança quem chega por
+ // aqui, porque o próprio listener de captura intercepta o clique ANTES
+ // do onclick normal do card rodar (e.stopImmediatePropagation()).
+ // Resultado real reportado pelo usuário: abrir "VENDA DE PEÇAS" não
+ // tinha NENHUM jeito de voltar. backBar() injeta a mesma barra "←
+ // Voltar" (mesmo texto/posição do retrofit), sem depender da cadeia de
+ // window.render -- volta sempre pra tela de onde o usuário veio
+ // (state.view no momento em que entrou aqui, guardado só na primeira
+ // vez, mesmo padrão de state.__vxOpPrevView já usado no resto do app).
+ function backBar(app){
+  if(!state.__vxOpPrevView)state.__vxOpPrevView=state.view;
+  const bar=document.createElement('div');
+  bar.setAttribute('style','margin-bottom:12px');
+  bar.innerHTML='<button type="button" class="secondary" id="vxStockOpBack">← Voltar</button>';
+  app.insertBefore(bar,app.firstChild);
+  document.getElementById('vxStockOpBack').onclick=()=>{const v=state.__vxOpPrevView||'dashboard';state.__vxOpPrevView=null;window.render(v)};
+ }
  async function agenda(){
   const app=document.querySelector('#app'); if(!app)return;
   const [techs,rows,orders]=await Promise.all([
@@ -11,6 +32,7 @@
   ]);
   const t0=techs.find(t=>t.external_schedule_enabled)||techs[0]; const d=today();
   app.innerHTML=`<div class="vx-op"><div class="vx-op-head"><div><h2>Agenda de Técnicos Externos</h2><p>Agendamento de campo por técnico, horário, OS e observações importantes.</p></div><button class="vx-primary" id="vxNewVisit">+ Novo agendamento</button></div><div class="vx-op-filters"><label>Data<input id="vxAgendaDate" type="date" value="${d}"></label><label>Técnico<select id="vxAgendaTech"><option value="">Todos</option>${techs.map(t=>`<option value="${t.id}">${E(t.full_name)}</option>`).join('')}</select></label></div><div id="vxAgendaList"></div><div class="vx-op-modal-bg" id="vxAgendaModal" hidden><div class="vx-modal-box"><button class="vx-close">×</button><h3>Novo atendimento externo</h3><div class="vx-form-grid"><label>OS<select id="vxVisitOs"><option value="">Sem vínculo</option>${orders.map(o=>`<option value="${o.id}">${E(o.os_number||o.id)}</option>`).join('')}</select></label><label>Técnico<select id="vxVisitTech">${techs.map(t=>`<option value="${t.id}">${E(t.full_name)}</option>`).join('')}</select></label><label>Data<input id="vxVisitDate" type="date" value="${d}"></label><label>Início<input id="vxVisitStart" type="time" value="09:00"></label><label>Fim<input id="vxVisitEnd" type="time" value="10:00"></label><label>Período<select id="vxVisitPeriod"><option>MANHÃ</option><option>TARDE</option><option>NOITE</option></select></label><label class="full">Alerta importante<input id="vxVisitAlert" placeholder="Ex.: ligar 30 min antes"></label><label class="full">Observação do cliente<textarea id="vxVisitNote" rows="3"></textarea></label></div><button class="vx-primary" id="vxSaveVisit">Salvar agendamento</button></div></div></div>`;
+  backBar(app);
   function draw(){const date=document.querySelector('#vxAgendaDate').value,tech=document.querySelector('#vxAgendaTech').value;const list=rows.filter(r=>(!date||r.appointment_date===date)&&(!tech||r.technician_id===tech));document.querySelector('#vxAgendaList').innerHTML=list.length?`<div class="vx-table"><div class="vx-tr vx-th"><span>Horário</span><span>Técnico</span><span>OS</span><span>Status</span><span>Observação</span></div>${list.map(r=>{const t=techs.find(x=>x.id===r.technician_id);const o=orders.find(x=>x.id===r.service_order_id);return `<div class="vx-tr"><span>${E((r.start_time||'').slice(0,5))}–${E((r.end_time||'').slice(0,5))}</span><span>${E(t?.full_name||'—')}</span><span>${E(o?.os_number||'—')}</span><span>${E(r.status||'AGENDADO')}</span><span>${E(r.important_alert||r.client_note||'')}</span></div>`}).join('')}</div>`:'<div class="vx-empty">Nenhum atendimento externo para o filtro selecionado.</div>'}
   draw();document.querySelector('#vxAgendaDate').onchange=draw;document.querySelector('#vxAgendaTech').onchange=draw;const modal=document.querySelector('#vxAgendaModal');document.querySelector('#vxNewVisit').onclick=()=>{modal.hidden=false;if(t0)document.querySelector('#vxVisitTech').value=t0.id};modal.querySelector('.vx-close').onclick=()=>modal.hidden=true;
   document.querySelector('#vxSaveVisit').onclick=async()=>{const tech=document.querySelector('#vxVisitTech').value,date=document.querySelector('#vxVisitDate').value,start=document.querySelector('#vxVisitStart').value,end=document.querySelector('#vxVisitEnd').value;if(!tech||!date||!start)return toast('Preencha técnico, data e horário.','err');const duplicate=rows.find(r=>r.technician_id===tech&&r.appointment_date===date&&r.start_time?.slice(0,5)===start);if(duplicate&&!confirm('Já existe agendamento para este técnico neste horário. Deseja continuar?'))return;const body={service_order_id:document.querySelector('#vxVisitOs').value||null,technician_id:tech,appointment_date:date,period:document.querySelector('#vxVisitPeriod').value,start_time:start,end_time:end||null,status:'AGENDADO',important_alert:document.querySelector('#vxVisitAlert').value||null,client_note:document.querySelector('#vxVisitNote').value||null,created_by:state?.session?.user?.id||null};try{const saved=await api('appointments',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(body)});rows.push(saved?.[0]||body);modal.hidden=true;draw();toast('Agendamento salvo.');}catch(e){toast('Erro ao salvar agendamento: '+e.message,'err')}};
@@ -90,6 +112,7 @@
     <button class="vx-primary" id="vxConfirmApply">Confirmar aplicação</button>
   </div></div>
   </div>`;
+  backBar(app);
 
   function draw(){const q=(document.querySelector('#vxPartSearch').value||'').toUpperCase();const list=items.filter(i=>[i.code,i.description,i.manufacturer,i.compatible_models].join(' ').toUpperCase().includes(q));document.querySelector('#vxPartsList').innerHTML=`<div class="vx-table"><div class="vx-tr vx-tr-stock vx-th"><span>Código</span><span>Descrição</span><span>Fabricante</span><span>Disponível</span><span>Fiscal</span><span></span></div>${list.map(i=>`<div class="vx-tr vx-tr-stock"><span>${E(i.code||'—')}</span><span>${E(i.description||'')}</span><span>${E(i.manufacturer||'')}</span><span>${E(i.available_quantity||0)}</span><span>${E(i.fiscal_quantity||0)}</span><span class="vx-stock-row-actions"><button type="button" class="vx-mini-btn" data-entry="${i.id}">+ Entrada</button>${isGestorOrEstoque()?`<button type="button" class="vx-mini-btn" data-withdraw="${i.id}">Retirar</button><button type="button" class="vx-mini-btn" data-kebab="${i.id}">⋮</button>`:''}</span></div>`).join('')}</div>`;
    document.querySelectorAll('[data-entry]').forEach(b=>b.onclick=()=>openEntryModal(items.find(i=>i.id===b.dataset.entry)));
@@ -322,7 +345,117 @@
    finally{confirmApplyBtn.disabled=false;}
   };
  }
+
+ // ---------- Venda de Peças (achado do usuário, 2026-10-01) ----------
+ // O card "VENDA DE PEÇAS" (Atendimento e Loja) apontava pro mesmo
+ // destino do catálogo/cadastro de peças -- aquele cadastro só define a
+ // IDENTIDADE da peça (código/descrição/fabricante), nunca uma
+ // transação de venda de verdade (sem quantidade vendida, sem valor
+ // cobrado). Esta é a tela de venda balcão real: busca peça com saldo,
+ // escolhe local/posição/quantidade/valor de venda, forma de pagamento
+ // e vínculo opcional a uma OS -- rpc/stock_sell_part (migration
+ // 20261001010000) baixa o estoque E registra o recebimento juntos,
+ // numa única transação atômica (nunca peça baixada sem dinheiro, nem
+ // dinheiro sem baixa de estoque).
+ async function vendaPecas(){
+  const app=document.querySelector('#app'); if(!app)return;
+  const [items,methods,serviceOrders]=await Promise.all([
+   api('stock_items?available_quantity=gt.0&select=*&order=description&limit=300').catch(()=>[]),
+   api(`payment_methods?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=sort_order`).catch(()=>[]),
+   api('service_orders?status=neq.FINALIZADA&select=id,os_number&order=opened_at.desc&limit=300').catch(()=>[])
+  ]);
+  const paymentMethods=(methods.length?methods:[{name:'DINHEIRO'},{name:'PIX'},{name:'CARTÃO DE DÉBITO'},{name:'CARTÃO DE CRÉDITO'}]).filter(m=>String(m.name||'').toUpperCase()!=='DESCONTO');
+  let selected=null;
+
+  app.innerHTML=`<div class="vx-op"><div class="vx-op-head"><div><h2>Venda de Peças</h2><p>Venda balcão de peça avulsa -- baixa o estoque e registra o recebimento juntos. Vínculo a uma OS é opcional.</p></div></div>
+   <input id="vxSellSearch" class="vx-search" placeholder="Buscar peça com saldo disponível, por código, descrição ou fabricante">
+   <div id="vxSellResults"></div>
+   <div id="vxSellForm"></div>
+  </div>`;
+  backBar(app);
+
+  const resultsBox=document.querySelector('#vxSellResults');
+  const formBox=document.querySelector('#vxSellForm');
+
+  function search(){
+   const q=(document.querySelector('#vxSellSearch').value||'').toUpperCase().trim();
+   if(!q){resultsBox.innerHTML='';return;}
+   const list=items.filter(i=>[i.code,i.description,i.manufacturer].join(' ').toUpperCase().includes(q)).slice(0,30);
+   resultsBox.innerHTML=list.length
+    ?`<div class="vx-table">${list.map(i=>`<div class="vx-tr" style="grid-template-columns:2fr 1fr 1fr auto"><span>${E(i.code||'—')} — ${E(i.description||'')}</span><span>${E(i.manufacturer||'—')}</span><span>Disponível: ${E(i.available_quantity||0)}</span><span><button type="button" class="vx-mini-btn" data-pick="${i.id}">Selecionar</button></span></div>`).join('')}</div>`
+    :'<div class="vx-empty">Nenhuma peça com saldo disponível encontrada.</div>';
+   resultsBox.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>selectItem(list.find(i=>i.id===b.dataset.pick)));
+  }
+  document.querySelector('#vxSellSearch').oninput=search;
+
+  async function selectItem(item){
+   if(!item)return;
+   const balances=await api(`stock_balances?stock_item_id=eq.${item.id}&state=eq.DISPONIVEL&quantity=gt.0&select=id,quantity,location_id,position_id,stock_locations(name),stock_positions(code)`).catch(()=>[]);
+   if(!balances.length){toast('Esta peça não tem saldo disponível em nenhuma posição.','err');return;}
+   selected={item,balances};
+   resultsBox.innerHTML='';
+   document.querySelector('#vxSellSearch').value='';
+   renderForm();
+  }
+
+  function renderForm(){
+   if(!selected){formBox.innerHTML='';return;}
+   const {item,balances}=selected;
+   const refPrice=Number(item.reference_price||0);
+   formBox.innerHTML=`<div style="border:1px solid #d7e0ea;border-radius:8px;padding:14px;margin-top:10px;background:#fff">
+     <h3 style="margin:0 0 10px">${E(item.code||'—')} — ${E(item.description||'')}</h3>
+     <div class="vx-form-grid">
+       <label class="full">Local / posição (saldo disponível)<select id="vsBalance">${balances.map(b=>`<option value="${b.location_id}|${b.stock_positions?.code||''}" data-max="${b.quantity}">${E(b.stock_locations?.name||'—')} — ${E(b.stock_positions?.code||'—')} (saldo: ${E(b.quantity)})</option>`).join('')}</select></label>
+       <label>Quantidade<input id="vsQuantity" type="number" step="0.01" min="0.01" value="1"></label>
+       <label>Valor de venda (un.)<input id="vsUnitPrice" type="number" step="0.01" min="0" value="${refPrice.toFixed(2)}"></label>
+       <label>Total<input id="vsTotal" disabled></label>
+       <label class="full">OS (opcional)<select id="vsOs"><option value="">Sem vínculo (venda balcão)</option>${serviceOrders.map(o=>`<option value="${o.id}">${E(o.os_number)}</option>`).join('')}</select></label>
+       <label>Forma de pagamento<select id="vsMethod">${paymentMethods.map(m=>`<option>${E(m.name)}</option>`).join('')}</select></label>
+       <label class="full">Observação<input id="vsNotes" placeholder="Opcional"></label>
+     </div>
+     <div class="vx-op-actions">
+       <button type="button" class="vx-secondary-btn" id="vsCancel">Cancelar</button>
+       <button class="vx-primary" id="vsConfirm">Confirmar venda</button>
+     </div>
+   </div>`;
+   const qtyEl=document.querySelector('#vsQuantity'),priceEl=document.querySelector('#vsUnitPrice'),totalEl=document.querySelector('#vsTotal');
+   function recalcTotal(){const q=Number(String(qtyEl.value||'0').replace(',','.')),p=Number(String(priceEl.value||'0').replace(',','.'));totalEl.value=(q*p).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
+   qtyEl.oninput=recalcTotal;priceEl.oninput=recalcTotal;recalcTotal();
+   document.querySelector('#vsCancel').onclick=()=>{selected=null;renderForm();};
+   const confirmBtn=document.querySelector('#vsConfirm');
+   confirmBtn.onclick=async()=>{
+    if(confirmBtn.disabled)return;
+    const balOpt=document.querySelector('#vsBalance').selectedOptions[0];
+    if(!balOpt||!balOpt.value)return toast('Nenhum saldo disponível pra vender.','err');
+    const [locationId,positionCode]=balOpt.value.split('|');
+    const quantity=Number(String(qtyEl.value||'0').replace(',','.'));
+    const unitPrice=Number(String(priceEl.value||'0').replace(',','.'));
+    const osId=document.querySelector('#vsOs').value||null;
+    const method=document.querySelector('#vsMethod').value;
+    const notes=document.querySelector('#vsNotes').value.trim();
+    if(!(quantity>0))return toast('Informe uma quantidade maior que zero.','err');
+    if(quantity>Number(balOpt.dataset.max))return toast('Quantidade maior que o saldo disponível nessa posição.','err');
+    if(!(unitPrice>=0))return toast('Informe um valor de venda válido.','err');
+    if(!method)return toast('Selecione a forma de pagamento.','err');
+    const total=Math.round(quantity*unitPrice*100)/100;
+    if(!(total>0))return toast('O valor total da venda precisa ser maior que zero.','err');
+    confirmBtn.disabled=true;
+    try{
+     await api('rpc/stock_sell_part',{method:'POST',body:JSON.stringify({
+      p_stock_item_id:item.id,p_location_id:locationId,p_position_code:positionCode,
+      p_quantity:quantity,p_unit_sale_price:unitPrice,
+      p_payment_components:[{method,amount:total}],
+      p_service_order_id:osId,p_notes:notes||null,p_idempotency_key:idem()
+     })});
+     toast('Venda registrada -- estoque baixado e recebimento lançado.');
+     vendaPecas();
+    }catch(e){toast('Erro ao registrar venda: '+e.message,'err');}
+    finally{confirmBtn.disabled=false;}
+   };
+  }
+ }
+
  window.renderExternalAgenda=agenda;window.renderStockWorkbench=estoque;
- document.addEventListener('click',e=>{const b=e.target.closest('[data-target]');if(!b)return;if(b.dataset.target==='agenda-operacional'){e.preventDefault();e.stopImmediatePropagation();agenda();}if(b.dataset.target==='estoque-operacional'){e.preventDefault();e.stopImmediatePropagation();estoque();}},true);
- const prev=window.render;window.render=async function(view){if(view==='agenda')return agenda();if(view==='estoque')return estoque();return prev.apply(this,arguments)};
+ document.addEventListener('click',e=>{const b=e.target.closest('[data-target]');if(!b)return;if(b.dataset.target==='agenda-operacional'){e.preventDefault();e.stopImmediatePropagation();agenda();}if(b.dataset.target==='estoque-operacional'){e.preventDefault();e.stopImmediatePropagation();estoque();}if(b.dataset.target==='venda-pecas'){e.preventDefault();e.stopImmediatePropagation();vendaPecas();}},true);
+ const prev=window.render;window.render=async function(view){if(view==='agenda')return agenda();if(view==='estoque')return estoque();if(view==='venda-pecas'||view==='op:venda-pecas')return vendaPecas();return prev.apply(this,arguments)};
 })();

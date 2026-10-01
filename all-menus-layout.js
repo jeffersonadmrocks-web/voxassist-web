@@ -88,6 +88,7 @@
     if(t==='agenda-operacional') return window.render('op:agenda');
     if(t==='nps-electrolux') return window.render('nps-electrolux');
     if(t==='estoque-operacional') return window.render('op:estoque');
+    if(t==='venda-pecas') return window.render('op:venda-pecas');
     if(t==='financeiro-operacional') return window.render('op:financeiro');
     if(t==='testes-operacional') return window.render('op:testes');
     if(t==='usuarios-operacional') return window.render('op:usuarios');
@@ -199,7 +200,7 @@
     card('◉','CLIENTES','Cadastros, histórico e dados de contato.','clientes','purple')+
     card('▥','SITUAÇÃO DOS APARELHOS','Acompanhe rapidamente cada etapa das OS.','pesquisa-os','orange')+
     card('$','ORÇAMENTOS / APROVAÇÕES','Orçamentos aguardando análise e aparelhos aguardando aprovação do cliente.','orcamentos-aprovacoes','green')+
-    card('▦','VENDA DE PEÇAS','Venda rápida vinculada ao atendimento.','estoque-operacional','teal')+
+    card('▦','VENDA DE PEÇAS','Venda rápida vinculada ao atendimento.','venda-pecas','teal')+
     card('▣','VENDA DE APARELHO','Registro de venda de equipamentos.','loja-vendas','brown')+
     card('◈','WP / SEG','Ordens Whirlpool e Seguradora importadas — aguardando tratativa.','whirlpool-portal','red')+
     placeholderCard('⚙','EM CONSTRUÇÃO','Espaço reservado para nova funcionalidade do Atendimento.'),
@@ -274,7 +275,7 @@
     card('♟','EM PODER DO TÉCNICO','Peças em estoque pulmão de cada técnico.','estoque-operacional','cyan')+
     card('↔','TRANSFERÊNCIAS','Movimentações entre Vitória e Serra.','estoque-operacional','purple')+
     card('!','PENDÊNCIA FISCAL GARANTIA','Peças utilizadas aguardando faturamento ao fabricante.','estoque-operacional','red')+
-    card('▣','VENDA DE PEÇAS','Venda rápida e vínculo opcional à OS.','estoque-operacional','teal')+
+    card('▣','VENDA DE PEÇAS','Venda rápida e vínculo opcional à OS.','venda-pecas','teal')+
     card('▤','VENDA DE APARELHO','Registro comercial de equipamentos.','loja-vendas','brown')+
     card('⌕','CONSULTA / HISTÓRICO','Rastreabilidade por item, técnico, OS e loja.','estoque-operacional','gray'),
     summary('ITENS CADASTRADOS',state.stock,'green','stock')+summary('OS AGUARD. PEÇA',state.orders.filter(o=>(o.status||'').includes('PECA')),'orange')+summary('TÉCNICOS','—','cyan')+summary('PEND. FISCAIS','—','red')
