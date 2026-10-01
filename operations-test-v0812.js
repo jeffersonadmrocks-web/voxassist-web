@@ -359,16 +359,37 @@
  // dinheiro sem baixa de estoque).
  async function vendaPecas(){
   const app=document.querySelector('#app'); if(!app)return;
+  // Achado do usuário em 2026-10-01: filtrar já na consulta por
+  // available_quantity=gt.0 escondia peças cadastradas de verdade (todo
+  // cadastro nasce com saldo zero até uma Entrada -- ver estoque(), "O
+  // cadastro só define a IDENTIDADE da peça") -- a busca simplesmente
+  // nunca achava NADA pra quem ainda não lançou entrada nenhuma,
+  // parecendo quebrada. Busca agora TODO o catálogo (igual a estoque());
+  // "Disponível: 0" aparece na própria linha do resultado, e tentar
+  // selecionar uma peça sem saldo já avisa que precisa de Entrada antes
+  // (ver selectItem abaixo) -- nunca esconde o cadastro, só impede a
+  // venda de algo que não existe fisicamente ainda.
   const [items,methods,serviceOrders]=await Promise.all([
-   api('stock_items?available_quantity=gt.0&select=*&order=description&limit=300').catch(()=>[]),
+   api('stock_items?select=*&order=description&limit=500').catch(()=>[]),
    api(`payment_methods?company_id=eq.${state.profile?.active_company_id}&active=eq.true&select=id,name&order=sort_order`).catch(()=>[]),
    api('service_orders?status=neq.FINALIZADA&select=id,os_number&order=opened_at.desc&limit=300').catch(()=>[])
   ]);
   const paymentMethods=(methods.length?methods:[{name:'DINHEIRO'},{name:'PIX'},{name:'CARTÃO DE DÉBITO'},{name:'CARTÃO DE CRÉDITO'}]).filter(m=>String(m.name||'').toUpperCase()!=='DESCONTO');
   let selected=null;
 
+  // Achado do usuário em 2026-10-01: busca só por texto livre obrigava
+  // digitar o fabricante junto da peça (ex.: "capacitor electrolux") pra
+  // não misturar com o mesmo item de outras marcas -- separado em dois
+  // filtros combináveis: fabricante (lista exata, derivada dos próprios
+  // itens carregados -- nunca um cadastro de marcas à parte) + busca
+  // geral (código/descrição/fabricante, igual antes). Qualquer um dos
+  // dois sozinho já filtra -- não precisa dos dois preenchidos.
+  const makers=[...new Set(items.map(i=>String(i.manufacturer||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   app.innerHTML=`<div class="vx-op"><div class="vx-op-head"><div><h2>Venda de Peças</h2><p>Venda balcão de peça avulsa -- baixa o estoque e registra o recebimento juntos. Vínculo a uma OS é opcional.</p></div></div>
-   <input id="vxSellSearch" class="vx-search" placeholder="Buscar peça com saldo disponível, por código, descrição ou fabricante">
+   <div class="vx-op-filters">
+     <label>Fabricante<select id="vxSellMaker"><option value="">Todos os fabricantes</option>${makers.map(m=>`<option>${E(m)}</option>`).join('')}</select></label>
+     <label class="full">Busca geral (código, descrição ou fabricante)<input id="vxSellSearch" class="vx-search" placeholder="Ex.: capacitor"></label>
+   </div>
    <div id="vxSellResults"></div>
    <div id="vxSellForm"></div>
   </div>`;
@@ -379,11 +400,15 @@
 
   function search(){
    const q=(document.querySelector('#vxSellSearch').value||'').toUpperCase().trim();
-   if(!q){resultsBox.innerHTML='';return;}
-   const list=items.filter(i=>[i.code,i.description,i.manufacturer].join(' ').toUpperCase().includes(q)).slice(0,30);
+   const maker=document.querySelector('#vxSellMaker').value;
+   if(!q&&!maker){resultsBox.innerHTML='';return;}
+   let list=items;
+   if(maker)list=list.filter(i=>String(i.manufacturer||'').trim()===maker);
+   if(q)list=list.filter(i=>[i.code,i.description,i.manufacturer].join(' ').toUpperCase().includes(q));
+   list=list.slice(0,30);
    resultsBox.innerHTML=list.length
     ?`<div class="vx-table">${list.map(i=>`<div class="vx-tr" style="grid-template-columns:2fr 1fr 1fr auto"><span>${E(i.code||'—')} — ${E(i.description||'')}</span><span>${E(i.manufacturer||'—')}</span><span>Disponível: ${E(i.available_quantity||0)}</span><span><button type="button" class="vx-mini-btn" data-pick="${i.id}">Selecionar</button></span></div>`).join('')}</div>`
-    :'<div class="vx-empty">Nenhuma peça com saldo disponível encontrada.</div>';
+    :'<div class="vx-empty">Nenhuma peça com saldo disponível encontrada para este filtro.</div>';
    resultsBox.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>selectItem(list.find(i=>i.id===b.dataset.pick)));
   }
   document.querySelector('#vxSellSearch').oninput=search;
