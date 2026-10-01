@@ -285,7 +285,7 @@
   async function fetchAllFrom(fetcher){
     const first=await fetcher({page:1,pageSize:100,orderBy:'CreatedDate',order:'desc'});
     const records=Array.isArray(first)?first:(first?.records||first?.items||first?.data||first?.results||[]);
-    const totalPages=Array.isArray(first)?1:(first?.totalPages||Math.max(1,Math.ceil((first?.totalItems||records.length)/100)));
+    const totalPages=Array.isArray(first)?1:(first?.totalPages||Math.max(1,Math.ceil((first?.totalItems||first?.totalRecords||first?.total||records.length)/100)));
     const all=[...records];
     for(let page=2;page<=totalPages;page++){
       const d=await fetcher({page,pageSize:100,orderBy:'CreatedDate',order:'desc'});
@@ -510,7 +510,7 @@
         const id='row'+i;
         const open=st.expanded===id;
         const track=st.tracking[taskIdentity(t)];
-        const isNew=!!track&&!track.acknowledged_at;
+        const isNew=isNotStarted(t)&&!!track&&!track.acknowledged_at;
         return `<tr class="vx-elxt-task-row" data-row-expand="${id}" data-item-index="${i}" title="Clique para ${open?'recolher':'ver os detalhes completos'}">
           <td><span class="vx-elxt-task-id">${esc2(f.tarefa)}</span>${t.__source?`<span class="vx-elxt-source">${esc2(t.__source)}</span>`:''}${isNew?'<span class="vx-elxt-new">NOVA</span>':''}</td>
           <td><span class="vx-elxt-case">${esc2(f.caso)}</span></td>
@@ -539,31 +539,25 @@
     markSeenNow();
   };
 
-  /* ---------- Indicador de "chegou tarefa nova" no botão TAREFAS ----------
-     Continua usando /tasks/pending ("Não iniciado"), a fila que realmente precisa de ação, independente da aba Recebidas.
-     Assinatura = JSON da tarefa mais recente (page 1, pageSize 1, ordenada
-     por CreatedDate desc) -- não depende de acertar o nome exato de nenhum
-     campo, só de ela ter mudado desde a última vez que o usuário abriu a
-     tela. Guardado em localStorage (por navegador/dispositivo, não por
-     empresa -- suficiente pro aviso visual, sem exigir uma tabela nova). */
-  let newCount=0;
+  /* Indicador compartilhado: pendentes na origem e ainda sem ciência. */
+  let newCount=null;
+  let badgeCompanyId=null;
   function taskIdentity(t){return String(t?.id||t?.taskNumber||t?.createdDate||'');}
-  async function latestPendingTasks(){
-    const data=await fetchPendingTasks({page:1,pageSize:15,orderBy:'CreatedDate',order:'desc'});
-    return Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
-  }
   let badgeCheckRunning=false;
   async function refreshSharedBadge(){
     if(badgeCheckRunning||document.visibilityState==='hidden')return;
     badgeCheckRunning=true;
     try{
-      // Fora da tela de tarefas, sincroniza apenas as 15 mais recentes.
-      // Evita buscar/gravar 100 registros a cada checagem do badge.
-      const items=await latestPendingTasks();
+      const companyId=await currentCompanyId();
+      if(!companyId)throw new Error('Empresa indisponível.');
+      if(badgeCompanyId!==companyId){badgeCompanyId=companyId;newCount=null;paintBadge();}
+      const items=await fetchAllFrom(fetchPendingTasks);
       await syncTracking(items);
-      newCount=Object.values(st.tracking).filter(x=>!x.acknowledged_at).length;
+      if(await currentCompanyId()!==companyId)return;
+      const ids=new Set(items.map(taskIdentity).filter(Boolean));
+      newCount=[...ids].filter(id=>!st.tracking[id]?.acknowledged_at).length;
       paintBadge();
-    }catch(_e){/* mantém badge anterior em falha de rede */}
+    }catch(_e){/* preserva a última contagem em falha de rede */}
     finally{badgeCheckRunning=false;}
   }
   async function markSeenNow(){await refreshSharedBadge();}
@@ -571,13 +565,16 @@
   function paintBadge(){
     const btn=document.getElementById('vxElxTasksBtn');if(!btn)return;
     let badge=btn.querySelector('.vx-elxt-badge');
-    if(newCount>0){
+    if(newCount!==null){
       installStyle();
       if(!badge){badge=document.createElement('span');badge.className='vx-elxt-badge';btn.appendChild(badge);}
-      badge.textContent=newCount>99?'99+':String(newCount);
-      badge.title=newCount===1?'1 tarefa nova aguardando ciência':newCount+' tarefas novas aguardando ciência';
+      badge.textContent=String(newCount);
+      badge.title=newCount===1?'1 tarefa pendente aguardando ciência':newCount+' tarefas pendentes aguardando ciência';
     }else badge?.remove();
   }
+  // O painel recria o botão a cada poll; repinta o valor em memória imediatamente.
+  window.vxElxPaintTasksBadge=paintBadge;
+  window.vxElxRefreshTasksBadge=checkForNew;
 
   // Não observa o document.body: o VoxAssist altera o DOM com frequência e
   // isso fazia o callback do badge rodar centenas/milhares de vezes sem necessidade.
