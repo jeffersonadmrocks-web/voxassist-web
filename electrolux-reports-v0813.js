@@ -865,10 +865,11 @@
     document.getElementById('vxElxViewAll').onclick=()=>renderBoardScreen({label:'Todas as SVOs',...homeFilterToBoardOpts()});
     document.getElementById('vxElxTasksBtn').onclick=()=>window.vxOpenElectroluxTasks?.();
     document.getElementById('vxElxClosedBtn').onclick=()=>renderClosedScreen();
+    window.vxElxPaintTasksBadge?.();
     bindHomeSearch();
     document.getElementById('vxElxSync').onclick=async()=>{
       const btn=document.getElementById('vxElxSync');if(btn){btn.disabled=true;btn.textContent='SINCRONIZANDO…';}
-      try{await triggerSyncNow();await refresh();}catch(e){toast?.(e.message,'err');}
+      try{await triggerSyncNow();await refresh();await window.vxElxRefreshTasksBadge?.();}catch(e){toast?.(e.message,'err');}
       if(btn){btn.disabled=false;btn.textContent='↻ SINCRONIZAR AGORA';}
     };
     bindApiConfig();
