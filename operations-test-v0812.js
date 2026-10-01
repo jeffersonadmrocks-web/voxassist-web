@@ -134,7 +134,7 @@
    }).join('')}</div>`;
    document.querySelectorAll('[data-entry]').forEach(b=>b.onclick=()=>openEntryModal(items.find(i=>i.id===b.dataset.entry)));
    document.querySelectorAll('[data-withdraw]').forEach(b=>b.onclick=()=>openWithdrawModal(items.find(i=>i.id===b.dataset.withdraw)));
-   document.querySelectorAll('[data-kebab]').forEach(b=>b.onclick=()=>openItemMenu(items.find(i=>i.id===b.dataset.kebab)));
+   document.querySelectorAll('[data-kebab]').forEach(b=>b.onclick=e=>{e.stopPropagation();openItemKebabMenu(items.find(i=>i.id===b.dataset.kebab),b);});
    document.querySelectorAll('[data-apply]').forEach(b=>b.onclick=()=>openApplyModal(items.find(i=>i.id===b.dataset.apply)));
   }
   function isGestorOrEstoque(){return ['GESTOR','ESTOQUE'].includes(myRole());}
@@ -293,13 +293,32 @@
   };
 
   // ---- Menu ⋮ por peça: Devolver / Histórico / Quarentena ----
-  function openItemMenu(item){
+  // Achado do usuário em 2026-10-01: o menu ⋮ abria um prompt() do
+  // navegador pedindo pra digitar um número (1/2/3/4) -- substituído por
+  // um menu suspenso de verdade, com as opções já visíveis e clicáveis,
+  // mesmo padrão de menu ⋮ já usado no resto do app (ex.: Financeiro/
+  // Recebimentos).
+  function closeItemKebabMenu(){document.querySelector('#vxItemKebabMenu')?.remove();}
+  function openItemKebabMenu(item,btn){
+   closeItemKebabMenu();
    if(!item)return;
-   const choice=prompt(`${item.code||''} — ${item.description||''}\n\nDigite:\n1 = Devolver\n2 = Histórico\n3 = Quarentena\n4 = Editar peça`);
-   if(choice==='1')openReturnModal(item);
-   else if(choice==='2')openHistoryModal(item);
-   else if(choice==='3')openQuarantineModal(item);
-   else if(choice==='4')openPartModal(item);
+   const rect=btn.getBoundingClientRect();
+   const menu=document.createElement('div');
+   menu.id='vxItemKebabMenu';
+   menu.className='vx-stock-kebab-menu';
+   menu.style.top=(rect.bottom+window.scrollY+4)+'px';
+   menu.style.left=Math.max(8,rect.right+window.scrollX-170)+'px';
+   menu.innerHTML=`
+    <button type="button" data-act="edit">Editar peça</button>
+    <button type="button" data-act="return">Devolver</button>
+    <button type="button" data-act="history">Histórico</button>
+    <button type="button" data-act="quarantine">Quarentena</button>
+   `;
+   document.body.appendChild(menu);
+   menu.querySelector('[data-act="edit"]').onclick=()=>{closeItemKebabMenu();openPartModal(item);};
+   menu.querySelector('[data-act="return"]').onclick=()=>{closeItemKebabMenu();openReturnModal(item);};
+   menu.querySelector('[data-act="history"]').onclick=()=>{closeItemKebabMenu();openHistoryModal(item);};
+   menu.querySelector('[data-act="quarantine"]').onclick=()=>{closeItemKebabMenu();openQuarantineModal(item);};
   }
 
   const returnModal=document.querySelector('#vxReturnModal');
@@ -549,5 +568,13 @@
 
  window.renderExternalAgenda=agenda;window.renderStockWorkbench=estoque;
  document.addEventListener('click',e=>{const b=e.target.closest('[data-target]');if(!b)return;if(b.dataset.target==='agenda-operacional'){e.preventDefault();e.stopImmediatePropagation();agenda();}if(b.dataset.target==='estoque-operacional'){e.preventDefault();e.stopImmediatePropagation();estoque();}if(b.dataset.target==='venda-pecas'){e.preventDefault();e.stopImmediatePropagation();vendaPecas();}},true);
+ // Fecha o menu ⋮ do Cadastro de Peças ao clicar fora dele -- registrado
+ // UMA vez aqui (nível do módulo, nunca dentro de estoque()) pra não
+ // acumular um listener novo a cada vez que a tela é renderizada de
+ // novo (confirmar, voltar, aplicar peça etc. chamam estoque() de novo).
+ // O próprio clique no botão ⋮ já para propagação (stopPropagation em
+ // openItemKebabMenu), então nunca fecha o menu que ele mesmo acabou de
+ // abrir.
+ document.addEventListener('click',e=>{if(e.target.closest('#vxItemKebabMenu'))return;document.querySelector('#vxItemKebabMenu')?.remove();});
  const prev=window.render;window.render=async function(view){if(view==='agenda')return agenda();if(view==='estoque')return estoque();if(view==='venda-pecas'||view==='op:venda-pecas')return vendaPecas();return prev.apply(this,arguments)};
 })();
