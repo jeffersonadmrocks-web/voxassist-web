@@ -35,4 +35,12 @@
    System III) -- badge discreto ao lado do saldo disponível quando ele
    cai abaixo do mínimo cadastrado, nunca bloqueia nenhuma ação sozinho. */
 .vx-stock-low-badge{display:inline-block;margin-left:6px;background:#fdecea;color:#9b2c21;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap}
+/* Achado do usuário (2026-10-01): o menu ⋮ do Cadastro de Peças abria
+   um prompt() do navegador pedindo pra digitar 1/2/3/4 -- substituído
+   por um menu suspenso de verdade, posicionado perto do botão ⋮ que o
+   abriu (ver openItemKebabMenu). */
+.vx-stock-kebab-menu{position:absolute;z-index:100000;background:#fff;border:1px solid #dfe6ef;border-radius:9px;box-shadow:0 10px 28px rgba(12,35,64,.18);min-width:160px;overflow:hidden}
+.vx-stock-kebab-menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:10px 14px;font-size:13px;color:#23364e;cursor:pointer}
+.vx-stock-kebab-menu button:hover{background:#f0f4f8}
+.vx-stock-kebab-menu button+button{border-top:1px solid #edf1f5}
 @media(max-width:800px){.vx-form-grid,.vx-kpis{grid-template-columns:1fr}.vx-tr{grid-template-columns:1fr 1fr}.vx-tr span:nth-child(n+3){font-size:11px}.vx-op-head{align-items:flex-start;flex-direction:column}.vx-tr-stock{grid-template-columns:1fr 1fr}.vx-stock-row-actions{justify-content:flex-start}}
