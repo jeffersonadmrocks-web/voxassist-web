@@ -31,4 +31,8 @@
 .vx-secondary-btn{border:1px solid #cfd8e4;background:#fff;color:#53677d;padding:11px 16px;border-radius:8px;font-weight:700;cursor:pointer}
 .vx-secondary-btn:hover{background:#f0f4f8}
 .vx-stock-row-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+/* Achado do usuário (2026-10-01): estoque mínimo (alerta de reposição,
+   System III) -- badge discreto ao lado do saldo disponível quando ele
+   cai abaixo do mínimo cadastrado, nunca bloqueia nenhuma ação sozinho. */
+.vx-stock-low-badge{display:inline-block;margin-left:6px;background:#fdecea;color:#9b2c21;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap}
 @media(max-width:800px){.vx-form-grid,.vx-kpis{grid-template-columns:1fr}.vx-tr{grid-template-columns:1fr 1fr}.vx-tr span:nth-child(n+3){font-size:11px}.vx-op-head{align-items:flex-start;flex-direction:column}.vx-tr-stock{grid-template-columns:1fr 1fr}.vx-stock-row-actions{justify-content:flex-start}}

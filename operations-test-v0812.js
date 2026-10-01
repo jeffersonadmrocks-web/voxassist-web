@@ -60,12 +60,16 @@
 
   app.innerHTML=`<div class="vx-op"><div class="vx-op-head"><div><h2>Estoque e Cadastro de Peças</h2><p>Cadastro, saldos por posição, retirada/entrega/devolução e rastreabilidade por OS.</p></div><button class="vx-primary" id="vxNewPart">+ Cadastrar peça</button></div><div class="vx-kpis"><div><b>${items.length}</b><span>Itens cadastrados</span></div><div><b>${items.reduce((s,i)=>s+Number(i.available_quantity||0),0)}</b><span>Saldo disponível</span></div><div><b>${held.reduce((s,i)=>s+Number(i.quantity||0),0)}</b><span>Com técnicos</span></div><div><b>${moves.filter(m=>m.fiscal_pending).length}</b><span>Pendências fiscais</span></div></div>
   ${isTecnico()&&myStock.length?`<div class="vx-op-hint" style="background:#fff6e6;color:#8b5200"><b>MINHAS PEÇAS (sob minha responsabilidade)</b></div><div class="vx-table" style="margin-bottom:14px"><div class="vx-tr vx-th" style="grid-template-columns:2fr 1fr auto"><span>Peça</span><span>Quantidade</span><span></span></div>${myStock.map(h=>{const it=items.find(i=>i.id===h.stock_item_id);return `<div class="vx-tr" style="grid-template-columns:2fr 1fr auto"><span>${E(it?.code||'—')} — ${E(it?.description||'')}</span><span>${E(h.quantity)}</span><span><button type="button" class="vx-mini-btn" data-apply="${h.stock_item_id}">Aplicar nesta OS</button></span></div>`}).join('')}</div>`:''}
-  <input id="vxPartSearch" class="vx-search" placeholder="Buscar por código, descrição, fabricante ou modelo"><div id="vxPartsList"></div>
-  <div class="vx-op-modal-bg" id="vxPartModal" hidden><div class="vx-modal-box"><button class="vx-close">×</button><h3>Cadastrar peça</h3>
-    <p class="vx-op-hint">O cadastro só define a IDENTIDADE da peça -- saldo nasce zero. Para ter saldo, use "+ Entrada" depois de cadastrar.</p>
+  <div class="vx-op-filters">
+    <label>Fabricante<select id="vxPartMaker"><option value="">Todos os fabricantes</option>${[...new Set(items.map(i=>String(i.manufacturer||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR')).map(m=>`<option>${E(m)}</option>`).join('')}</select></label>
+    <label class="full">Busca geral (código, descrição, fabricante ou modelo)<input id="vxPartSearch" class="vx-search" placeholder="Buscar..."></label>
+  </div>
+  <div id="vxPartsList"></div>
+  <div class="vx-op-modal-bg" id="vxPartModal" hidden><div class="vx-modal-box"><button class="vx-close">×</button><h3 id="vxPartModalTitle">Cadastrar peça</h3>
+    <p class="vx-op-hint" id="vxPartModalHint">O cadastro só define a IDENTIDADE da peça -- saldo nasce zero. Para ter saldo, use "+ Entrada" depois de cadastrar.</p>
     <div class="vx-form-grid"><label>Código<input id="pCode"></label><label>Descrição<input id="pDesc"></label><label class="full">Fabricante (opcional -- pode confirmar depois)<input id="pMaker"></label></div>
     <details class="vx-op-details"><summary>+ Mais detalhes (opcional)</summary>
-    <div class="vx-form-grid"><label>Grupo<input id="pGroup"></label><label>Fornecedor<input id="pSupplier"></label><label>Localização (legado/exibição)<input id="pLoc"></label><label>Qtd. fiscal<input id="pFiscal" type="number" step="0.01" value="0"></label><label>Custo<input id="pCost" data-currency value="0"></label><label>Preço referência<input id="pPrice" data-currency value="0"></label><label class="full">Modelos compatíveis<input id="pModels"></label></div>
+    <div class="vx-form-grid"><label>Grupo<input id="pGroup"></label><label>Fornecedor<input id="pSupplier"></label><label>Localização (legado/exibição)<input id="pLoc"></label><label>Qtd. fiscal<input id="pFiscal" type="number" step="0.01" value="0"></label><label>Custo<input id="pCost" data-currency value="0"></label><label>Preço referência<input id="pPrice" data-currency value="0"></label><label>Estoque mínimo (alerta de reposição)<input id="pMin" type="number" step="0.01" placeholder="Ex.: 2"></label><label>Margem (%)<input id="pMargin" type="number" step="0.01"></label><label>Desconto (%)<input id="pDiscount" type="number" step="0.01"></label><label>IPI (%)<input id="pIpi" type="number" step="0.01"></label><label>ICMS (%)<input id="pIcms" type="number" step="0.01"></label><label class="full">Modelos compatíveis<input id="pModels"></label></div>
     </details>
     <div class="vx-op-actions"><button type="button" class="vx-secondary-btn" id="vxCancelPart">Cancelar</button><button class="vx-primary" id="vxSavePart">Salvar peça</button></div>
   </div></div>
@@ -114,20 +118,82 @@
   </div>`;
   backBar(app);
 
-  function draw(){const q=(document.querySelector('#vxPartSearch').value||'').toUpperCase();const list=items.filter(i=>[i.code,i.description,i.manufacturer,i.compatible_models].join(' ').toUpperCase().includes(q));document.querySelector('#vxPartsList').innerHTML=`<div class="vx-table"><div class="vx-tr vx-tr-stock vx-th"><span>Código</span><span>Descrição</span><span>Fabricante</span><span>Disponível</span><span>Fiscal</span><span></span></div>${list.map(i=>`<div class="vx-tr vx-tr-stock"><span>${E(i.code||'—')}</span><span>${E(i.description||'')}</span><span>${E(i.manufacturer||'')}</span><span>${E(i.available_quantity||0)}</span><span>${E(i.fiscal_quantity||0)}</span><span class="vx-stock-row-actions"><button type="button" class="vx-mini-btn" data-entry="${i.id}">+ Entrada</button>${isGestorOrEstoque()?`<button type="button" class="vx-mini-btn" data-withdraw="${i.id}">Retirar</button><button type="button" class="vx-mini-btn" data-kebab="${i.id}">⋮</button>`:''}</span></div>`).join('')}</div>`;
+  // Achado do usuário em 2026-10-01: mesmos 2 filtros combináveis já
+  // usados em Venda de Peças (Fabricante exato + Busca geral) -- antes
+  // só havia um campo de texto, obrigando digitar marca e peça juntos
+  // pra não misturar com a mesma peça de outro fabricante.
+  function draw(){
+   const q=(document.querySelector('#vxPartSearch').value||'').toUpperCase().trim();
+   const maker=document.querySelector('#vxPartMaker').value;
+   let list=items;
+   if(maker)list=list.filter(i=>String(i.manufacturer||'').trim()===maker);
+   if(q)list=list.filter(i=>[i.code,i.description,i.manufacturer,i.compatible_models].join(' ').toUpperCase().includes(q));
+   document.querySelector('#vxPartsList').innerHTML=`<div class="vx-table"><div class="vx-tr vx-tr-stock vx-th"><span>Código</span><span>Descrição</span><span>Fabricante</span><span>Disponível</span><span>Fiscal</span><span></span></div>${list.map(i=>{
+    const belowMin=i.minimum_quantity!=null&&Number(i.minimum_quantity)>0&&Number(i.available_quantity||0)<Number(i.minimum_quantity);
+    return `<div class="vx-tr vx-tr-stock"><span>${E(i.code||'—')}</span><span>${E(i.description||'')}</span><span>${E(i.manufacturer||'')}</span><span>${E(i.available_quantity||0)}${belowMin?` <span class="vx-stock-low-badge" title="Abaixo do estoque mínimo (${E(i.minimum_quantity)})">⚠ abaixo do mínimo</span>`:''}</span><span>${E(i.fiscal_quantity||0)}</span><span class="vx-stock-row-actions"><button type="button" class="vx-mini-btn" data-entry="${i.id}">+ Entrada</button>${isGestorOrEstoque()?`<button type="button" class="vx-mini-btn" data-withdraw="${i.id}">Retirar</button><button type="button" class="vx-mini-btn" data-kebab="${i.id}">⋮</button>`:''}</span></div>`;
+   }).join('')}</div>`;
    document.querySelectorAll('[data-entry]').forEach(b=>b.onclick=()=>openEntryModal(items.find(i=>i.id===b.dataset.entry)));
    document.querySelectorAll('[data-withdraw]').forEach(b=>b.onclick=()=>openWithdrawModal(items.find(i=>i.id===b.dataset.withdraw)));
    document.querySelectorAll('[data-kebab]').forEach(b=>b.onclick=()=>openItemMenu(items.find(i=>i.id===b.dataset.kebab)));
    document.querySelectorAll('[data-apply]').forEach(b=>b.onclick=()=>openApplyModal(items.find(i=>i.id===b.dataset.apply)));
   }
   function isGestorOrEstoque(){return ['GESTOR','ESTOQUE'].includes(myRole());}
-  draw();document.querySelector('#vxPartSearch').oninput=draw;
+  draw();document.querySelector('#vxPartSearch').oninput=draw;document.querySelector('#vxPartMaker').onchange=draw;
   const partModal=document.querySelector('#vxPartModal');
-  document.querySelector('#vxNewPart').onclick=()=>partModal.hidden=false;
+  // Achado do usuário em 2026-10-01: só existia CRIAR peça -- uma peça
+  // já cadastrada sem fabricante/custo/preço (ex.: as primeiras 10 desta
+  // empresa) nunca tinha como ser completada depois, só recriada do
+  // zero (duplicando código). editingItemId null = criar (saldo
+  // disponível intocado); preenchido = editar (nunca mexe em
+  // available_quantity, que só muda por Entrada/Retirada/Venda).
+  let editingItemId=null;
+  function openPartModal(item){
+   editingItemId=item?.id||null;
+   const set=(id,v)=>{const el=document.querySelector(id);if(el)el.value=v??''};
+   set('#pCode',item?.code);set('#pDesc',item?.description);set('#pMaker',item?.manufacturer);
+   set('#pGroup',item?.product_group);set('#pSupplier',item?.supplier);set('#pLoc',item?.storage_location);
+   set('#pFiscal',item?.fiscal_quantity??0);set('#pCost',item?.unit_cost??0);set('#pPrice',item?.reference_price??0);
+   set('#pMin',item?.minimum_quantity);set('#pMargin',item?.margin_percent);set('#pDiscount',item?.discount_percent);
+   set('#pIpi',item?.ipi_percent);set('#pIcms',item?.icms_percent);set('#pModels',item?.compatible_models);
+   document.querySelector('#vxPartModalTitle').textContent=item?'Editar peça':'Cadastrar peça';
+   document.querySelector('#vxPartModalHint').textContent=item
+    ?'Editando a identidade/precificação da peça -- nunca altera o saldo disponível (isso só muda por Entrada/Retirada/Venda).'
+    :'O cadastro só define a IDENTIDADE da peça -- saldo nasce zero. Para ter saldo, use "+ Entrada" depois de cadastrar.';
+   document.querySelector('#vxSavePart').textContent=item?'Salvar alterações':'Salvar peça';
+   partModal.hidden=false;
+  }
+  document.querySelector('#vxNewPart').onclick=()=>openPartModal(null);
   const closePart=()=>partModal.hidden=true;
   partModal.querySelector('.vx-close').onclick=closePart;
   document.querySelector('#vxCancelPart').onclick=closePart;
-  document.querySelector('#vxSavePart').onclick=async()=>{const body={code:document.querySelector('#pCode').value.trim(),description:document.querySelector('#pDesc').value.trim(),manufacturer:document.querySelector('#pMaker').value.trim(),product_group:document.querySelector('#pGroup').value.trim(),supplier:document.querySelector('#pSupplier').value.trim(),storage_location:document.querySelector('#pLoc').value.trim(),fiscal_quantity:Number(document.querySelector('#pFiscal').value||0),available_quantity:0,unit_cost:Number(String(document.querySelector('#pCost').value).replace(/[^\d,.-]/g,'').replace('.','').replace(',','.'))||0,reference_price:Number(String(document.querySelector('#pPrice').value).replace(/[^\d,.-]/g,'').replace('.','').replace(',','.'))||0,compatible_models:document.querySelector('#pModels').value.trim()};if(!body.code||!body.description)return toast('Código e descrição são obrigatórios.','err');try{const saved=await api('stock_items',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(body)});items.push(saved?.[0]||body);closePart();draw();toast('Peça cadastrada com saldo zero.');}catch(e){toast('Erro ao cadastrar peça: '+e.message,'err')}};
+  document.querySelector('#vxSavePart').onclick=async()=>{
+   const num=id=>{const raw=document.querySelector(id).value;return raw===''?null:Number(raw)};
+   const money=id=>Number(String(document.querySelector(id).value).replace(/[^\d,.-]/g,'').replace('.','').replace(',','.'))||0;
+   const body={
+    code:document.querySelector('#pCode').value.trim(),description:document.querySelector('#pDesc').value.trim(),
+    manufacturer:document.querySelector('#pMaker').value.trim(),product_group:document.querySelector('#pGroup').value.trim(),
+    supplier:document.querySelector('#pSupplier').value.trim(),storage_location:document.querySelector('#pLoc').value.trim(),
+    fiscal_quantity:Number(document.querySelector('#pFiscal').value||0),
+    unit_cost:money('#pCost'),reference_price:money('#pPrice'),
+    minimum_quantity:num('#pMin'),margin_percent:num('#pMargin'),discount_percent:num('#pDiscount'),
+    ipi_percent:num('#pIpi'),icms_percent:num('#pIcms'),
+    compatible_models:document.querySelector('#pModels').value.trim()
+   };
+   if(!body.code||!body.description)return toast('Código e descrição são obrigatórios.','err');
+   try{
+    if(editingItemId){
+     await api(`stock_items?id=eq.${editingItemId}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(body)});
+     const idx=items.findIndex(i=>i.id===editingItemId);if(idx>=0)Object.assign(items[idx],body);
+     toast('Peça atualizada.');
+    }else{
+     body.available_quantity=0;
+     const saved=await api('stock_items',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(body)});
+     items.push(saved?.[0]||body);
+     toast('Peça cadastrada com saldo zero.');
+    }
+    closePart();draw();
+   }catch(e){toast('Erro ao salvar peça: '+e.message,'err')}
+  };
 
   // ---- Registrar entrada (única forma de gerar saldo) ----
   const entryModal=document.querySelector('#vxEntryModal');
@@ -229,10 +295,11 @@
   // ---- Menu ⋮ por peça: Devolver / Histórico / Quarentena ----
   function openItemMenu(item){
    if(!item)return;
-   const choice=prompt(`${item.code||''} — ${item.description||''}\n\nDigite:\n1 = Devolver\n2 = Histórico\n3 = Quarentena`);
+   const choice=prompt(`${item.code||''} — ${item.description||''}\n\nDigite:\n1 = Devolver\n2 = Histórico\n3 = Quarentena\n4 = Editar peça`);
    if(choice==='1')openReturnModal(item);
    else if(choice==='2')openHistoryModal(item);
    else if(choice==='3')openQuarantineModal(item);
+   else if(choice==='4')openPartModal(item);
   }
 
   const returnModal=document.querySelector('#vxReturnModal');
