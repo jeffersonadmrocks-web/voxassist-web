@@ -61,5 +61,5 @@ test('adding manual or stock parts does not evaluate budget completion',()=>{
   assert.doesNotMatch(read('os-manual-part.js'),/vxAdvanceOsStatus/);
   const source=read('os-detail-v0812.js');const block=source.slice(source.indexOf('window.vxUseStockPart='),source.indexOf('\n',source.indexOf('window.vxUseStockPart=')));
   assert.doesNotMatch(block,/vxAdvanceOsStatus/);
-  assert.match(read('os-global-save-v0812.js'),/data-name="repair_started_at"/);
+  assert.doesNotMatch(read('os-global-save-v0812.js'),/data-name="repair_started_at"/);
 });
