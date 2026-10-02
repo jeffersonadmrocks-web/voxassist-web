@@ -136,17 +136,18 @@
     return 'indisponível';
   }
   const caseTitle=id=>{const c=caseCache[id];return c&&!c.data&&c.error?String(c.error):'';};
-  // Número da SVO vira link para o VoxAssist em nova aba, com a SVO aberta na aba Electrolux
-  // (tratado por ?electroluxSvo= em electrolux-reports-v0813.js).
-  function svoHref(number){
-    const u=new URL(location.href);u.search='';u.hash='';
-    u.searchParams.set('electroluxSvo',number);
-    return u.toString();
-  }
+  // Número da SVO é clicável: abre o modal da SVO por cima desta tela (window.vxElxOpenSvo, em
+  // electrolux-reports-v0813.js), sem trocar de aba nem de página.
+  document.addEventListener('click',e=>{
+    const link=e.target.closest?.('[data-open-svo]');if(!link)return;
+    e.preventDefault();
+    if(typeof window.vxElxOpenSvo==='function')window.vxElxOpenSvo(link.dataset.openSvo);
+    else if(typeof toast==='function')toast('Módulo Electrolux ainda não carregou. Tente de novo.','err');
+  });
   function svoInner(id){
     const n=caseCache[id]?.data?.svoNumber;
     if(!n)return esc2(caseText(id,'svo'));
-    return `<a class="vx-elxt-svo-link" href="${esc2(svoHref(n))}" target="_blank" rel="noopener" title="Abrir ${esc2(n)} no VoxAssist (nova aba)">${esc2(n)}</a>`;
+    return `<a class="vx-elxt-svo-link" href="#" data-open-svo="${esc2(n)}" title="Abrir ${esc2(n)}">${esc2(n)}</a>`;
   }
   function paintCase(id){
     for(const [field,prefix] of [['name','vxElxCaseName'],['svo','vxElxCaseSvo'],['product','vxElxCaseProd']]){
