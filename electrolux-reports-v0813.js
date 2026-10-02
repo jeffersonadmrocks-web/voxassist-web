@@ -234,6 +234,16 @@
       .vx-elx-kv span{color:#17324d}
       .vx-elx-modal-section{border-top:1px solid #e3e8ed;padding-top:10px}
       .vx-elx-modal-section h4{margin:0 0 6px;font-size:11px;color:#516375;text-transform:uppercase;letter-spacing:.03em}
+      .vx-elx-os-link{padding-top:14px}
+      .vx-elx-os-link p{margin:0 0 12px;font-size:12px;line-height:1.5;color:#65788b}
+      .vx-elx-os-action{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:10px 18px;border:1px solid #123654;border-radius:8px;background:#123654;color:#fff;font-family:inherit;font-size:12px;font-weight:600;line-height:1.3;cursor:pointer;transition:background .15s,border-color .15s}
+      .vx-elx-os-action:hover:not(:disabled){background:#1b4d75;border-color:#1b4d75}
+      .vx-elx-os-action:focus-visible{outline:3px solid #9fc4ec;outline-offset:2px}
+      .vx-elx-os-action:disabled{background:#e9eef3;border-color:#dce4ed;color:#718096;cursor:wait}
+      .vx-elx-os-link [data-elx-os-message]{display:block;margin-top:8px;font-size:11px;line-height:1.4;color:#65788b}
+      .vx-elx-os-link [data-elx-os-message]:empty{display:none}
+      .vx-elx-os-link label:not([hidden]){display:grid;gap:6px;margin-bottom:12px;font-size:11px;color:#516375}
+      .vx-elx-os-link select{min-height:36px;padding:7px 10px;border:1px solid #dce4ed;border-radius:8px;background:#fff;color:#17324d;font-family:inherit}
       .vx-elx-part{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px dashed #e3e8ed}
       .vx-elx-msg{padding:7px 9px;border-radius:8px;font-size:11.5px;margin-bottom:6px;max-width:88%}
       .vx-elx-msg.OUTBOUND{background:#e7f0fb;margin-left:auto}.vx-elx-msg.INBOUND{background:#f1f3f5}
@@ -417,17 +427,17 @@
   // The database decides authorization, company scope and idempotency.
   // Keep a single action for both open SVOs and closed appointments.
   function osImportSection(){
-    return `<div class="vx-elx-modal-section" data-elx-os-link>
+    return `<div class="vx-elx-modal-section vx-elx-os-link" data-elx-os-link>
       <h4>OS no VoxAssist</h4>
-      <p style="font-size:12px">Cadastre este atendimento para registrar orçamento e recebimentos no VoxAssist.</p>
+      <p>Cadastre este atendimento para registrar orçamento e recebimentos no VoxAssist.</p>
       <label data-elx-os-type-label hidden>Tipo do atendimento
         <select data-elx-os-type><option value="">Selecione o tipo</option>
           <option>Garantia</option><option>Fora de Garantia</option>
           <option>Fora de Garantia c/ Autorização</option><option>Atendimento Seguradora</option>
         </select>
       </label>
-      <button type="button" disabled data-elx-os-action>Verificando vínculo…</button>
-      <small style="display:block;margin-top:8px" data-elx-os-message role="status"></small>
+      <button type="button" class="vx-elx-os-action" disabled data-elx-os-action>Verificando vínculo…</button>
+      <small data-elx-os-message role="status"></small>
     </div>`;
   }
 
@@ -506,10 +516,10 @@
         ${detailKv('Aberta em',so.createdDate?new Date(so.createdDate).toLocaleString('pt-BR'):'')}
         ${detailKv('Agendamento',so.appointmentDate?new Date(so.appointmentDate).toLocaleString('pt-BR'):'')}
         ${d?.address?detailKv('Endereço',[d.address.street,d.address.neighborhood,d.address.city,d.address.state].filter(Boolean).join(', ')):''}
-        ${osImportSection()}
         ${d?`<div class="vx-elx-modal-section"><h4>Peças (${d.parts?.length||0})</h4>${(d.parts||[]).map(p=>`<div class="vx-elx-part"><span>${esc(p.codigo)} ${esc(p.descricao||'')}</span><span>${p.disponivel===true?'Disponível':p.disponivel===false?'Indisponível':'—'}</span></div>`).join('')||'<small>Nenhuma peça vinculada.</small>'}</div>
         <div class="vx-elx-modal-section"><h4>Mensagens (${d.messages?.length||0})</h4>${(d.messages||[]).map(m=>`<div class="vx-elx-msg ${esc(m.direction)}">${esc(m.content)}</div>`).join('')||'<small>Sem mensagens registradas.</small>'}</div>`
         :`<div class="vx-elx-modal-section"><button class="secondary" id="vxElxLoadDetail" ${elx.detailLoading?'disabled':''}>${elx.detailLoading?'Carregando…':'Carregar detalhes completos'}</button></div>`}
+        ${osImportSection()}
       </div>
     </div>`;
     document.getElementById('vxElxModalClose').onclick=closeDetail;
