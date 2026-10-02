@@ -940,9 +940,34 @@
     if(apiBase()){startPoll();}
   }
 
+  /* ---------- Link direto para uma SVO ----------
+     ?electroluxSvo=SVO-20512623 (usado pelo número da SVO nos detalhes das Tarefas, em nova aba):
+     depois do login, abre a aba Electrolux e a SVO -- primeiro entre as abertas, depois entre as
+     encerradas recentes. Compara só os dígitos, então "SVO-123" e "123" valem igual. */
+  const svoDigits=v=>String(v||'').replace(/\D/g,'');
+  let pendingSvoLink=null;
+  try{pendingSvoLink=new URLSearchParams(location.search).get('electroluxSvo');}catch(_e){}
+  async function openSvoFromLink(number){
+    const wanted=svoDigits(number);if(!wanted)return;
+    // Limpa o parâmetro para um F5 não reabrir a SVO.
+    try{const u=new URL(location.href);u.searchParams.delete('electroluxSvo');history.replaceState(null,'',u.pathname+u.search+u.hash);}catch(_e){}
+    await window.render(VIEW);
+    let orders=elx.orders;
+    if(!orders.length&&apiBase()){try{orders=await fetchServiceOrders();elx.orders=orders;}catch(_e){}}
+    const open=orders.find(o=>svoDigits(o.svoNumber)===wanted);
+    if(open){openDetail(open.id);return;}
+    try{
+      const c=await ensureClosedCache();
+      const row=c.rows.find(r=>svoDigits(r.external_order_number)===wanted);
+      if(row){closedDetailModal(row,row.connection_id?c.filialById[row.connection_id]:null,c.npsByAppointmentId[row.id]);return;}
+    }catch(_e){}
+    toast?.('SVO '+number+' não encontrada entre as abertas e as encerradas recentes.','err');
+  }
+
   const priorRender=window.render;
   window.render=function(view){
     if(view!==VIEW)stopPoll();
+    if(pendingSvoLink&&view!==VIEW&&state?.session){const n=pendingSvoLink;pendingSvoLink=null;setTimeout(()=>openSvoFromLink(n),0);}
     if(view===VIEW)return renderPage();
     return priorRender.apply(this,arguments);
   };

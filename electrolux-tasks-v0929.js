@@ -100,7 +100,7 @@
     if(box)box.innerHTML=answersHtml(task);
   }
 
-  /* ---------- Consumidora, produto e SVO mais recente (resumo do caso) ----------
+  /* ---------- Consumidor, produto e SVO mais recente (resumo do caso) ----------
      GET /api/dashboard/cases/summary?ids=a,b,c -> { [caseId]: {consumerName,productName,svoNumber,...} | {error} }.
      O id do caso é task.what.id. Em vez de buscar ao expandir, a página inteira é pré-carregada em UMA
      chamada logo depois de a lista aparecer; ao expandir o dado já está no cache e aparece na hora.
@@ -136,10 +136,24 @@
     return 'indisponível';
   }
   const caseTitle=id=>{const c=caseCache[id];return c&&!c.data&&c.error?String(c.error):'';};
+  // Número da SVO vira link para o VoxAssist em nova aba, com a SVO aberta na aba Electrolux
+  // (tratado por ?electroluxSvo= em electrolux-reports-v0813.js).
+  function svoHref(number){
+    const u=new URL(location.href);u.search='';u.hash='';
+    u.searchParams.set('electroluxSvo',number);
+    return u.toString();
+  }
+  function svoInner(id){
+    const n=caseCache[id]?.data?.svoNumber;
+    if(!n)return esc2(caseText(id,'svo'));
+    return `<a class="vx-elxt-svo-link" href="${esc2(svoHref(n))}" target="_blank" rel="noopener" title="Abrir ${esc2(n)} no VoxAssist (nova aba)">${esc2(n)}</a>`;
+  }
   function paintCase(id){
     for(const [field,prefix] of [['name','vxElxCaseName'],['svo','vxElxCaseSvo'],['product','vxElxCaseProd']]){
       const el=document.getElementById(prefix+id);
-      if(el){el.textContent=caseText(id,field);el.title=caseTitle(id);}
+      if(!el)continue;
+      if(field==='svo')el.innerHTML=svoInner(id); else el.textContent=caseText(id,field);
+      el.title=field==='svo'&&caseCache[id]?.data?.svoNumber?'':caseTitle(id);
     }
   }
   // Pré-carrega os casos da página atual (só aba/lista carregada, não a busca global).
@@ -149,8 +163,8 @@
   }
   function caseFieldsHtml(t){
     const id=caseIdOf(t);if(!id)return '';
-    const span=(label,prefix,field)=>`<span>${label} <b id="${prefix}${esc2(id)}" title="${esc2(caseTitle(id))}">${esc2(caseText(id,field))}</b></span>`;
-    return span('Consumidora','vxElxCaseName','name')+span('SVO mais recente','vxElxCaseSvo','svo')+span('Produto','vxElxCaseProd','product');
+    const span=(label,prefix,field)=>`<span>${label} <b id="${prefix}${esc2(id)}" title="${esc2(caseTitle(id))}">${field==='svo'?svoInner(id):esc2(caseText(id,field))}</b></span>`;
+    return span('Consumidor','vxElxCaseName','name')+span('SVO mais recente','vxElxCaseSvo','svo')+span('Produto','vxElxCaseProd','product');
   }
 
   const TABS=[
@@ -200,6 +214,8 @@
       .vx-elxt-task-row{cursor:pointer;background:#fff;transition:background .15s ease,box-shadow .15s ease}
       .vx-elxt-task-row:hover{background:#f8fbff}
       .vx-elxt-task-row:hover td:first-child{box-shadow:inset 3px 0 0 #2f80ed}
+      .vx-elxt-svo-link{color:#2f80ed;text-decoration:none;font-weight:800}
+      .vx-elxt-svo-link:hover{text-decoration:underline}
       .vx-elxt-task-id,.vx-elxt-case{user-select:text;-webkit-user-select:text;cursor:text}
       .vx-elxt-task-id{font-weight:850;color:#102a43;letter-spacing:.01em}
       .vx-elxt-case{font-weight:800;color:#2f80ed}
