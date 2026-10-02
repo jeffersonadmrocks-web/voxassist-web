@@ -192,3 +192,33 @@
   .vx-fin-table-wrap{overflow-x:auto}
   .vx-fin-totals-grid{grid-template-columns:1fr 1fr}
 }
+
+/* Finance header and ledger aligned with the Electrolux task list. */
+.vx-fin-head{background:#fff;border:1px solid #dfe6ee;border-radius:14px;padding:18px 20px;box-shadow:0 3px 14px rgba(12,35,64,.04)}
+.vx-fin-head h2{font-size:22px;letter-spacing:-.3px;line-height:1.3}
+.vx-fin-date{font-weight:500;margin-top:6px}
+.vx-fin-head .vx-fin-btn{border-radius:9px;min-height:40px;padding:10px 16px}
+.vx-fin-filters{padding:14px;gap:10px}
+.vx-fin-filters input,.vx-fin-filters select.vx-control,.vx-fin-period-inputs button{box-sizing:border-box;min-height:40px;font-family:inherit;font-size:12px}
+.vx-fin-filters-selects select.vx-control{flex:1 1 170px;min-width:0}
+.vx-fin-chips button{min-height:36px}
+.vx-fin-table-wrap{border-color:#dde5ee;border-radius:14px;box-shadow:0 3px 14px rgba(12,35,64,.05)}
+.vx-fin-table{border-collapse:separate;border-spacing:0}
+.vx-fin-table thead th{background:#f7f9fc;color:#718096;padding:12px 14px;font-size:10px;font-weight:800;letter-spacing:.055em;border-bottom:1px solid #e4eaf1}
+.vx-fin-table tbody td{padding:15px 14px;font-size:12px;color:#27384a;vertical-align:middle}
+.vx-fin-table tbody td:nth-child(2){font-weight:800;color:#0c2340}
+.vx-fin-table tbody td:nth-child(3){font-weight:600;color:#0c2340}
+.vx-fin-table tbody td:nth-child(7){color:#718096;font-size:11px}
+.vx-fin-table tbody td.vx-fin-amount{color:#0b6f3c;font-size:14px;font-variant-numeric:tabular-nums}
+.vx-fin-table tbody td.vx-fin-reversal-tag{color:#a63131}
+.vx-fin-table tbody tr:last-child td{border-bottom:0}
+.vx-fin-table tbody .vx-fin-day-header-row td{padding:10px 14px;background:#eef3f9;font-size:12px;color:#0c2340}
+.vx-fin-table tbody .vx-fin-day-total-row td{padding:12px 14px;background:#f7f9fc}
+.vx-fin-table tbody .vx-fin-day-total-row-negative td{background:#fdf1f0}
+.vx-fin-day-total-item{display:inline-flex;gap:5px;align-items:baseline;padding-right:10px;border-right:1px solid #dfe6ee}
+.vx-fin-day-total-item:last-child{border-right:0}
+.vx-fin-situacao{padding:5px 10px;font-size:10px;font-weight:700;border:1px solid #d7ecdf}
+.vx-fin-situacao-estorno,.vx-fin-situacao-estornado{border-color:#f3d2d2}
+.vx-fin-situacao-parcial_estornado{border-color:#f5dcb0}
+.vx-fin-wrap button:focus-visible,.vx-fin-wrap input:focus-visible,.vx-fin-wrap select:focus-visible{outline:3px solid #9fc4ec;outline-offset:2px}
+@media(max-width:600px){.vx-fin-head{padding:14px}.vx-fin-head h2{font-size:19px}.vx-fin-head .vx-fin-btn{width:100%}.vx-fin-search{min-width:0;flex-basis:100%}.vx-fin-filters-selects select.vx-control{flex:0 0 150px;min-width:150px}.vx-fin-period-inputs{flex-wrap:wrap;width:100%}.vx-fin-period-inputs input{flex:1;min-width:0}.vx-fin-total-line{gap:12px;flex-wrap:wrap}}
