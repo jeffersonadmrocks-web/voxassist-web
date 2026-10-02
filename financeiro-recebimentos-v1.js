@@ -280,11 +280,14 @@
   // período por construção (mesma função, partição exaustiva).
   function dayTotalHtml(rows, shortLabel) {
     const t = computeTotals(rows);
-    const parts = BUCKETS.map((b) => `<span class="vx-fin-day-total-item">${b} <b class="${negClass(t.totals[b]).trim()}">${money(t.totals[b])}</b></span>`).join('');
+    const parts = BUCKETS.map((b) => `<div class="vx-fin-day-total-item${t.totals[b] === 0 ? ' vx-fin-day-total-zero' : ''}"><span>${b}</span><b class="${negClass(t.totals[b]).trim()}">${money(t.totals[b])}</b></div>`).join('');
     return `<tr class="vx-fin-day-total-row${t.total < 0 ? ' vx-fin-day-total-row-negative' : ''}"><td colspan="9">
-      <span class="vx-fin-day-total-label">TOTAL DIA ${esc(shortLabel)}</span>
-      <span class="vx-fin-day-total-breakdown">${parts}</span>
-      <span class="vx-fin-day-total-final${negClass(t.total)}">${t.total < 0 ? '↩ ESTORNADO NO DIA' : 'TOTAL'} <b>${money(t.total)}</b></span>
+      <div class="vx-fin-day-summary">
+        <div class="vx-fin-day-summary-head"><span class="vx-fin-day-total-label">RESUMO DO DIA ${esc(shortLabel)}</span><span class="vx-fin-day-summary-count">${t.count} lançamento${t.count === 1 ? '' : 's'}</span></div>
+        <div class="vx-fin-day-total-breakdown">${parts}
+          <div class="vx-fin-day-total-final${negClass(t.total)}"><span>${t.total < 0 ? 'SALDO DO DIA · NEGATIVO' : 'TOTAL DO DIA'}</span><b>${money(t.total)}</b></div>
+        </div>
+      </div>
     </td></tr>`;
   }
 
