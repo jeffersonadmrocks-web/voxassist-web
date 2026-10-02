@@ -2,8 +2,8 @@
    Réplica nativa do layout do voxassist/electrolux-voxanalytics, usando o
    design system Desktop já existente no VoxAssist (.daily-hero,
    .desktop-metrics, .desktop-filterbar, .desktop-panel). Módulo isolado:
-   os dados vêm exclusivamente da API própria do Electrolux (configurável
-   abaixo), nunca do Supabase operacional do VoxAssist. */
+   a triagem vem da API própria do Electrolux. A ação manual cria ou
+   abre a OS vinculada no Supabase operacional do VoxAssist. */
 (function(){
   const VIEW='electrolux';
   const VIEW_MODE_KEY='voxassist_electrolux_view_mode';
@@ -414,6 +414,77 @@
 
   function detailKv(label,value){return `<div class="vx-elx-kv"><b>${esc(label)}</b><span>${value?esc(value):'—'}</span></div>`;}
 
+  // The database decides authorization, company scope and idempotency.
+  // Keep a single action for both open SVOs and closed appointments.
+  function osImportSection(){
+    return `<div class="vx-elx-modal-section" data-elx-os-link>
+      <h4>OS no VoxAssist</h4>
+      <p style="font-size:12px">Cadastre este atendimento para registrar orçamento e recebimentos no VoxAssist.</p>
+      <label data-elx-os-type-label hidden>Tipo do atendimento
+        <select data-elx-os-type><option value="">Selecione o tipo</option>
+          <option>Garantia</option><option>Fora de Garantia</option>
+          <option>Fora de Garantia c/ Autorização</option><option>Atendimento Seguradora</option>
+        </select>
+      </label>
+      <button type="button" disabled data-elx-os-action>Verificando vínculo…</button>
+      <small style="display:block;margin-top:8px" data-elx-os-message role="status"></small>
+    </div>`;
+  }
+
+  async function bindOsImport(wrap,so,detailGetter,connectionId){
+    const section=wrap.querySelector('[data-elx-os-link]');
+    const btn=section?.querySelector('[data-elx-os-action]');
+    const msg=section?.querySelector('[data-elx-os-message]');
+    if(!btn)return;
+    const typeSelect=section.querySelector('[data-elx-os-type]');
+    section.querySelector('[data-elx-os-type-label]').hidden=!!so.orderType;
+    // Freeze company context: switching company while a modal is open must not
+    // import the old company's SVO using the new company's connection.
+    const company=state.profile?.active_company_id;
+    let linked=null,mayCreate=false;
+    const current=()=>section.isConnected&&company===state.profile?.active_company_id;
+    const open=async id=>{wrap.remove();await window.render('os:'+id);};
+    try{
+      const rows=await api(`service_orders?select=id,os_number&source=eq.ELECTROLUX&external_order_number=eq.${encodeURIComponent(so.svoNumber)}${connectionId?'&electrolux_connection_id=eq.'+encodeURIComponent(connectionId):''}&limit=2`);
+      if(rows.length>1)throw new Error('Mais de uma OS corresponde à SVO. Confira as conexões.');
+      linked=rows[0]||null;
+      if(!linked){
+        const [role,permissions]=await Promise.all([
+          rpc('current_company_role',{}),
+          api(`user_permissions?select=allowed&user_id=eq.${encodeURIComponent(state.session.user.id)}&company_id=eq.${encodeURIComponent(company)}&permission_key=eq.os.create&limit=1`)
+        ]);
+        mayCreate=role==='GESTOR'||(permissions.length?permissions[0].allowed:role==='ATENDENTE');
+      }
+      if(!current())return;
+      btn.textContent=linked?'ABRIR OS NO VOXASSIST':'CRIAR OS NO VOXASSIST';
+      btn.disabled=!linked&&!mayCreate;
+      if(linked)msg.textContent='OS '+linked.os_number+' já vinculada.';
+      if(linked)section.querySelector('[data-elx-os-type-label]').hidden=true;
+      else if(!mayCreate)msg.textContent='Seu usuário não tem permissão para criar OS.';
+    }catch(e){if(current()){msg.textContent='Não foi possível verificar o vínculo: '+e.message;btn.textContent='VERIFICAR NOVAMENTE';btn.disabled=false;btn.onclick=()=>bindOsImport(wrap,so,detailGetter,connectionId);}return;}
+    btn.onclick=async()=>{
+      if(!current()){msg.textContent='A empresa ativa mudou. Feche e abra novamente a SVO.';btn.disabled=true;return;}
+      if(linked)return open(linked.id);
+      btn.disabled=true;btn.textContent='Criando OS…';msg.textContent='';
+      try{
+        let detail=detailGetter?.();
+        if(!detail){try{detail=await fetchServiceOrder(so.id);}catch{/* The synchronized record/list still carries the core fields. */}}
+        if(!current())throw new Error('A empresa ativa mudou. Abra novamente a SVO.');
+        const result=await rpc('electrolux_import_service_order',{
+          p_external_id:String(so.id),p_connection_id:connectionId||null,
+          p_order:{svoNumber:so.svoNumber,clientName:so.clientName,
+            clientPhone:detail?.cellPhone||detail?.phone||so.clientPhone,
+            productName:so.productName||detail?.productName,claimedDefect:so.claimedDefect||detail?.problemDescription,
+            orderType:so.orderType||detail?.orderType||typeSelect.value,status:so.status,address:detail?.address||null}
+        });
+        linked=result;
+        if(!current())return;
+        toast?.(result.created?'OS '+result.os_number+' criada no VoxAssist.':'Esta SVO já tem uma OS no VoxAssist.');
+        await open(result.id);
+      }catch(e){if(current()){msg.textContent=e.message;btn.textContent=linked?'ABRIR OS NO VOXASSIST':'TENTAR NOVAMENTE';btn.disabled=false;}}
+    };
+  }
+
   function renderModal(){
     let wrap=document.getElementById('vxElxModalWrap');
     if(!wrap){
@@ -435,12 +506,14 @@
         ${detailKv('Aberta em',so.createdDate?new Date(so.createdDate).toLocaleString('pt-BR'):'')}
         ${detailKv('Agendamento',so.appointmentDate?new Date(so.appointmentDate).toLocaleString('pt-BR'):'')}
         ${d?.address?detailKv('Endereço',[d.address.street,d.address.neighborhood,d.address.city,d.address.state].filter(Boolean).join(', ')):''}
+        ${osImportSection()}
         ${d?`<div class="vx-elx-modal-section"><h4>Peças (${d.parts?.length||0})</h4>${(d.parts||[]).map(p=>`<div class="vx-elx-part"><span>${esc(p.codigo)} ${esc(p.descricao||'')}</span><span>${p.disponivel===true?'Disponível':p.disponivel===false?'Indisponível':'—'}</span></div>`).join('')||'<small>Nenhuma peça vinculada.</small>'}</div>
         <div class="vx-elx-modal-section"><h4>Mensagens (${d.messages?.length||0})</h4>${(d.messages||[]).map(m=>`<div class="vx-elx-msg ${esc(m.direction)}">${esc(m.content)}</div>`).join('')||'<small>Sem mensagens registradas.</small>'}</div>`
         :`<div class="vx-elx-modal-section"><button class="secondary" id="vxElxLoadDetail" ${elx.detailLoading?'disabled':''}>${elx.detailLoading?'Carregando…':'Carregar detalhes completos'}</button></div>`}
       </div>
     </div>`;
     document.getElementById('vxElxModalClose').onclick=closeDetail;
+    bindOsImport(wrap,so,()=>elx.detail,elx.connection?.id);
     const loadBtn=document.getElementById('vxElxLoadDetail');
     if(loadBtn)loadBtn.onclick=async()=>{
       elx.detailLoading=true;renderModal();
@@ -634,7 +707,7 @@
   async function fetchClosedAppointments(){
     const windowStart=new Date(Date.now()-CLOSED_WINDOW_DAYS*86400000).toISOString();
     const [rows,filialById]=await Promise.all([
-      api(`external_appointments?select=id,external_id,external_order_number,client_name,client_phone,status,concluded_at,notes,connection_id&origin=eq.ELECTROLUX&status=in.(CONCLUIDO,CANCELADO)&concluded_at=gte.${windowStart}&order=concluded_at.desc.nullslast&limit=300`).catch(()=>[]),
+      api(`external_appointments?select=id,external_id,external_order_number,client_name,client_phone,product_name,external_status_raw,status,concluded_at,notes,connection_id&origin=eq.ELECTROLUX&status=in.(CONCLUIDO,CANCELADO)&concluded_at=gte.${windowStart}&order=concluded_at.desc.nullslast&limit=300`).catch(()=>[]),
       fetchFilialMap(),
     ]);
     const ids=rows.map(r=>r.id);
@@ -686,11 +759,15 @@
         ${detailKv('Telefone',row.client_phone)}
         ${detailKv('Encerrada em',row.concluded_at?new Date(row.concluded_at).toLocaleString('pt-BR'):'—')}
         ${detailKv('Observação',row.notes)}
+        ${osImportSection()}
         <div class="vx-elx-modal-section" id="vxElxClosedExtra"><small>Carregando endereço…</small></div>
       </div>
     </div>`;
     document.body.appendChild(wrap);
     wrap.querySelector('.vx-elx-modal-close').onclick=()=>wrap.remove();
+    bindOsImport(wrap,{id:row.external_id,svoNumber:row.external_order_number,
+      clientName:row.client_name,clientPhone:row.client_phone,productName:row.product_name,
+      claimedDefect:row.notes,status:row.external_status_raw||CLOSED_STATUS_LABEL[row.status]},null,row.connection_id);
     fetchClosedDetail(row.external_id).then(detail=>{
       const box=wrap.querySelector('#vxElxClosedExtra');
       if(!box)return;
