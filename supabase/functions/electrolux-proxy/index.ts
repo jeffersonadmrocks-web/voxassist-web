@@ -30,6 +30,8 @@ const ALLOWED_GET_PATTERNS: RegExp[] = [
   // codificada pelo próprio getJson antes de chegar aqui.
   /^\/api\/dashboard\/tasks(\/(pending|assistance))?(\?[A-Za-z0-9_=&%.-]*)?$/,
   /^\/api\/dashboard\/tasks\/[A-Za-z0-9]{15,18}\/answers$/,
+  // Resumo em lote dos casos das tarefas (consumidora, produto e SVO mais recente): ?ids=id1,id2,...
+  /^\/api\/dashboard\/cases\/summary\?ids=[A-Za-z0-9,]{15,700}$/,
 ];
 const ALLOWED_POST_PATTERNS: RegExp[] = [
   /^\/api\/admin\/sync-now$/,

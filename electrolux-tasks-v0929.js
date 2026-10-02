@@ -100,6 +100,59 @@
     if(box)box.innerHTML=answersHtml(task);
   }
 
+  /* ---------- Consumidora, produto e SVO mais recente (resumo do caso) ----------
+     GET /api/dashboard/cases/summary?ids=a,b,c -> { [caseId]: {consumerName,productName,svoNumber,...} | {error} }.
+     O id do caso é task.what.id. Em vez de buscar ao expandir, a página inteira é pré-carregada em UMA
+     chamada logo depois de a lista aparecer; ao expandir o dado já está no cache e aparece na hora.
+     Dado em cache é mostrado imediatamente e atualizado em segundo plano quando passa de CASE_FRESH_MS. */
+  const caseCache={}; // caseId -> {loading,error,data,at}
+  const CASE_FRESH_MS=60000,CASE_CHUNK=20,CASE_PREFETCH_MAX=40;
+  const caseIdOf=t=>t?.what?.type==='Case'||!t?.what?.type?t?.what?.id||null:null;
+  const caseNeeds=id=>{const c=caseCache[id];return !c||(!c.loading&&(c.error||Date.now()-c.at>CASE_FRESH_MS));};
+  async function requestCases(ids){
+    ids=[...new Set(ids)];
+    for(let i=0;i<ids.length;i+=CASE_CHUNK){
+      // Reavalia a cada lote: um caso aberto à mão no meio do pré-carregamento não é pedido de novo.
+      const chunk=ids.slice(i,i+CASE_CHUNK).filter(caseNeeds);
+      if(!chunk.length)continue;
+      chunk.forEach(id=>{caseCache[id]={...caseCache[id],loading:true,error:null};});
+      try{
+        const data=await getJson('/api/dashboard/cases/summary?ids='+chunk.join(','));
+        chunk.forEach(id=>{
+          const r=data?.[id];
+          caseCache[id]=(r&&!r.error)?{loading:false,error:null,data:r,at:Date.now()}:{loading:false,error:r?.error||'Caso não encontrado.',data:caseCache[id]?.data||null,at:0};
+        });
+      }catch(e){
+        chunk.forEach(id=>{caseCache[id]={loading:false,error:e.message||'Falha ao carregar o caso.',data:caseCache[id]?.data||null,at:0};});
+      }
+      chunk.forEach(paintCase);
+    }
+  }
+  const caseField={name:'consumerName',svo:'svoNumber',product:'productName'};
+  function caseText(id,field){
+    const c=caseCache[id];
+    if(c?.data)return c.data[caseField[field]]||'—';
+    if(!c||c.loading)return 'carregando…';
+    return 'indisponível';
+  }
+  const caseTitle=id=>{const c=caseCache[id];return c&&!c.data&&c.error?String(c.error):'';};
+  function paintCase(id){
+    for(const [field,prefix] of [['name','vxElxCaseName'],['svo','vxElxCaseSvo'],['product','vxElxCaseProd']]){
+      const el=document.getElementById(prefix+id);
+      if(el){el.textContent=caseText(id,field);el.title=caseTitle(id);}
+    }
+  }
+  // Pré-carrega os casos da página atual (só aba/lista carregada, não a busca global).
+  function prefetchCases(){
+    if(st.searchResults!==null)return;
+    requestCases(st.items.map(caseIdOf).filter(Boolean).slice(0,CASE_PREFETCH_MAX)).catch(()=>{});
+  }
+  function caseFieldsHtml(t){
+    const id=caseIdOf(t);if(!id)return '';
+    const span=(label,prefix,field)=>`<span>${label} <b id="${prefix}${esc2(id)}" title="${esc2(caseTitle(id))}">${esc2(caseText(id,field))}</b></span>`;
+    return span('Consumidora','vxElxCaseName','name')+span('SVO mais recente','vxElxCaseSvo','svo')+span('Produto','vxElxCaseProd','product');
+  }
+
   const TABS=[
     {key:'received',label:'Recebidas',fetch:fetchReceivedTasks,desc:'Tasks do tipo Serviço Autorizado atribuídas à nossa assistência (todas ou por status).'},
     {key:'sent',label:'Enviadas',fetch:fetchAssistanceTasks,desc:'Tasks criadas por e atribuídas à nossa assistência.'},
@@ -359,6 +412,7 @@
     }
     st.loading=false;
     render();
+    prefetchCases();
     if(trackingJob){
       trackingJob().then(()=>{
         // Só atualiza se esta ainda é a carga atual e o usuário não começou a digitar uma resposta
@@ -441,7 +495,8 @@
         st.expanded=st.expanded===b.dataset.expand?null:b.dataset.expand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
-        if(st.expanded){const src=st.searchResults!==null?st.searchResults:st.items,it=src[Number(st.expanded.replace('row',''))];if(it&&(!answersCache[it.id]||answersCache[it.id].error))loadAnswers(it);}
+        if(st.expanded){const src=st.searchResults!==null?st.searchResults:st.items,it=src[Number(st.expanded.replace('row',''))];if(it&&(!answersCache[it.id]||answersCache[it.id].error))loadAnswers(it);
+          if(it&&caseIdOf(it))requestCases([caseIdOf(it)]).catch(()=>{});}
       };
     });
     document.querySelectorAll('#vxElxTasksBody [data-row-expand]').forEach(row=>{
@@ -451,6 +506,7 @@
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
         if(st.expanded&&item&&(!answersCache[item.id]||answersCache[item.id].error))loadAnswers(item);
+        if(st.expanded&&item&&caseIdOf(item))requestCases([caseIdOf(item)]).catch(()=>{});
       };
       row.onclick=e=>{
         // Arrastar para selecionar texto (Tarefa/Caso, por exemplo) não abre nem fecha o card.
@@ -550,7 +606,7 @@
           <td><span class="vx-elxt-created">${esc2(dtFull(f.criada))}</span></td>
           <td><span class="vx-elxt-created">${esc2(dtDue(f.vencimento))}</span></td>
           <td><span class="vx-elxt-status${isDone(f.status)?' done':''}">${esc2(f.status)}</span></td>
-        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="7"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Vencimento <b>${esc2(dtDue(f.vencimento))}</b></span><span>Status <b>${esc2(f.status)}</b></span></div>${answerShown(t)?`<div class="vx-elxt-answers"><div class="vx-elxt-detail-label">Resposta</div><div id="vxElxAnswers${esc2(t.id)}">${answersHtml(t)}</div></div>`:''}${replyOpen(t)?`<div class="vx-elxt-reply"><div class="vx-elxt-detail-label">Responder tarefa</div><textarea id="vxElxReply${i}" maxlength="${REPLY_MAX}" placeholder="Escreva a resposta que será enviada à Electrolux…"></textarea><div class="vx-elxt-reply-msg" id="vxElxReplyMsg${i}"></div><button type="button" class="vx-elxt-ack" data-reply-index="${i}">Enviar resposta</button></div>`:''}</div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
+        </tr>${open?`<tr class="vx-elxt-json-row"><td colspan="7"><div class="vx-elxt-desc-full"><div class="vx-elxt-detail-grid"><div><div class="vx-elxt-detail-label">Detalhes da tarefa</div><div class="vx-elxt-detail-subject">${esc2(f.assunto)}</div><div class="vx-elxt-detail-text">${esc2(f.descricao)}</div><div class="vx-elxt-detail-meta"><span>Tarefa <b>${esc2(f.tarefa)}</b></span><span>Caso <b>${esc2(f.caso)}</b></span><span>Criada em <b>${esc2(dtFull(f.criada))}</b></span><span>Vencimento <b>${esc2(dtDue(f.vencimento))}</b></span><span>Status <b>${esc2(f.status)}</b></span>${caseFieldsHtml(t)}</div>${answerShown(t)?`<div class="vx-elxt-answers"><div class="vx-elxt-detail-label">Resposta</div><div id="vxElxAnswers${esc2(t.id)}">${answersHtml(t)}</div></div>`:''}${replyOpen(t)?`<div class="vx-elxt-reply"><div class="vx-elxt-detail-label">Responder tarefa</div><textarea id="vxElxReply${i}" maxlength="${REPLY_MAX}" placeholder="Escreva a resposta que será enviada à Electrolux…"></textarea><div class="vx-elxt-reply-msg" id="vxElxReplyMsg${i}"></div><button type="button" class="vx-elxt-ack" data-reply-index="${i}">Enviar resposta</button></div>`:''}</div>${isNew?`<button type="button" class="vx-elxt-ack" data-ack-index="${i}">✓ Marcar como ciente</button>`:''}</div></div></td></tr>`:''}`;
       }).join('')}</tbody></table></div>`;
   }
 
