@@ -556,7 +556,7 @@
         <div><span>SALDO</span><b class="${bal>0.004?'orange':'green'}">${money(bal)}</b></div>
       </div>
       <div class="vx-bottom-buttons"><button type="button" class="vx-green-btn" onclick="vxOpenRegisterPayment()">+ REGISTRAR RECEBIMENTO</button></div>
-      <table class="vx-grid-table vx-payment-table"><thead><tr><th>DATA/HORA</th><th>FORMA</th><th>VALOR</th><th>SITUAÇÃO</th><th>USUÁRIO</th></tr></thead><tbody>${ctx.payments.length?ctx.payments.map(paymentRow).join(''):tableEmpty(5)}</tbody></table>
+      <div class="vx-payment-list"><table class="vx-grid-table vx-payment-table"><thead><tr><th>DATA/HORA</th><th>FORMA</th><th>VALOR</th><th>SITUAÇÃO</th><th>USUÁRIO</th></tr></thead><tbody>${ctx.payments.length?ctx.payments.map(paymentRow).join(''):tableEmpty(5,'NENHUM RECEBIMENTO REGISTRADO')}</tbody></table></div>
       <div class="vx-bottom-buttons" style="justify-content:flex-end"><button class="vx-orange-btn" onclick="vxDeletePendingPayment()">EXCLUIR PENDENTE</button><button class="vx-action" onclick="vxEditPendingPayment()">EDITAR PENDENTE</button><button class="vx-action" onclick="vxOpenReversePayment()">ESTORNAR</button>${isGestorLocal()?'<button class="vx-action" onclick="vxOpenCorrectPaymentMethod()">CORRIGIR FORMA</button>':''}</div>
       <hr class="vx-fin-divider">
       <h3 class="vx-title blue">ENTREGA / FINALIZAÇÃO DA OS</h3>

@@ -259,3 +259,22 @@
 
 @media(max-width:1200px){.vx-os-summary-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.vx-os-head{border-radius:var(--os-radius)}}
+
+/* Compact OS receipts: content determines row height. */
+#vx-financeiro .vx-payment-list{overflow-x:auto;border:1px solid var(--os-line,#dce6ef);border-radius:10px;margin:8px 0 12px;}
+#vx-financeiro .vx-payment-table{width:100%;height:auto;min-height:0;border:0;border-radius:0;table-layout:fixed;margin:0;}
+#vx-financeiro .vx-payment-table tbody{height:auto;min-height:0;}
+#vx-financeiro .vx-payment-table th{height:auto;padding:12px 16px;text-align:left;font-size:11px;color:#60758b;}
+#vx-financeiro .vx-payment-table td{height:auto;padding:17px 16px;vertical-align:middle;text-align:left;font-size:12px;line-height:1.5;color:#24425e;overflow-wrap:anywhere;}
+#vx-financeiro .vx-payment-table th:nth-child(1){width:19%;}
+#vx-financeiro .vx-payment-table th:nth-child(2){width:23%;}
+#vx-financeiro .vx-payment-table th:nth-child(3){width:17%;text-align:right;}
+#vx-financeiro .vx-payment-table td:nth-child(3){text-align:right;white-space:nowrap;}
+#vx-financeiro .vx-payment-table td:nth-child(3)>b{font-size:18px;font-weight:750;color:#143d60;font-variant-numeric:tabular-nums;}
+#vx-financeiro .vx-payment-table th:nth-child(4){width:15%;}
+#vx-financeiro .vx-payment-table th:nth-child(5){width:26%;}
+#vx-financeiro .vx-payment-table .vx-pay-method,#vx-financeiro .vx-payment-table .vx-pay-status{font-size:11px;padding:5px 10px;}
+#vx-financeiro .vx-payment-table tbody tr.selected td{background:#e3f0fd;}
+#vx-financeiro .vx-payment-table td[colspan]{text-align:center;padding:28px 16px;color:#7a8ca0;}
+#vx-financeiro .vx-fin-os-summary b{font-size:20px;font-variant-numeric:tabular-nums;}
+@media(max-width:760px){#vx-financeiro .vx-payment-table{min-width:700px;}#vx-financeiro .vx-payment-table td{padding:14px 12px;}#vx-financeiro .vx-fin-os-summary b{font-size:17px;}}
