@@ -283,6 +283,41 @@
       #vxElxMetrics .desk-metric:hover{box-shadow:0 3px 10px rgba(15,42,68,.12)}
       #vxElxMetrics .desk-metric.vx-elx-metric-active{background:var(--metric);box-shadow:inset 0 0 0 2px rgba(0,0,0,.06)}
       #vxElxMetrics .desk-metric.vx-elx-metric-active span,#vxElxMetrics .desk-metric.vx-elx-metric-active b,#vxElxMetrics .desk-metric.vx-elx-metric-active small{color:#fff}
+
+      /* Scoped refinement: preserve the module palette and existing interactions. */
+      .vx-elx-page{gap:16px;font-family:inherit}
+      .vx-elx-page .vx-elx-board-head,.vx-elx-page .desktop-filterbar,.vx-elx-section,.vx-elx-config,.vx-elx-empty-board{border-color:#dfe6ee;border-radius:12px}
+      .vx-elx-board-head{padding:18px 20px}
+      .vx-elx-board-head h2{font-size:22px;letter-spacing:-.3px}
+      .vx-elx-back,.vx-elx-view-btn{font:inherit;font-size:12px;font-weight:600;border-radius:8px;padding:9px 14px;background:#f6f8fb;border-color:#dfe6ee}
+      .vx-elx-view-toggle{gap:6px;margin-bottom:0}
+      .vx-elx-view-btn:first-child{border-right:1px solid #dfe6ee}
+      .vx-elx-page .desktop-filterbar{padding:16px;gap:12px;align-items:end}
+      .vx-elx-page .desktop-filterbar label{font-size:11px;line-height:1.5;color:#5c6e82}
+      .vx-elx-page .desktop-filterbar input,.vx-elx-page .desktop-filterbar select,.vx-elx-msel-btn{box-sizing:border-box;width:100%;height:40px;padding:9px 11px;border:1px solid #cbd7e3;border-radius:8px;background:#fff;color:#17324d;font:inherit;font-size:13px}
+      .vx-elx-msel-panel{border-radius:10px;border-color:#dfe6ee;padding:8px}
+      .vx-elx-msel-panel label{font-size:13px;padding:8px}
+      .vx-elx-page .desktop-filterbar input[type=checkbox]{width:16px;height:16px;padding:0}
+      .vx-elx-filtercount{font-size:12px}
+      #vxElxMetrics .desk-metric{border-radius:12px;border:1px solid #dfe6ee;border-top:3px solid var(--metric);padding:16px 18px;min-height:96px;text-align:left}
+      #vxElxMetrics .desk-metric span{font-size:12px;line-height:1.4}
+      #vxElxMetrics .desk-metric b{font-size:28px;line-height:1.2;margin-top:8px}
+      .vx-elx-section-head{padding:14px 16px;font-size:14px}
+      .vx-elx-section-body{padding:14px;gap:12px;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+      .vx-elx-svo-card{border-radius:10px;padding:14px;min-width:0}
+      .vx-elx-svo-num{font-size:12px}
+      .vx-elx-svo-client{font-size:14px;margin:10px 0 5px;white-space:normal;line-height:1.4}
+      .vx-elx-svo-product{font-size:12px;line-height:1.5;white-space:normal}
+      .vx-elx-type,.vx-elx-sla,.vx-elx-status-pill{font-size:11px;padding:4px 9px;line-height:1.4}
+      .vx-elx-page .desktop-table-wrap{border:1px solid #dfe6ee;border-radius:12px;overflow:auto;background:#fff}
+      .vx-elx-page .desktop-table{border:0;width:100%;border-collapse:collapse}
+      .vx-elx-page .desktop-table th{background:#f6f8fb;color:#5c6e82;font-size:11px;padding:13px 14px;border:0;border-bottom:1px solid #dfe6ee;text-align:left}
+      .vx-elx-page .desktop-table td{font-size:13px;padding:14px;border:0;border-bottom:1px solid #edf1f5;vertical-align:middle}
+      .vx-elx-page .desktop-table tbody tr:hover{background:#f5f9fd}
+      .vx-elx-page .desktop-table tbody tr:last-child td{border-bottom:0}
+      .vx-elx-page button:focus-visible,.vx-elx-page input:focus-visible,.vx-elx-page select:focus-visible{outline:3px solid #9fc4ec;outline-offset:2px}
+      @media(max-width:600px){.vx-elx-filterbar{grid-template-columns:1fr!important}.vx-elx-section-body{grid-template-columns:1fr}.vx-elx-board-head{padding:14px}.vx-elx-page .desktop-table{min-width:850px}}
+      @media(prefers-reduced-motion:reduce){.vx-elx-sla.red i{animation:none}}
     `;
     document.head.appendChild(s);
   }
@@ -314,7 +349,7 @@
     const level=slaLevel(so.agingDays);
     const category=orderTypeCategoryFor(so.orderType);
     return `<div class="vx-elx-svo-card ${level}" data-svo="${esc(so.id)}">
-      <div class="vx-elx-svo-top"><span class="vx-elx-svo-num">${esc(so.svoNumber)}</span><span class="vx-elx-sla ${level}"><i></i>${so.agingDays}d</span></div>
+      <div class="vx-elx-svo-top"><span class="vx-elx-svo-num">${esc(so.svoNumber)}</span><span class="vx-elx-sla ${level}"><i></i>${so.agingDays} ${so.agingDays===1?'dia':'dias'}</span></div>
       <p class="vx-elx-svo-client">${esc(so.clientName||'—')}</p>
       <p class="vx-elx-svo-product">⚒ ${esc(so.productName||'—')} — ${esc(so.claimedDefect||'—')}</p>
       <span class="vx-elx-type ${svoBadgeClass(category)}">${esc(category==='Outros'?so.orderType:category)}</span>
@@ -390,7 +425,7 @@
           <td>${esc(so.productName||'—')} — ${esc(so.claimedDefect||'—')}</td>
           <td><span class="vx-elx-status-pill">${esc(so.status)}</span></td>
           <td><span class="vx-elx-type ${svoBadgeClass(category)}">${esc(category==='Outros'?so.orderType:category)}</span></td>
-          <td><span class="vx-elx-sla ${level}"><i></i>${so.agingDays}d</span></td>
+          <td><span class="vx-elx-sla ${level}"><i></i>${so.agingDays} ${so.agingDays===1?'dia':'dias'}</span></td>
           <td>${so.createdDate?new Date(so.createdDate).toLocaleString('pt-BR'):'—'}</td>
         </tr>`;
       }).join('')}</tbody></table></div>`;
