@@ -36,6 +36,11 @@ const ALLOWED_POST_PATTERNS: RegExp[] = [
   // Responder tarefa da Electrolux -- corpo { answer } validado abaixo.
   /^\/api\/dashboard\/tasks\/[A-Za-z0-9]{15,18}\/reply$/,
 ];
+// Cache em memória (vive enquanto a instância da function estiver quente) da empresa ativa +
+// credencial por usuário: evita 2 consultas ao banco em toda chamada. TTL curto para uma troca de
+// empresa ou de credencial pelo gestor valer em até 1 minuto.
+const CONTEXT_TTL_MS = 60_000;
+const contextCache = new Map<string, { at: number; companyId: string; credential: Awaited<ReturnType<typeof resolveElectroluxCredential>> }>();
 const TASK_REPLY_PATTERN = /^\/api\/dashboard\/tasks\/[A-Za-z0-9]{15,18}\/reply$/;
 const TASK_ANSWER_MAX_LENGTH = 4000;
 
@@ -50,6 +55,10 @@ Deno.serve(async (req) => {
   function respond(body: unknown, status: number) {
     return new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
   }
+  // Server-Timing: aparece na aba Network do navegador (Timing) e mostra onde o tempo foi.
+  const t0 = performance.now();
+  const timings: string[] = [];
+  const mark = (name: string, since: number) => timings.push(`${name};dur=${Math.round(performance.now() - since)}`);
 
   try {
     if (req.method !== "GET" && req.method !== "POST") {
@@ -66,7 +75,9 @@ Deno.serve(async (req) => {
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
+    const tAuth = performance.now();
     const { data: { user } } = await userClient.auth.getUser();
+    mark("auth", tAuth);
     if (!user) {
       return respond({ ok: false, error: "unauthorized" }, 401);
     }
@@ -82,13 +93,20 @@ Deno.serve(async (req) => {
     // tem seu próprio usuário/senha Electrolux, configurado pelo GESTOR
     // via electrolux_save_credentials) -- cai pro secret global só se a
     // empresa do usuário logado ainda não tiver credencial própria salva.
-    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data: profile } = await admin.from("profiles").select("active_company_id").eq("id", user.id).maybeSingle();
-    const companyId = profile?.active_company_id;
-    if (!companyId) {
-      return respond({ ok: false, error: "empresa_nao_identificada" }, 400);
+    const tCtx = performance.now();
+    let ctx = contextCache.get(user.id);
+    if (!ctx || Date.now() - ctx.at > CONTEXT_TTL_MS) {
+      const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const { data: profile } = await admin.from("profiles").select("active_company_id").eq("id", user.id).maybeSingle();
+      const companyId = profile?.active_company_id;
+      if (!companyId) {
+        return respond({ ok: false, error: "empresa_nao_identificada" }, 400);
+      }
+      ctx = { at: Date.now(), companyId, credential: await resolveElectroluxCredential(admin, companyId) };
+      contextCache.set(user.id, ctx);
     }
-    const credential = await resolveElectroluxCredential(admin, companyId);
+    const credential = ctx.credential;
+    mark("ctx", tCtx);
 
     // Achado real do usuário (2026-09-27, DevTools): POST /api/admin/sync-now
     // sempre voltava HTTP 500 com {"error":"Falha ao processar a
@@ -112,6 +130,7 @@ Deno.serve(async (req) => {
       postBody = JSON.stringify({ answer });
     }
 
+    const tUp = performance.now();
     const basicAuth = "Basic " + btoa(`${credential.username}:${credential.password}`);
     const upstream = await fetch(`${credential.apiUrl}${path}`, {
       method: req.method,
@@ -125,9 +144,11 @@ Deno.serve(async (req) => {
     });
 
     const text = await upstream.text();
+    mark("upstream", tUp);
+    mark("total", t0);
     return new Response(text, {
       status: upstream.status,
-      headers: { ...cors, "Content-Type": upstream.headers.get("Content-Type") || "application/json" },
+      headers: { ...cors, "Content-Type": upstream.headers.get("Content-Type") || "application/json", "Server-Timing": timings.join(", ") },
     });
   } catch (e) {
     return respond({ ok: false, error: (e as Error).message || "internal_error" }, 500);

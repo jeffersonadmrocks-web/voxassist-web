@@ -232,8 +232,11 @@
     return fetch(CFG.url+'/rest/v1/rpc/'+name,{method:'POST',headers:authHeaders(),body:JSON.stringify(body)})
       .then(async r=>{if(!r.ok)throw new Error((await r.text())||('HTTP '+r.status));const t=await r.text();return t?JSON.parse(t):null;});
   }
-  async function currentCompanyId(){
-    return rpc('current_company_id');
+  let companyIdPromise=null;
+  function currentCompanyId(){
+    // Uma consulta por sessão da tela: a empresa ativa não muda enquanto a lista está aberta.
+    if(!companyIdPromise)companyIdPromise=rpc('current_company_id').catch(e=>{companyIdPromise=null;throw e;});
+    return companyIdPromise;
   }
   function userId(){
     return state?.session?.user?.id||state?.profile?.id||null;
@@ -310,7 +313,9 @@
     st.searching=false;render();
   }
 
+  let loadSeq=0;
   async function load(){
+    const seq=++loadSeq;let trackingJob=null;
     st.loading=true;st.error=null;
     render();
     const tabDef=TABS.find(x=>x.key===st.tab);
@@ -343,7 +348,9 @@
       st.items=Array.isArray(data)?data:(data?.records||data?.items||data?.data||data?.results||[]);
       // Só tarefas "Não iniciado" entram no controle de "NOVA"/ciência; as demais
       // (ex.: já concluídas) não podem aparecer como novas só por estarem em Recebidas.
-      if(st.tab==='received')await syncTracking(st.items.filter(isNotStarted)); else await refreshTracking();
+      // O controle de "NOVA"/ciência roda DEPOIS de desenhar a lista (ver abaixo), em vez de
+      // segurar a tela por 3 consultas ao Supabase em série.
+      trackingJob=st.tab==='received'?()=>syncTracking(st.items.filter(isNotStarted)):()=>refreshTracking();
       st.error=null;
     }catch(e){
       st.error=e.message||'Falha ao carregar tarefas.';
@@ -351,6 +358,15 @@
     }
     st.loading=false;
     render();
+    if(trackingJob){
+      trackingJob().then(()=>{
+        // Só atualiza se esta ainda é a carga atual e o usuário não começou a digitar uma resposta
+        // (o re-render apagaria o texto).
+        if(seq!==loadSeq)return;
+        const typing=[...document.querySelectorAll('.vx-elxt-reply textarea')].some(t=>t.value);
+        if(!typing)render();
+      }).catch(()=>{});
+    }
   }
 
   function totalHint(){
