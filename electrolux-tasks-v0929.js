@@ -147,6 +147,7 @@
       .vx-elxt-task-row{cursor:pointer;background:#fff;transition:background .15s ease,box-shadow .15s ease}
       .vx-elxt-task-row:hover{background:#f8fbff}
       .vx-elxt-task-row:hover td:first-child{box-shadow:inset 3px 0 0 #2f80ed}
+      .vx-elxt-task-id,.vx-elxt-case{user-select:text;-webkit-user-select:text;cursor:text}
       .vx-elxt-task-id{font-weight:850;color:#102a43;letter-spacing:.01em}
       .vx-elxt-case{font-weight:800;color:#2f80ed}
       .vx-elxt-subject{font-weight:750;color:#243b53}
@@ -444,12 +445,26 @@
       };
     });
     document.querySelectorAll('#vxElxTasksBody [data-row-expand]').forEach(row=>{
-      row.onclick=()=>{
+      const toggle=()=>{
         const source=st.searchResults!==null?st.searchResults:st.items; const item=source[Number(row.dataset.itemIndex)]; if(item)markViewed(item).catch(()=>{});
         st.expanded=st.expanded===row.dataset.rowExpand?null:row.dataset.rowExpand;
         document.getElementById('vxElxTasksBody').innerHTML=bodyHtml();
         wireBodyToggles();
         if(st.expanded&&item&&(!answersCache[item.id]||answersCache[item.id].error))loadAnswers(item);
+      };
+      row.onclick=e=>{
+        // Arrastar para selecionar texto (Tarefa/Caso, por exemplo) não abre nem fecha o card.
+        const sel=window.getSelection();
+        if(sel&&!sel.isCollapsed&&String(sel).trim()&&row.contains(sel.anchorNode))return;
+        clearTimeout(row._openTimer);
+        // Nas colunas Tarefa e Caso, duplo/triplo clique seleciona o texto: o clique simples espera
+        // um instante e é cancelado se vier outro clique (senão o card reabre e apaga a seleção).
+        if(e.target.closest('.vx-elxt-task-id,.vx-elxt-case')){
+          if(e.detail>1)return;
+          row._openTimer=setTimeout(toggle,260);
+          return;
+        }
+        toggle();
       };
     });
     document.querySelectorAll('#vxElxTasksBody [data-reply-index]').forEach(b=>{
