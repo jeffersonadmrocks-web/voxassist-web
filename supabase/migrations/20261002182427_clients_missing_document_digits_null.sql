@@ -1,0 +1,1 @@
+create or replace function public.sync_client_document_digits() returns trigger language plpgsql set search_path='' as $$ begin new.document_digits := nullif(regexp_replace(coalesce(new.document,''),'[^0-9]','','g'),''); return new; end; $$;

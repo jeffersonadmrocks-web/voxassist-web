@@ -16,7 +16,9 @@
     return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12,14)}`;
   }
   function formatPhone(v){
-    const d=onlyDigits(v,11);
+    let d=String(v||'').replace(/\D/g,'');
+    if((d.length===12||d.length===13)&&d.startsWith('55'))d=d.slice(2);
+    d=d.slice(0,11);
     if(!d)return '';
     if(d.length<=2)return `(${d}`;
     const ddd=d.slice(0,2), rest=d.slice(2);

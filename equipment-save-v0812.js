@@ -80,6 +80,7 @@
       }
       Object.assign(o,orderBody);
       if(o.equipments&&typeof o.equipments==='object') Object.assign(o.equipments,equipmentBody);
+      window.vxMarkOsPanelSaved?.(panel);
       toast('Dados complementares do equipamento salvos.');
     }catch(err){toast('Falha ao salvar equipamento: '+err.message,'err');}
     finally{if(btn){btn.disabled=false;btn.textContent='SALVAR DADOS COMPLEMENTARES';}}
@@ -144,6 +145,7 @@
         }
       }
       updateBudgetTotal();
+      window.vxMarkOsPanelSaved?.(panel);
       // Achado do usuário em 2026-09-04: OS 02I26O35 tinha "Decisão do
       // orçamento: APROVADO" + "Data da decisão" preenchidos e salvos
       // de verdade no banco (confirmado), mas a situação continuava

@@ -3,12 +3,47 @@
   const q=(s,r=document)=>r.querySelector(s);
   const qa=(s,r=document)=>[...r.querySelectorAll(s)];
   let dirty=false,saving=false;
+  const editedFields=new Map(),pendingFields=new Set();
+  const fieldKey=el=>el.dataset.entity&&el.dataset.name?el.dataset.entity+'.'+el.dataset.name:null;
+  const summaryFields={
+    'NOME / RAZÃO SOCIAL *':['client','name'],'CPF / CNPJ':['client','document'],
+    'TELEFONE PRINCIPAL *':['client','phone_primary'],'+ OUTRO TELEFONE':['client','phone_secondary'],
+    'E-MAIL':['client','email'],'CEP':['client','zip_code'],'ENDEREÇO':['client','address'],
+    'NÚMERO':['client','address_number'],'COMPLEMENTO':['client','complement'],
+    'BAIRRO':['client','neighborhood'],'CIDADE':['client','city'],'ESTADO':['client','state'],
+    'TIPO DE PRODUTO *':['equipment','product_type'],'MARCA':['equipment','brand'],
+    'MODELO':['equipment','model'],'Nº DE SÉRIE':['equipment','serial_number'],
+    'ACESSÓRIOS':['equipment','accessories'],'ESTADO DO APARELHO':['order','device_condition'],
+    'TIPO DE ATENDIMENTO':['order','service_type'],'LOCAL DO PRODUTO':['order','product_location'],
+    'DEFEITO RELATADO *':['order','reported_defect']
+  };
+  function bindSummaryFields(){
+    qa('#vx-os .vx-field').forEach(field=>{
+      const cfg=summaryFields[q('label',field)?.textContent?.trim()];
+      const el=q('input,select,textarea',field);
+      if(cfg&&el){el.dataset.entity=cfg[0];el.dataset.name=cfg[1];}
+    });
+    window.vxBindPhoneMasks?.();window.vxBindInputMasks?.();
+  }
+  function syncField(source){
+    const key=fieldKey(source);if(!key)return;
+    editedFields.set(key,source);pendingFields.add(key);
+    qa('.vx-os-panel [data-entity][data-name]').forEach(el=>{
+      if(el===source||fieldKey(el)!==key)return;
+      if(el.tagName==='SELECT'&&!Array.from(el.options).some(o=>o.value===source.value)){
+        el.add(new Option(source.value,source.value));
+      }
+      el.value=source.value;if(el.type==='checkbox')el.checked=source.checked;
+    });
+  }
+  window.vxMarkOsFieldSaved=(entity,name)=>{pendingFields.delete(entity+'.'+name);setDirty(pendingFields.size>0);};
+  window.vxMarkOsPanelSaved=panel=>{qa('[data-entity][data-name]',panel).forEach(el=>pendingFields.delete(fieldKey(el)));setDirty(pendingFields.size>0);};
   const norm=s=>String(s||'').toUpperCase().replaceAll('_',' ').replace(/\s+/g,' ').trim();
   const today=()=>new Date().toISOString().slice(0,10);
   const dtLocal=v=>v?String(v).slice(0,16):'';
 
   function valueOf(el){if(!el)return null;if(el.type==='checkbox')return !!el.checked;let v=el.value;if(v==='')return null;if(el.type==='number')return Number(String(v).replace(',','.'))||0;return v;}
-  function collect(entity){const body={};qa(`.vx-os-panel [data-entity="${entity}"][data-name]`).forEach(el=>{if(el.disabled||el.readOnly)return;const name=el.dataset.name;if(name)body[name]=valueOf(el);});return body;}
+  function collect(entity){const body={};qa(`.vx-os-panel [data-entity="${entity}"][data-name]`).forEach(el=>{if(el.disabled||el.readOnly)return;const name=el.dataset.name;const latest=editedFields.get(fieldKey(el));if(name)body[name]=valueOf(latest?.isConnected?latest:el);});return body;}
   function btn(){return q('#vxGlobalSave');}
   function setDirty(v=true){dirty=v;const b=btn();if(!b)return;b.textContent=saving?'SALVANDO...':'SALVAR';b.title=dirty?'Existem alterações não salvas nesta OS':'Salvar alterações da OS';b.style.opacity=dirty?'1':'.9';}
 
@@ -28,6 +63,7 @@
         <label class="vx-field"><span>DECISÃO DO ORÇAMENTO</span><select class="vx-control" data-entity="order" data-name="approval_decision"><option value="">AGUARDANDO DECISÃO</option><option value="APROVADO" ${o.approval_decision==='APROVADO'?'selected':''}>APROVADO</option><option value="RECUSADO" ${o.approval_decision==='RECUSADO'?'selected':''}>RECUSADO</option></select></label>
         <label class="vx-field"><span>DATA DA DECISÃO</span><input class="vx-control" type="date" data-entity="order" data-name="approval_date" value="${o.approval_date||''}"></label>
         <label class="vx-field"><span>APROVADO/RECUSADO POR</span><input class="vx-control" data-entity="order" data-name="approval_by" value="${String(o.approval_by||'').replace(/</g,'&lt;')}"></label>
+        <label class="vx-field"><span>INÍCIO DO CONSERTO</span><input class="vx-control" type="datetime-local" data-entity="order" data-name="repair_started_at" value="${dtLocal(o.repair_started_at)}"></label>
         <label class="vx-field"><span>PRONTO</span><input class="vx-control" type="datetime-local" data-entity="order" data-name="ready_at" value="${dtLocal(o.ready_at)}"></label>
         <label class="vx-field" id="vxRejectReasonWrap" style="grid-column:1/-1;${o.approval_decision==='RECUSADO'?'':'display:none'}"><span>MOTIVO DA RECUSA</span><textarea class="vx-control" data-entity="order" data-name="rejection_reason" style="min-height:64px">${String(o.rejection_reason||'').replace(/</g,'&lt;')}</textarea></label>
       </div><div style="font-size:10px;color:#687b8e;margin-top:8px">A recusa preserva análise, peças e valores da OS, mas não gera recebimento nem movimentação automática de caixa. Data de entrega/saída e financeiro agora ficam na guia FINALIZAR OS.</div>`;
@@ -90,7 +126,7 @@
       // (os-edit-data-fix-v0812.js só sabia destravar). Trava de novo
       // aqui, só depois do PATCH ter dado certo.
       window.vxLockOsDataEdit?.();
-      setDirty(false);
+      pendingFields.clear();setDirty(false);
       const result=await window.vxAdvanceOsStatus?.(o.id);
       // Achado do usuário em 2026-09-03: vxAdvanceOsStatus agora mostra
       // seu próprio aviso (avançou, ou "falta: ...") pra QUALQUER
@@ -103,8 +139,18 @@
   }
   window.vxSaveAllOs=saveAll;
 
-  const baseDetail=window.renderOsDetail;if(typeof baseDetail==='function')window.renderOsDetail=async function(){const r=await baseDetail.apply(this,arguments);injectSave();injectWorkflowFields();return r;};
-  document.addEventListener('input',e=>{if(e.target.closest('.vx-os-panel')&&e.target.matches('input,select,textarea'))setDirty(true);},true);
-  document.addEventListener('change',e=>{if(e.target.closest('.vx-os-panel')&&e.target.matches('input,select,textarea'))setDirty(true);},true);
+  const baseDetail=window.renderOsDetail;if(typeof baseDetail==='function')window.renderOsDetail=async function(){const previousId=state?.activeOs?.id;const drafts=[...pendingFields].map(key=>{const el=editedFields.get(key);return el?{key,entity:el.dataset.entity,name:el.dataset.name,value:el.value,checked:el.checked}:null;}).filter(Boolean);const r=await baseDetail.apply(this,arguments);editedFields.clear();pendingFields.clear();dirty=false;bindSummaryFields();injectSave();injectWorkflowFields();if(previousId===state?.activeOs?.id)drafts.forEach(d=>{const el=q(`.vx-os-panel [data-entity="${d.entity}"][data-name="${d.name}"]`);if(el){el.value=d.value;el.checked=d.checked;syncField(el);}});setDirty(pendingFields.size>0);return r;};
+  const track=e=>{if(e.target.closest('.vx-os-panel')&&e.target.matches('input,select,textarea')){syncField(e.target);setDirty(true);}};
+  document.addEventListener('input',track,true);
+  document.addEventListener('change',track,true);
+  document.addEventListener('click',e=>{
+    if(!dirty||saving||!String(state?.view||'').startsWith('os:'))return;
+    if(!e.target.closest('.nav,.tab[data-tab],[data-close],.vx-back'))return;
+    if(!window.confirm('Existem alterações não salvas nesta OS. Deseja sair sem salvar?')){
+      e.preventDefault();e.stopImmediatePropagation();return;
+    }
+    pendingFields.clear();setDirty(false);
+  },true);
+  window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
   document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='w'&&state?.activeOs?.id){e.preventDefault();e.stopImmediatePropagation();saveAll();}},true);
 })();

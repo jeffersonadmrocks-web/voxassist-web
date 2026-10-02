@@ -1,6 +1,6 @@
 /* VoxAssist Web V0.8.12 — máscara de telefone BR com DDD */
 (function(){
-  function digits(v){return String(v||'').replace(/\D/g,'').slice(0,11)}
+  function digits(v){let d=String(v||'').replace(/\D/g,'');if((d.length===12||d.length===13)&&d.startsWith('55'))d=d.slice(2);return d.slice(0,11)}
   function formatPhone(v){
     const d=digits(v);
     if(!d)return '';

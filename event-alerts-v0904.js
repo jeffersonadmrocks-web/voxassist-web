@@ -66,6 +66,7 @@
       if(!groups.has(String(so.service_group_id)))return null;
       return {text:`📋 Nova OS #${num} no seu grupo de atendimento`,osId:h.service_order_id};
     }
+    if(ps===ns)return null;
     if(ns==='AGUARDANDO APROVACAO'){
       if(ctx.role!=='ATENDENTE'&&ctx.role!=='GESTOR')return null;
       return {text:`💰 Orçamento gerado — OS #${num}, pronta pra dar seguimento`,osId:h.service_order_id};
