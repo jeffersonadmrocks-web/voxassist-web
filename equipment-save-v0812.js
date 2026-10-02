@@ -144,6 +144,7 @@
           await api('os_financial',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(financialBody)});
         }
       }
+      window.vxApplySavedFinancial?.(financialBody,o.id);
       updateBudgetTotal();
       window.vxMarkOsPanelSaved?.(panel);
       // Achado do usuário em 2026-09-04: OS 02I26O35 tinha "Decisão do

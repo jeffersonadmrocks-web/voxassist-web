@@ -32,7 +32,7 @@
   const tableEmpty=(cols,msg='Nenhum registro.')=>`<tr><td colspan="${cols}" class="vx-empty">${msg}</td></tr>`;
   let ctx=null;
 
-  window.showVxOsSection=function(id){if(!ctx)return;ctx.activeTab=id;document.querySelectorAll('.vx-os-panel').forEach(p=>p.classList.toggle('hidden',p.id!==`vx-${id}`));document.querySelectorAll('.vx-os-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.section===id));if(id==='orcamento')ensureAnalysisDate();};
+  window.showVxOsSection=function(id){if(!ctx)return;if(id==='financeiro'){if(window.vxHasUnsavedBudget?.()){toast('Salve o orçamento antes de abrir a finalização.','err');return;}refreshFinanceSummary();}ctx.activeTab=id;document.querySelectorAll('.vx-os-panel').forEach(p=>p.classList.toggle('hidden',p.id!==`vx-${id}`));document.querySelectorAll('.vx-os-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.section===id));if(id==='orcamento')ensureAnalysisDate();};
 
   // Achado do usuário em 2026-09-02: o botão "CASO DE ATENÇÃO" no
   // cabeçalho da OS chamava render('agenda') -- não tinha relação
@@ -522,6 +522,28 @@
     return {received,discountGranted,allocated,budget,bal};
   }
 
+  function refreshFinanceSummary(){
+    const summary=document.querySelector('#vx-financeiro .vx-fin-os-summary');
+    if(!summary)return;
+    const {budget,received,discountGranted,bal}=budgetSummary();
+    const values=[budget,received,discountGranted,bal];
+    summary.querySelectorAll('b').forEach((el,i)=>{el.textContent=money(values[i]);if(i===3)el.className=bal>0.004?'orange':'green';});
+  }
+  window.vxApplySavedFinancial=function(body,osId){
+    if(!ctx||String(ctx.o.id)!==String(osId))return;
+    Object.assign(ctx.fin,body);refreshFinanceSummary();
+  };
+  async function refreshPaymentBudget(){
+    const current=ctx,id=current.o.id;
+    const [finRows,parts,payments]=await Promise.all([
+      api(`os_financial?service_order_id=eq.${id}&select=*`),
+      api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`),
+      api(`payments_operational?service_order_id=eq.${id}&select=*,profiles(full_name)&order=created_at.desc`)
+    ]);
+    if(ctx!==current)throw new Error('A OS aberta mudou. Reabra o recebimento.');
+    ctx.fin=finRows?.[0]||{};ctx.parts=parts;ctx.payments=payments;refreshFinanceSummary();
+  }
+
   function financePanel(){
     const {received,discountGranted,budget,bal}=budgetSummary();
     const paymentRow=p=>`<tr onclick="vxSelectPayment('${p.id}',this)"><td>${dt(p.paid_at)||dateOnly(p.due_date)}</td><td><span class="vx-pay-method">${val(p.method)}${p.correction_of_payment_id?' <span title="Pagamento com informações corrigidas" style="color:#245984;font-weight:900;cursor:help">*</span>':''}</span></td><td><b>${p.reversal_of_payment_id?'<span class="vx-pay-reversal">ESTORNO </span>':''}${money(p.amount)}</b></td><td><span class="vx-pay-status ${payStatusClass(p.status)}">${val(p.status)}</span>${p.reversal_state?`<small class="vx-pay-reversal"> (${p.reversal_state==='TOTAL'?'estornado':'parc. estornado'})</small>`:''}</td><td>${val(p.profiles?.full_name||'—')}</td></tr>`;
@@ -646,7 +668,10 @@
 
   // ---- Registrar recebimento (multi-forma) ----
   function closeVxModal(id){document.querySelector('#'+id)?.remove()}
-  window.vxOpenRegisterPayment=function(){
+  window.vxOpenRegisterPayment=async function(){
+    if(window.vxHasUnsavedBudget?.()){toast('Salve o orçamento antes de registrar recebimento.','err');return;}
+    try{await refreshPaymentBudget();}catch(e){toast('Não foi possível conferir o orçamento: '+e.message,'err');return;}
+    if(window.vxHasUnsavedBudget?.()){toast('Salve o orçamento antes de registrar recebimento.','err');return;}
     closeVxModal('vxRegisterPayModal');
     const methods=ctx.paymentMethods?.length?ctx.paymentMethods:[{name:'DINHEIRO'},{name:'PIX'},{name:'CARTÃO DE DÉBITO'},{name:'CARTÃO DE CRÉDITO'},{name:'CHEQUE'},{name:'TRANSFERÊNCIA'},{name:'DESCONTO'}];
     // Achado do usuário: o modal não mostrava quanto ainda falta receber

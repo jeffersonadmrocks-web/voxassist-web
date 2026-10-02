@@ -38,6 +38,7 @@
   }
   window.vxMarkOsFieldSaved=(entity,name)=>{pendingFields.delete(entity+'.'+name);setDirty(pendingFields.size>0);};
   window.vxMarkOsPanelSaved=panel=>{qa('[data-entity][data-name]',panel).forEach(el=>pendingFields.delete(fieldKey(el)));setDirty(pendingFields.size>0);};
+  window.vxHasUnsavedBudget=()=>[...pendingFields].some(key=>editedFields.get(key)?.closest('#vx-orcamento'));
   const norm=s=>String(s||'').toUpperCase().replaceAll('_',' ').replace(/\s+/g,' ').trim();
   const today=()=>new Date().toISOString().slice(0,10);
   const dtLocal=v=>v?String(v).slice(0,16):'';
@@ -125,6 +126,7 @@
       // (os-edit-data-fix-v0812.js só sabia destravar). Trava de novo
       // aqui, só depois do PATCH ter dado certo.
       window.vxLockOsDataEdit?.();
+      window.vxApplySavedFinancial?.(financialBody,o.id);
       pendingFields.clear();setDirty(false);
       const result=await window.vxAdvanceOsStatus?.(o.id);
       // Achado do usuário em 2026-09-03: vxAdvanceOsStatus agora mostra
