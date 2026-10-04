@@ -10,9 +10,9 @@
         <div class="user-card"><b>${esc(state.profile?.role||'ADMINISTRADOR')}</b><small>${esc(state.profile?.role||'ADMINISTRADOR')} • Online</small></div>
         <div class="desktop-menu">
           <button class="nav active" data-view="dashboard">⌂ <span>DASHBOARD</span></button>
-          <button class="nav" data-view="os">▣ <span>ORDEM DE SERVIÇO</span></button>
+          <button class="nav" data-view="os"><span class="vx-nav-icon" aria-hidden="true">⌕</span> <span>ATENDIMENTO</span></button>
           <button class="nav" data-view="oficina">⚒ <span>OFICINA</span></button>
-          <button class="nav" data-view="agenda">☑ <span>ATIVIDADES</span></button>
+          <button class="nav" data-view="agenda"><span class="vx-nav-icon" aria-hidden="true">✓</span> <span>AGENDA E TAREFAS</span></button>
           <button class="nav" data-view="financeiro">$ <span>FINANCEIRO</span></button>
           <button class="nav" data-view="estoque">▤ <span>LOJA VIRTUAL</span></button>
           <button class="nav" data-view="testes">▥ <span>RELATÓRIOS</span></button>
@@ -49,7 +49,7 @@
 
   window.renderTabs = function(label){
     const tabs=$('#tabs'); if(!tabs)return;
-    const labels={dashboard:'Início',os:'Pesquisa O.S.',clientes:'Clientes',oficina:'Oficina',agenda:'Atividades',estoque:'Loja Virtual',financeiro:'Financeiro',testes:'Relatórios',usuarios:'Configurações','nova-os':'Nova O.S.'};
+    const labels={dashboard:'Início',os:'Pesquisa O.S.',clientes:'Clientes',oficina:'Oficina',agenda:'Agenda e Tarefas',estoque:'Loja Virtual',financeiro:'Financeiro',testes:'Relatórios',usuarios:'Configurações','nova-os':'Nova O.S.'};
     tabs.innerHTML=state.openTabs.map(v=>`<button class="tab ${state.view===v?'active':''}" data-tab="${v}"><span>${esc(v.startsWith('os:')?'OS '+v.split(':')[1]:(labels[v]||label||v))}</span>${v!=='dashboard'?`<i data-close="${v}">×</i>`:''}</button>`).join('')+`<button class="tab tab-plus" id="tabPlus">+</button>`;
     $$('.tab[data-tab]').forEach(t=>t.onclick=e=>{if(e.target.dataset.close)return;render(t.dataset.tab)});
     $$('[data-close]').forEach(x=>x.onclick=e=>{e.stopPropagation();closeTab(x.dataset.close)});
