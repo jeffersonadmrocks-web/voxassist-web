@@ -10,9 +10,9 @@
         <div class="user-card"><b>${esc(state.profile?.role||'ADMINISTRADOR')}</b><small>${esc(state.profile?.role||'ADMINISTRADOR')} • Online</small></div>
         <div class="desktop-menu">
           <button class="nav active" data-view="dashboard">⌂ <span>DASHBOARD</span></button>
-          <button class="nav" data-view="os"><span class="vx-nav-icon" aria-hidden="true">⌕</span> <span>ATENDIMENTO</span></button>
+          <button class="nav" data-view="os">⌕ <span>ATENDIMENTO</span></button>
           <button class="nav" data-view="oficina">⚒ <span>OFICINA</span></button>
-          <button class="nav" data-view="agenda"><span class="vx-nav-icon" aria-hidden="true">✓</span> <span>AGENDA E TAREFAS</span></button>
+          <button class="nav" data-view="agenda">✓ <span>AGENDA E TAREFAS</span></button>
           <button class="nav" data-view="financeiro">$ <span>FINANCEIRO</span></button>
           <button class="nav" data-view="estoque">▤ <span>LOJA VIRTUAL</span></button>
           <button class="nav" data-view="testes">▥ <span>RELATÓRIOS</span></button>
