@@ -113,12 +113,36 @@
       // botão novo lembrar de repetir o patch.
       window.vxNormalizeCurrencyFields?.(document);
       const orderBody=collect('order'),equipmentBody=collect('equipment'),clientBody=collect('client'),financialBody=collect('financial');
+      const previousOsNumber=String(o.os_number||'').trim();
+      const requestedOsNumber=Object.prototype.hasOwnProperty.call(orderBody,'os_number')?String(orderBody.os_number||'').trim().toUpperCase():previousOsNumber;
+      const osNumberChanged=!!requestedOsNumber&&requestedOsNumber!==previousOsNumber;
+      if(Object.prototype.hasOwnProperty.call(orderBody,'os_number')){
+        if(!requestedOsNumber)throw new Error('O número da O.S. não pode ficar vazio.');
+        orderBody.os_number=requestedOsNumber;
+        if(osNumberChanged){
+          const companyId=o.company_id||state.profile?.active_company_id;
+          const duplicate=await api(`service_orders?os_number=eq.${encodeURIComponent(requestedOsNumber)}${companyId?`&company_id=eq.${encodeURIComponent(companyId)}`:''}&id=neq.${encodeURIComponent(o.id)}&select=id,os_number&limit=1`).catch(()=>[]);
+          if(duplicate?.length)throw new Error(`Já existe uma O.S. com o número ${requestedOsNumber} nesta empresa.`);
+        }
+      }
       const jobs=[];
       if(Object.keys(orderBody).length){orderBody.updated_at=new Date().toISOString();jobs.push(api(`service_orders?id=eq.${encodeURIComponent(o.id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(orderBody)}));}
       if(o.equipment_id&&Object.keys(equipmentBody).length)jobs.push(api(`equipments?id=eq.${encodeURIComponent(o.equipment_id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(equipmentBody)}));
       if(o.client_id&&Object.keys(clientBody).length)jobs.push(api(`clients?id=eq.${encodeURIComponent(o.client_id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(clientBody)}));
       if(Object.keys(financialBody).length){financialBody.service_order_id=o.id;financialBody.updated_at=new Date().toISOString();const existing=await api(`os_financial?service_order_id=eq.${encodeURIComponent(o.id)}&select=id&limit=1`).catch(()=>[]);if(existing?.[0]?.id)jobs.push(api(`os_financial?id=eq.${encodeURIComponent(existing[0].id)}`,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(financialBody)}));else jobs.push(api('os_financial',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(financialBody)}));}
-      await Promise.all(jobs);Object.assign(o,orderBody);if(o.equipments&&typeof o.equipments==='object')Object.assign(o.equipments,equipmentBody);if(o.clients&&typeof o.clients==='object')Object.assign(o.clients,clientBody);
+      await Promise.all(jobs);
+      if(osNumberChanged){
+        await api('os_status_history',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({
+          service_order_id:o.id,
+          previous_status:o.status,
+          new_status:o.status,
+          change_type:'MANUAL',
+          reason:`Número da O.S. alterado de "${previousOsNumber||'—'}" para "${requestedOsNumber}"`,
+          changed_by:state.session?.user?.id||state.profile?.id||null,
+          changed_at:new Date().toISOString()
+        })});
+      }
+      Object.assign(o,orderBody);if(o.equipments&&typeof o.equipments==='object')Object.assign(o.equipments,equipmentBody);if(o.clients&&typeof o.clients==='object')Object.assign(o.clients,clientBody);
       if(typeof window.vxUpdateBudgetTotal==='function')window.vxUpdateBudgetTotal();
       // Achado do usuário em 2026-09-29: ALTERAR > EDITAR DADOS DA O.S.
       // destravava os campos do resumo e nunca travava de volta -- SALVAR
