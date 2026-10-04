@@ -4,6 +4,7 @@
   const qa=(s,r=document)=>[...r.querySelectorAll(s)];
 
   const MAP={
+    'Nº DA O.S. *':['order','os_number'],
     'NOME / RAZÃO SOCIAL *':['client','name'],
     'CPF / CNPJ':['client','document'],
     'TELEFONE PRINCIPAL *':['client','phone_primary'],
