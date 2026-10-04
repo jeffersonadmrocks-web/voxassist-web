@@ -32,3 +32,27 @@
 #app .vx-fin-total-line{font-size:16px;padding-top:8px;border-top:1px solid #dce7df}
 @media(max-width:1100px){#app .vx-fin-day-total-breakdown{grid-template-columns:repeat(3,minmax(85px,1fr))}#app .vx-fin-day-total-final{grid-column:1/-1;flex-direction:row;align-items:center;justify-content:space-between}}
 @media(max-width:600px){#app .vx-fin-head h2{font-size:17px}#app .vx-fin-head .vx-fin-btn{min-height:40px}#app .vx-fin-chips button{min-height:36px}#app .vx-fin-filters{padding:8px;gap:7px}#app .vx-fin-filters select.vx-control{min-height:38px}#app .vx-fin-search input{min-height:38px}}
+
+/* Segundo ajuste: valores em linha, cor concentrada no significado. */
+#app .vx-fin-head{background:#fff;border-color:#e0e6ec;padding:8px 12px;margin-bottom:8px}
+#app .vx-fin-head h2{color:#173b58;font-size:18px}
+#app .vx-fin-head .vx-fin-btn{background:#173b58;border-color:#173b58}
+#app .vx-fin-head .vx-fin-btn:hover{background:#244b60}
+#app .vx-fin-filters{padding:6px 10px;margin-bottom:8px;gap:7px}
+#app .vx-fin-table tbody .vx-fin-day-header-row td{padding:5px 12px;background:#f0f3f6;color:#496174}
+#app .vx-fin-table tbody .vx-fin-day-total-row td{padding:6px 12px;background:#fafbfc}
+#app .vx-fin-table tbody .vx-fin-day-total-row-negative td{background:#fff5f4}
+#app .vx-fin-day-summary-head{margin-bottom:4px}
+#app .vx-fin-day-total-breakdown{grid-template-columns:repeat(6,minmax(0,1fr)) minmax(170px,1.3fr);gap:5px}
+#app .vx-fin-day-total-item{flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:3px 7px;padding:5px 7px;border:0;border-radius:5px;background:#f0f3f6;min-height:28px}
+#app .vx-fin-day-total-item:last-child{border:0}
+#app .vx-fin-day-total-item span{font-size:10px;white-space:nowrap}
+#app .vx-fin-day-total-item b{font-size:12px}
+#app .vx-fin-day-total-zero{background:transparent}
+#app .vx-fin-day-total-final{flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:5px 9px;min-height:28px;background:#fff;border-color:#dfe6ed;color:#0b6f3c;border-radius:5px}
+#app .vx-fin-day-total-final span{color:#627585;font-size:9px;white-space:nowrap}
+#app .vx-fin-day-total-final b{font-size:14px}
+#app .vx-fin-day-total-final.vx-fin-negative{background:#fff5f4;border-color:#eed7d4}
+#app .vx-fin-day-total-final.vx-fin-negative span{color:#a63131}
+@media(max-width:1250px){#app .vx-fin-day-total-breakdown{grid-template-columns:repeat(3,minmax(125px,1fr))}#app .vx-fin-day-total-final{grid-column:1/-1}}
+@media(max-width:600px){#app .vx-fin-day-total-breakdown{grid-template-columns:repeat(2,minmax(125px,1fr))}#app .vx-fin-head h2{font-size:17px}}
