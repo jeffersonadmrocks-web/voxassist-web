@@ -56,3 +56,57 @@
 #app .vx-agenda .vx-open-head h3{color:#8b6429}
 #app .vx-agenda-head .vx-elx-filter-wrap{justify-self:end;padding:0}
 @media(max-width:700px){#app .vx-agenda-head .vx-elx-filter-wrap{grid-column:1/-1;grid-row:3;justify-self:start}#app .vx-agenda .vx-agenda-controls{gap:5px}}
+
+/* Usuários: controles de seleção independentes dos campos de texto. */
+#app .vx-admin-page{gap:14px;color:#173451}
+#app .vx-admin-page .vx-admin-hero{background:#f1f7f6;border-color:#dbe9e5;border-left:4px solid #4b8a7b;border-radius:12px;padding:16px 18px;gap:16px}
+#app .vx-admin-page .vx-admin-hero h2{font-size:22px;letter-spacing:-.3px}
+#app .vx-admin-page .vx-admin-card{border-radius:12px;padding:16px;border-color:#e0e7ed;min-width:0}
+#app .vx-admin-page .vx-admin-title{padding-bottom:10px;border-bottom:1px solid #edf1f4;margin-bottom:10px}
+#app .vx-admin-page .vx-admin-title h3{font-size:13px}
+#app .vx-admin-page .vx-admin-title span{background:#f2eef7;color:#75608b;padding:4px 9px}
+#app .vx-admin-page table{width:100%;border-collapse:collapse}
+#app .vx-admin-page th{background:#f4f7f9;color:#607486;font-size:10px;padding:11px 10px;text-align:left;white-space:nowrap}
+#app .vx-admin-page td{padding:12px 10px;font-size:12px;border-bottom:1px solid #edf1f4;vertical-align:middle}
+#app .vx-admin-page tbody tr:hover{background:#f7faf9}
+#app .vx-admin-page .vx-ok,#app .vx-admin-page .vx-off{display:inline-block;border-radius:20px;padding:4px 8px;font-size:10px;white-space:nowrap}
+#app .vx-admin-page .vx-ok{background:#edf7f0;color:#3b7e64}
+#app .vx-admin-page .vx-off{background:#fbefec;color:#a16a58}
+#app .vx-admin-page .vx-user-manage-btn{border-radius:8px;font-size:11px;padding:7px 11px;background:#eef5f6;color:#386d76;border-color:#d2e3e5}
+#vxUserManageModal .vx-user-manage-modal{width:min(940px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;border-radius:15px}
+#vxUserManageModal .vx-admin-modal-head{background:#f1f7f6;border-bottom:1px solid #dce9e5;padding:16px 20px;flex:0 0 auto}
+#vxUserManageModal .vx-admin-modal-head h3{font-size:18px}
+#vxUserManageModal .vx-admin-modal-head button{width:32px;height:32px;border-radius:8px;color:#526a7a;line-height:1}
+#vxUserManageModal .vx-admin-modal-body{padding:20px;overflow:auto;min-height:0}
+:is(#vxUserManageForm,#vxUserForm).vx-admin-form{gap:8px}
+:is(#vxUserManageForm,#vxUserForm) label{font-size:11px;line-height:1.4}
+:is(#vxUserManageForm,#vxUserForm) input:not([type="checkbox"]),:is(#vxUserManageForm,#vxUserForm) select{height:38px;border-radius:8px;font-size:13px;color:#173451}
+:is(#vxUserManageForm,#vxUserForm) input[type="checkbox"]{width:18px!important;height:18px!important;min-width:18px!important;min-height:18px!important;max-width:18px!important;max-height:18px!important;padding:0!important;margin:0!important;flex:0 0 18px;accent-color:#398572;cursor:pointer}
+:is(#vxUserManageForm,#vxUserForm) .vx-toggle{justify-content:flex-start;background:#eef7f2;border:1px solid #d8e9df;border-radius:9px;padding:10px 12px;gap:10px;margin:4px 0}
+:is(#vxUserManageForm,#vxUserForm) .vx-toggle span{color:#3d705c;font-size:11px;font-weight:600}
+:is(#vxUserManageForm,#vxUserForm) .vx-store-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px;background:#f7f9fa;border:1px solid #e0e7ed;border-radius:10px}
+:is(#vxUserManageForm,#vxUserForm) .vx-store-checks label{display:flex!important;align-items:center;justify-content:flex-start;gap:9px;margin:0;padding:9px 10px;min-height:39px;background:#fff;border:1px solid #e3e9ef;border-radius:8px;cursor:pointer;min-width:0}
+:is(#vxUserManageForm,#vxUserForm) .vx-store-checks label:has(input:checked){background:#eef7f2;border-color:#c9e1d2}
+:is(#vxUserManageForm,#vxUserForm) .vx-store-checks label b{font-size:12px;font-weight:600;overflow-wrap:anywhere}
+:is(#vxUserManageForm,#vxUserForm) .vx-store-checks label span{font-size:10px;margin-left:auto;overflow-wrap:anywhere}
+:is(#vxUserManageForm,#vxUserForm) .vx-access-head{gap:12px;padding:10px 12px;background:#f2eef7;border:1px solid #e7dfef;border-radius:9px;margin:12px 0 3px;align-items:center}
+:is(#vxUserManageForm,#vxUserForm) .vx-access-head b{font-size:12px;color:#705c86}
+:is(#vxUserManageForm,#vxUserForm) .vx-access-head small{font-size:11px;line-height:1.5;color:#6b7480}
+:is(#vxUserManageForm,#vxUserForm) .vx-security-actions{gap:8px;margin:0 0 6px}
+:is(#vxUserManageForm,#vxUserForm) .vx-security-actions button{font-size:11px;border-radius:8px;padding:8px 11px;min-height:34px}
+:is(#vxUserManageForm,#vxUserForm) .vx-permissions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;background:transparent;border:0;padding:0}
+:is(#vxUserManageForm,#vxUserForm) .vx-permission-section{border:1px solid #e0e7ed;border-radius:10px;overflow:hidden;background:#fff;min-width:0;align-self:start}
+:is(#vxUserManageForm,#vxUserForm) .vx-perm-group{background:#eef5f6;color:#426e79;font-size:11px;padding:10px 12px;border-bottom:1px solid #dde9eb}
+:is(#vxUserManageForm,#vxUserForm) .vx-permission-section:nth-child(4n+2) .vx-perm-group{background:#eef7f2;color:#467762;border-color:#dcebe2}
+:is(#vxUserManageForm,#vxUserForm) .vx-permission-section:nth-child(4n+3) .vx-perm-group{background:#fcf7ed;color:#95723a;border-color:#eee5d3}
+:is(#vxUserManageForm,#vxUserForm) .vx-permission-section:nth-child(4n) .vx-perm-group{background:#f4f0f8;color:#79658e;border-color:#e8e0ef}
+:is(#vxUserManageForm,#vxUserForm) .vx-permission-items label{display:flex;align-items:flex-start;justify-content:flex-start;gap:9px;padding:9px 12px;margin:0;font-size:12px;font-weight:500;line-height:1.4;border-bottom:1px solid #eef2f5;cursor:pointer}
+:is(#vxUserManageForm,#vxUserForm) .vx-permission-items label:last-child{border-bottom:0}
+:is(#vxUserManageForm,#vxUserForm) .vx-permission-items label:hover{background:#f7faf9}
+:is(#vxUserManageForm,#vxUserForm) .vx-permission-items label:has(input:checked){color:#315f51}
+:is(#vxUserManageForm,#vxUserForm) input:focus-visible,:is(#vxUserManageForm,#vxUserForm) select:focus-visible,:is(#vxUserManageForm,#vxUserForm) button:focus-visible{outline:2px solid #60968a;outline-offset:2px}
+#vxUserManageForm .vx-admin-form-actions{position:sticky;bottom:-20px;padding:13px 0;margin:10px 0 -20px;background:#fff;border-top:1px solid #e1e8ee;z-index:1;gap:8px;flex-wrap:wrap}
+:is(#vxUserManageForm,#vxUserForm) .vx-admin-form-actions button{border-radius:8px;min-height:36px;font-size:11px;padding:8px 12px}
+:is(#vxUserManageForm,#vxUserForm) .vx-admin-form-actions .primary{background:#173b58;border-color:#173b58;color:#fff}
+:is(#vxUserManageForm,#vxUserForm) .vx-admin-form-actions .danger{background:#fff8f6;border-color:#e8d2cb!important;color:#a16a58!important}
+@media(max-width:700px){#vxUserManageModal{padding:10px}#vxUserManageModal .vx-admin-modal-body{padding:14px}#vxUserManageModal .vx-admin-modal-head{padding:13px 14px}:is(#vxUserManageForm,#vxUserForm) .vx-permissions,:is(#vxUserManageForm,#vxUserForm) .vx-store-checks{grid-template-columns:1fr}:is(#vxUserManageForm,#vxUserForm) .vx-access-head{align-items:flex-start;flex-wrap:wrap}#vxUserManageForm .vx-admin-form-actions{bottom:-14px;margin-bottom:-14px}#app .vx-admin-page .vx-admin-actions{flex-wrap:wrap}}
