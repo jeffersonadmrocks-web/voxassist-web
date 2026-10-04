@@ -94,18 +94,21 @@
     container.innerHTML=`<style>${DOC_CSS}</style>${bodyHtml}`;
     document.body.appendChild(container);
     try{
+      await Promise.all(Array.from(container.querySelectorAll('img'),img=>img.decode().catch(()=>{})));
+      await document.fonts.ready;
       const canvas=await window.html2canvas(container,{scale:2,useCORS:true,backgroundColor:'#ffffff',windowWidth:794});
       if(!canvas.width||!canvas.height)throw new Error('Falha ao capturar o conteúdo do documento.');
       const imgData=canvas.toDataURL('image/jpeg',0.92);
       const doc=new jsPDF({unit:'mm',format:'a4'});
       const margin=8,pageWidth=210,pageHeight=297;
-      const imgWidthMm=pageWidth-margin*2;
+      const singlePage=!!container.querySelector('.doc.vox');
+      const imgWidthMm=singlePage?Math.min(pageWidth-margin*2,(pageHeight-margin*2)*canvas.width/canvas.height):pageWidth-margin*2;
       const imgHeightMm=(canvas.height*imgWidthMm)/canvas.width;
       const usableHeight=pageHeight-margin*2;
       let heightLeft=imgHeightMm,offsetMm=0;
       doc.addImage(imgData,'JPEG',margin,margin,imgWidthMm,imgHeightMm);
       heightLeft-=usableHeight;
-      while(heightLeft>0){
+      while(!singlePage&&heightLeft>0){
         offsetMm+=usableHeight;
         doc.addPage();
         doc.addImage(imgData,'JPEG',margin,margin-offsetMm,imgWidthMm,imgHeightMm);
