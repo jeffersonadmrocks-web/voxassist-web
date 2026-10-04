@@ -820,9 +820,9 @@
       // duas definições de "recebido" na mesma página. DESCONTO fecha
       // saldo da OS mas não é receita de verdade (mesma regra usada em
       // todo outro lugar do app, ver financePanel() em os-detail-v0812.js).
-      const valorRecebido=revenuePayments.filter(p=>mine.some(o=>String(o.id)===String(p.service_order_id))).reduce((s,p)=>s+Number(p.amount||0),0);
-      return {tech:t,os:mine.length,osRows:mine,valor:valorRecebido,prontos:readyRowsMine.length,prontosRows:readyRowsMine,aproveitamento:pct(finalMine.length,mine.length||1)};
-    }).filter(r=>r.os>0).sort((a,b)=>b.valor-a.valor);
+      const valorRecebido=revenuePayments.filter(p=>finalMine.some(o=>String(o.id)===String(p.service_order_id))).reduce((s,p)=>s+Number(p.amount||0),0);
+      return {tech:t,os:finalMine.length,osRows:finalMine,valor:valorRecebido,prontos:readyRowsMine.length,prontosRows:readyRowsMine,aproveitamento:pct(finalMine.length,mine.length||1)};
+    }).filter(r=>r.os>0||r.prontos>0).sort((a,b)=>b.valor-a.valor);
     const totalRecebidoOS=prodRows.reduce((s,r)=>s+r.valor,0);
     const prodDrills={};
     prodRows.forEach(r=>{prodDrills['prodOs_'+r.tech.id]=r.osRows;prodDrills['prodProntos_'+r.tech.id]=r.prontosRows});
@@ -1058,9 +1058,9 @@
           <div class="vx-c-feed-scroll">${feed.length?feed.map(h=>`<div class="vx-c-feed-row${h.service_order_id?' vx-c-feed-row-click':''}"${h.service_order_id?` data-drill="feedos:${E(h.service_order_id)}" data-title="OS"`:''}><span class="vx-c-feed-dot"></span><div><b>${new Date(h.changed_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</b><span>${E(feedText(h))}</span></div></div>`).join(''):'<p class="vx-c-empty">Nenhuma movimentação recente.</p>'}</div>
         </section>
         <section class="vx-c-prod-table-card"><div class="vx-c-title"><h3>★ Produtividade</h3></div>
-          <p class="vx-c-prod-total">Total recebido nas OS: <b>${M(totalRecebidoOS)}</b></p>
-          <div class="vx-c-tw"><table class="vx-c-prod-table"><thead><tr><th>Técnico</th><th>OS</th><th>Valor Recebido</th><th>Prontos</th><th>Aproveitamento</th></tr></thead>
-          <tbody>${prodRows.length?prodRows.map(r=>`<tr><td>${E(r.tech.full_name)}</td><td><button type="button" class="vx-c-prod-cell" data-drill="prodOs_${E(r.tech.id)}" data-title="OS de ${E(r.tech.full_name)}">${r.os}</button></td><td>${M(r.valor)}</td><td><button type="button" class="vx-c-prod-cell" data-drill="prodProntos_${E(r.tech.id)}" data-title="Prontos de ${E(r.tech.full_name)}" ${r.prontos?'':'disabled'}>${r.prontos}</button></td><td>${r.aproveitamento}%</td></tr>`).join(''):'<tr><td colspan="5" class="vx-c-empty">Nenhuma OS atribuída ainda.</td></tr>'}</tbody></table></div>
+          <p class="vx-c-prod-total">Total recebido nas OS finalizadas: <b>${M(totalRecebidoOS)}</b></p>
+          <div class="vx-c-tw"><table class="vx-c-prod-table"><thead><tr><th>Técnico</th><th>OS finalizadas</th><th>Recebido nas finalizadas</th><th>Prontos</th><th>Aproveitamento</th></tr></thead>
+          <tbody>${prodRows.length?prodRows.map(r=>`<tr><td>${E(r.tech.full_name)}</td><td><button type="button" class="vx-c-prod-cell" data-drill="prodOs_${E(r.tech.id)}" data-title="OS finalizadas de ${E(r.tech.full_name)}">${r.os}</button></td><td>${M(r.valor)}</td><td><button type="button" class="vx-c-prod-cell" data-drill="prodProntos_${E(r.tech.id)}" data-title="Prontos de ${E(r.tech.full_name)}" ${r.prontos?'':'disabled'}>${r.prontos}</button></td><td>${r.aproveitamento}%</td></tr>`).join(''):'<tr><td colspan="5" class="vx-c-empty">Nenhuma OS finalizada ou pronta para entrega.</td></tr>'}</tbody></table></div>
         </section>
       </div>
 
