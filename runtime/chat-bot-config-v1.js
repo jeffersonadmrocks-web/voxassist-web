@@ -14,7 +14,7 @@
  * usado no resto do app -- nunca substitui o router.
  */
 (function(){
-  const E=v=>typeof esc==='function'?esc(v??''):String(v??'');
+  const E=v=>typeof esc==='function'?esc(v??''):String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const norm=v=>String(v||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replaceAll('_',' ').replace(/\s+/g,' ').trim();
   const isGestor=()=>norm(state?.profile?.role)==='GESTOR';
   const myUserId=()=>state?.session?.user?.id||null;
@@ -29,16 +29,16 @@
 
   async function loadAll(){
     const [versions,stores,profiles,auditEvents,queues,queueMembers]=await Promise.all([
-      api('chat_bot_flow_versions?select=*&order=created_at.desc').catch(()=>[]),
-      api('stores?select=id,name&active=eq.true&order=name').catch(()=>[]),
-      api('profiles?select=id,full_name,role&active=eq.true&order=full_name').catch(()=>[]),
+      api('chat_bot_flow_versions?select=*&order=created_at.desc'),
+      api('stores?select=id,name&active=eq.true&order=name'),
+      api('profiles?select=id,full_name,role&active=eq.true&order=full_name'),
       api('chat_bot_flow_audit_events?select=*,changed_by_profile:profiles!chat_bot_flow_audit_events_changed_by_fkey(full_name)&order=created_at.desc&limit=100').catch(()=>[]),
       // Achado do usuário em 2026-09-02 (pacote fila/robô/presença):
       // destino das regras deixou de ser um atendente individual e
       // virou uma fila de atendimento (chat_queues) -- integrantes
       // trocam livremente (chat_queue_members) sem republicar o robô.
-      api('chat_queues?select=*&order=name').catch(()=>[]),
-      api('chat_queue_members?select=queue_id,user_id,profiles(full_name)').catch(()=>[]),
+      api('chat_queues?select=*&order=name'),
+      api('chat_queue_members?select=queue_id,user_id,profiles(full_name)'),
     ]);
     const draft=(versions||[]).find(v=>v.status==='RASCUNHO')||null;
     const published=(versions||[]).find(v=>v.status==='PUBLICADA')||null;
@@ -46,12 +46,12 @@
     let steps=[],conditions=[],rules=[];
     if(editing){
       const [stepsRaw,rulesRaw]=await Promise.all([
-        api(`chat_bot_flow_steps?flow_version_id=eq.${editing.id}&select=*&order=step_order.asc`).catch(()=>[]),
-        api(`chat_bot_routing_rules?flow_version_id=eq.${editing.id}&select=*,target:chat_queues!chat_bot_routing_rules_target_queue_id_fkey(name),store:stores(name)&order=specificity.desc`).catch(()=>[]),
+        api(`chat_bot_flow_steps?flow_version_id=eq.${editing.id}&select=*&order=step_order.asc`),
+        api(`chat_bot_routing_rules?flow_version_id=eq.${editing.id}&select=*,target:chat_queues!chat_bot_routing_rules_target_queue_id_fkey(name),store:stores(name)&order=specificity.desc`),
       ]);
       steps=stepsRaw||[];
       const stepIds=steps.map(s=>s.id);
-      conditions=stepIds.length?await api(`chat_bot_flow_step_conditions?step_id=in.(${stepIds.join(',')})&select=*`).catch(()=>[]):[];
+      conditions=stepIds.length?await api(`chat_bot_flow_step_conditions?step_id=in.(${stepIds.join(',')})&select=*`):[];
       rules=rulesRaw||[];
     }
     bf={loaded:true,versions:versions||[],draft,published,steps,conditions,rules,stores:stores||[],profiles:profiles||[],auditEvents:auditEvents||[],queues:queues||[],queueMembers:queueMembers||[]};
@@ -114,7 +114,10 @@
   }
   async function handlePublish(){
     if(!bf.draft)return;
-    if(!bf.steps.some(s=>s.active)){toast?.('Adicione pelo menos uma pergunta de triagem ativa antes de publicar.','err');return}
+    if(pendingWrites.size){toast?.('Aguarde o salvamento em andamento antes de publicar.','err');return}
+    if(!await saveSettings())return;
+    const issues=flowIssues();
+    if(issues.some(i=>i.level==='error')){guideTab='review';renderScreen();toast?.('Revise os pontos indicados antes de publicar.','err');return}
     if(!confirm('Publicar este fluxo? A versão atual (se houver) será arquivada, e o conteúdo publicado não poderá mais ser editado -- pra mudar depois, será preciso restaurar um novo rascunho.'))return;
     try{
       await callRpc('publish_chat_bot_flow',{p_flow_version_id:bf.draft.id,p_reason:null});
@@ -144,7 +147,9 @@
     try{
       await api(`chat_bot_flow_versions?id=eq.${bf.draft.id}`,{method:'PATCH',body:JSON.stringify(fields)});
       Object.assign(bf.draft,fields);
-    }catch(err){toast?.('Não foi possível salvar: '+err.message,'err')}
+      resetSimulation();
+      return true;
+    }catch(err){toast?.('Não foi possível salvar: '+err.message,'err');return false}
   }
 
   // ---------- CRUD de steps ----------
@@ -203,7 +208,7 @@
   async function setStepCondition(stepId,dependsOnStepId,value){
     try{
       await api(`chat_bot_flow_step_conditions?step_id=eq.${stepId}`,{method:'DELETE'});
-      if(dependsOnStepId&&value){
+      if(dependsOnStepId&&String(value||'').trim()){
         await api('chat_bot_flow_step_conditions',{method:'POST',body:JSON.stringify({step_id:stepId,depends_on_step_id:dependsOnStepId,depends_on_value:value})});
       }
       await loadAll();renderScreen();
@@ -263,8 +268,8 @@
   function stepConditionSelectHtml(step,availableSteps){
     const existing=bf.conditions.find(c=>c.step_id===step.id);
     return `<div class="vx-bf-step-condition">
-      <label>Depende de <select data-cond-depends="${E(step.id)}"><option value="">Sempre (sem condição)</option>${availableSteps.filter(s=>s.id!==step.id).map(s=>`<option value="${E(s.id)}" ${existing?.depends_on_step_id===s.id?'selected':''}>${E(s.question_text)}</option>`).join('')}</select></label>
-      <label>Valor esperado<input type="text" data-cond-value="${E(step.id)}" value="${E(existing?.depends_on_value||'')}" placeholder="ex.: GARANTIA" ${existing?'':'hidden'}></label>
+      <label>Mostrar esta pergunta quando <select data-cond-depends="${E(step.id)}"><option value="">Sempre (sem condição)</option>${availableSteps.filter(s=>s.id!==step.id).map(s=>`<option value="${E(s.id)}" ${existing?.depends_on_step_id===s.id?'selected':''}>${E(s.question_text)}</option>`).join('')}</select></label>
+      <label>A resposta for<input type="text" data-cond-value="${E(step.id)}" value="${E(existing?.depends_on_value||'')}" placeholder="ex.: GARANTIA" ${existing?'':'hidden'}></label>
     </div>`;
   }
 
@@ -285,12 +290,12 @@
       </div>
       <div class="vx-bf-step-fields">
         <label>Tipo de resposta<select data-field="answer_type">${Object.entries(ANSWER_TYPE_LABEL).map(([v,l])=>`<option value="${v}" ${step.answer_type===v?'selected':''}>${l}</option>`).join('')}</select></label>
-        <label>Alimenta roteamento por<select data-field="routing_dimension"><option value="">${ROUTING_DIM_LABEL['']}</option><option value="STORE" ${step.routing_dimension==='STORE'?'selected':''}>Loja</option><option value="WARRANTY" ${step.routing_dimension==='WARRANTY'?'selected':''}>Garantia</option><option value="BRAND" ${step.routing_dimension==='BRAND'?'selected':''}>Marca</option></select></label>
+        <label>Usar esta resposta para escolher a equipe por<select data-field="routing_dimension"><option value="">${ROUTING_DIM_LABEL['']}</option><option value="STORE" ${step.routing_dimension==='STORE'?'selected':''}>Loja</option><option value="WARRANTY" ${step.routing_dimension==='WARRANTY'?'selected':''}>Garantia</option><option value="BRAND" ${step.routing_dimension==='BRAND'?'selected':''}>Marca</option></select></label>
       </div>
       ${isChoice?`<div class="vx-bf-step-options">
         <div class="vx-bf-step-options-label">Opções de resposta ${isStoreDim?'<small>(preenchidas automaticamente com as lojas ativas)</small>':''}</div>
         ${isStoreDim?`<button type="button" data-sync-store-options>🔄 Sincronizar com as lojas ativas</button>`:`
-        <div class="vx-bf-options-list">${options.map((o,i)=>`<div class="vx-bf-option-row"><input type="text" data-opt-idx="${i}" data-opt-field="label" value="${E(o.label||'')}" placeholder="Rótulo (o que o cliente digita)"><button type="button" data-opt-remove="${i}">✕</button></div>`).join('')}</div>
+        <div class="vx-bf-options-list">${options.map((o,i)=>`<div class="vx-bf-option-row"><input type="text" data-opt-idx="${i}" data-opt-field="label" value="${E(o.label||'')}" placeholder="Texto da opção para o cliente"><button type="button" data-opt-remove="${i}">✕</button></div>`).join('')}</div>
         <button type="button" data-add-option>+ opção</button>
         ${step.routing_dimension==='WARRANTY'?'<button type="button" data-seed-warranty>Usar valores padrão de garantia</button>':''}`}
       </div>`:''}
@@ -313,15 +318,15 @@
     const readOnly=!bf.draft;
     const v=bf.draft||bf.published||{};
     return `<div class="vx-bf-card">
-      <h3>Configurações gerais</h3>
-      <p class="vx-bf-sub">Comportamento do robô fora das perguntas de triagem em si.</p>
+      <h3>Respostas e atendimento humano</h3>
+      <p class="vx-bf-sub">Defina o que acontece quando o cliente pede ajuda ou envia uma resposta não reconhecida. O texto do horário abaixo não altera a agenda automática de atendimento.</p>
       <label class="vx-bf-toggle"><input type="checkbox" id="vxBfAlwaysHuman" ${v.always_human_toggle?'checked':''} ${readOnly?'disabled':''}> Permitir "falar com atendente" em qualquer etapa</label>
       <label>Mensagem para resposta inválida<input type="text" id="vxBfInvalidMsg" maxlength="140" value="${E(v.invalid_message||'')}" ${readOnly?'disabled':''}></label>
       <label>Limite de tentativas antes de encaminhar<input type="number" id="vxBfRetryLimit" min="1" max="10" value="${E(v.retry_limit||3)}" ${readOnly?'disabled':''}></label>
       <label class="vx-bf-toggle"><input type="checkbox" id="vxBfLookup" ${v.lookup_toggle?'checked':''} ${readOnly?'disabled':''}> Buscar cliente/conversa/OS existente pelo telefone antes de perguntar</label>
       <label>Atendente padrão (quando nenhuma regra combina)<select id="vxBfDefaultAttendant" ${readOnly?'disabled':''}><option value="">Nenhum -- fica sem atribuição</option>${bf.profiles.filter(p=>['GESTOR','ATENDENTE'].includes(norm(p.role))).map(p=>`<option value="${E(p.id)}" ${String(v.default_attendant_id)===String(p.id)?'selected':''}>${E(p.full_name)}</option>`).join('')}</select></label>
       <label class="vx-bf-toggle"><input type="checkbox" id="vxBfAfterHoursToggle" ${v.after_hours_toggle?'checked':''} ${readOnly?'disabled':''}> Mensagem diferente fora do horário de atendimento</label>
-      <label>Horário de atendimento (só texto informativo)<input type="text" id="vxBfBusinessHoursText" value="${E(v.business_hours_text||'')}" ${readOnly?'disabled':''}></label>
+      <label>Horário exibido na mensagem (texto informativo)<input type="text" id="vxBfBusinessHoursText" value="${E(v.business_hours_text||'')}" ${readOnly?'disabled':''}></label>
       <label>Mensagem fora do horário<input type="text" id="vxBfAfterHoursMsg" maxlength="160" value="${E(v.after_hours_message||'')}" ${readOnly?'disabled':''}></label>
       ${readOnly?'':'<button type="button" class="vx-bf-save-btn" id="vxBfGeneralSave">Salvar configurações</button>'}
     </div>`;
@@ -329,8 +334,8 @@
 
   function versionsCard(){
     return `<div class="vx-bf-card">
-      <h3>Versões do fluxo</h3>
-      <p class="vx-bf-sub">Rascunho é livremente editável. Publicar congela o conteúdo pra sempre -- pra mudar depois, restaure uma versão do histórico (cria um rascunho novo a partir dela).</p>
+      <h3>Publicar e acompanhar versões</h3>
+      <p class="vx-bf-sub">Rascunho é livremente editável. As alterações do rascunho só passam a atender clientes depois de publicar. Para ajustar o robô ativo, use “Editar (criar rascunho)”. Restaurar copia uma versão anterior para edição.</p>
       <div class="vx-bf-version-status">
         <span>Versão publicada: <b>${bf.published?`publicada em ${new Date(bf.published.published_at||bf.published.created_at).toLocaleString('pt-BR')}`:'Nenhuma'}</b>${bf.published?.paused?' <span class="vx-bf-paused-badge">PAUSADO</span>':''}</span>
         <div class="vx-bf-version-actions">
@@ -377,9 +382,9 @@
   function routingRulesCard(){
     if(!bf.draft&&!bf.published)return'';
     return `<div class="vx-bf-card">
-      <h3>Regras de roteamento</h3>
-      <p class="vx-bf-sub">Combina loja + garantia + marca pra decidir automaticamente qual FILA recebe a conversa -- qualquer integrante autorizado da fila pode assumir. Prioridade AUTOMÁTICA por especificidade -- a regra com mais dimensões preenchidas sempre vence, sem precisar reordenar nada.</p>
-      <table class="vx-bf-table"><thead><tr><th>Loja</th><th>Garantia</th><th>Marca</th><th>Especificidade</th><th>Fila</th>${bf.draft?'<th></th>':''}</tr></thead>
+      <h3>Para qual equipe encaminhar?</h3>
+      <p class="vx-bf-sub">Combina loja + garantia + marca pra decidir automaticamente qual FILA recebe a conversa -- qualquer integrante autorizado da fila pode assumir. Exemplo: Serra + Garantia + Electrolux → equipe Garantia Serra. Se mais de uma regra combinar, vence a que tiver mais critérios preenchidos.</p>
+      <table class="vx-bf-table"><thead><tr><th>Loja</th><th>Garantia</th><th>Marca</th><th>Critérios</th><th>Fila</th>${bf.draft?'<th></th>':''}</tr></thead>
       <tbody>${bf.rules.length?bf.rules.map(r=>`<tr><td>${E(r.store?.name||'Qualquer')}</td><td>${E(r.warranty_value||'Qualquer')}</td><td>${E(r.brand_value||'Qualquer')}</td><td><span class="vx-bf-specificity-badge">${r.specificity}</span></td><td>${E(r.target?.name||'—')}</td>${bf.draft?`<td><button type="button" data-remove-rule="${E(r.id)}">✕</button></td>`:''}</tr>`).join(''):`<tr><td colspan="${bf.draft?6:5}" class="vx-bf-empty">Nenhuma regra ainda.</td></tr>`}</tbody></table>
       ${bf.draft?(bf.queues.length?`<form id="vxBfRuleForm" class="vx-bf-rule-form">
         <select name="storeId"><option value="">Qualquer loja</option>${bf.stores.map(s=>`<option value="${E(s.id)}">${E(s.name)}</option>`).join('')}</select>
@@ -414,7 +419,7 @@
      não precisar de round-trip nenhum durante a simulação. Nenhuma
      lógica de roteamento nova -- o resultado final chama o mesmo
      testRoutingCombo de cima. */
-  let simState={answers:{},history:[],humanEscape:false};
+  let simState={answers:{},history:[],humanEscape:false,attempts:0,invalid:false};
   function activeSortedSteps(){return[...bf.steps].filter(s=>s.active).sort((a,b)=>a.step_order-b.step_order)}
   function isStepEligibleSim(step,answers){
     if(Object.prototype.hasOwnProperty.call(answers,step.step_key))return false;
@@ -422,14 +427,16 @@
     if(!condition)return true;
     const dependsOnStep=bf.steps.find(s=>s.id===condition.depends_on_step_id);
     if(!dependsOnStep)return false;
+    if(answers[dependsOnStep.step_key]==null)return false;
     return normVal(answers[dependsOnStep.step_key])===normVal(condition.depends_on_value);
   }
   function nextEligibleStepSim(answers){return activeSortedSteps().find(s=>isStepEligibleSim(s,answers))||null}
-  function resetSimulation(){simState={answers:{},history:[],humanEscape:false};renderSimulator()}
+  function resetSimulation(){simState={answers:{},history:[],humanEscape:false,attempts:0,invalid:false};renderSimulator()}
   function simCurrentStep(){return simState.humanEscape?null:nextEligibleStepSim(simState.answers)}
   function simAnswer(value,label){
     const cur=simCurrentStep();
     if(!cur)return;
+    simState.attempts=0;simState.invalid=false;
     simState.answers[cur.step_key]=value;
     simState.history.push({question:cur.question_text,answerLabel:label});
     renderSimulator();
@@ -440,12 +447,14 @@
     const steps=activeSortedSteps();
     if(!steps.length){box.innerHTML='<p class="vx-bf-empty">Nenhuma pergunta ativa -- a conversa vai direto pro destino padrão.</p>';return}
     const v=bf.draft||bf.published||{};
-    let html=simState.history.map(h=>`<div class="vx-bf-sim-row bot"><div class="vx-bf-sim-bubble">${E(h.question)}</div></div><div class="vx-bf-sim-row client"><div class="vx-bf-sim-bubble">${E(h.answerLabel)}</div></div>`).join('');
+    let html=v.welcome_message?`<div class="vx-bf-sim-row bot"><div class="vx-bf-sim-bubble">${E(v.welcome_message.replace(/\{\{\s*nome_contato\s*\}\}/g,'Cliente').replace(/\{\{\s*nome_atendente\s*\}\}/g,''))}</div></div>`:'';
+    html+=simState.history.map(h=>`<div class="vx-bf-sim-row bot"><div class="vx-bf-sim-bubble">${E(h.question)}</div></div><div class="vx-bf-sim-row client"><div class="vx-bf-sim-bubble">${E(h.answerLabel)}</div></div>`).join('');
     if(simState.humanEscape){
       html+=`<div class="vx-bf-sim-row client"><div class="vx-bf-sim-bubble">🙋 Falar com atendente</div></div><div class="vx-bf-sim-summary">Encaminhado direto pra um atendente -- pediu "falar com atendente" antes de terminar a triagem, sem passar pelas regras de roteamento.</div>`;
     }else{
       const cur=simCurrentStep();
       if(cur){
+        if(simState.invalid)html+=`<div class="vx-bf-sim-summary">${E(v.invalid_message||'Resposta não reconhecida. Escolha uma das opções.')} · Tentativa ${simState.attempts} de ${E(v.retry_limit||3)}</div>`;
         html+=`<div class="vx-bf-sim-row bot"><div class="vx-bf-sim-bubble">${E(cur.question_text)}</div></div>`;
         if(cur.answer_type==='CHOICE'){
           const opts=Array.isArray(cur.options)?cur.options:[];
@@ -453,16 +462,19 @@
         }else{
           html+=`<div class="vx-bf-sim-freetext"><input type="text" id="vxBfSimFreeText" placeholder="Resposta do cliente…" maxlength="200"><button type="button" id="vxBfSimFreeTextSend">Enviar</button></div>`;
         }
+        if(cur.answer_type==='CHOICE')html+=`<button type="button" class="vx-bf-sim-reset" id="vxBfSimInvalid">Testar resposta inválida</button>`;
         if(v.always_human_toggle)html+=`<div class="vx-bf-sim-options"><button type="button" class="vx-bf-sim-opt vx-bf-sim-escape" data-sim-human="1">🙋 Falar com atendente</button></div>`;
       }else{
-        const storeStep=steps.find(s=>s.routing_dimension==='STORE'),warrantyStep=steps.find(s=>s.routing_dimension==='WARRANTY'),brandStep=steps.find(s=>s.routing_dimension==='BRAND');
-        const matched=testRoutingCombo(storeStep?simState.answers[storeStep.step_key]||null:null,warrantyStep?simState.answers[warrantyStep.step_key]||'':'',brandStep?simState.answers[brandStep.step_key]||'':'');
+        const dimensions={STORE:null,WARRANTY:null,BRAND:null};
+        for(const step of bf.steps){if(step.routing_dimension&&simState.answers[step.step_key]!=null)dimensions[step.routing_dimension]=simState.answers[step.step_key]}
+        const matched=testRoutingCombo(dimensions.STORE,dimensions.WARRANTY,dimensions.BRAND);
         const destino=matched?`fila ${matched.target?.name||'removida'}`:(v.default_attendant_id?(bf.profiles.find(p=>p.id===v.default_attendant_id)?.full_name||'atendente padrão'):'nenhum atendente padrão configurado');
-        html+=`<div class="vx-bf-sim-summary"><b>Resumo da triagem</b>${simState.history.map(h=>`<div>${E(h.question)}: <b>${E(h.answerLabel)}</b></div>`).join('')}<div class="vx-bf-sim-summary-dest">Encaminhado para: <b>${E(destino)}</b>${matched?` <small>(regra com especificidade ${matched.specificity})</small>`:''}</div></div>`;
+        html+=`<div class="vx-bf-sim-summary"><b>Resumo da triagem</b>${simState.history.map(h=>`<div>${E(h.question)}: <b>${E(h.answerLabel)}</b></div>`).join('')}<div class="vx-bf-sim-summary-dest">Encaminhado para: <b>${E(destino)}</b>${matched?` <small>(regra com ${matched.specificity} critério(s))</small>`:''}</div></div>`;
       }
     }
     box.innerHTML=html;
     box.scrollTop=box.scrollHeight;
+    box.querySelector('#vxBfSimInvalid')?.addEventListener('click',()=>{simState.attempts++;simState.invalid=true;if(simState.attempts>=Number(v.retry_limit||3)){box.innerHTML+=`<div class="vx-bf-sim-summary">Limite de tentativas atingido. Encaminhamento para atendimento humano.</div>`;box.querySelectorAll('button,input').forEach(el=>el.disabled=true);box.scrollTop=box.scrollHeight;return}renderSimulator()});
     box.querySelectorAll('[data-sim-answer]').forEach(btn=>btn.onclick=()=>simAnswer(btn.dataset.simAnswer,btn.dataset.simLabel));
     box.querySelector('[data-sim-human]')?.addEventListener('click',()=>{simState.humanEscape=true;renderSimulator()});
     const freeInput=box.querySelector('#vxBfSimFreeText');
@@ -474,7 +486,7 @@
     if(!bf.draft&&!bf.published)return'';
     return `<div class="vx-bf-card">
       <h3>Simular o fluxo</h3>
-      <p class="vx-bf-sub">Testa o robô como o cliente veria, com as perguntas e regras configuradas acima -- qualquer edição reflete aqui na próxima simulação.</p>
+      <p class="vx-bf-sub">Escolha as respostas como um cliente e veja a equipe de destino. A saudação usa o nome fictício “Cliente”. Este teste local não envia WhatsApp nem reproduz consulta de cliente ou agenda de horários.</p>
       <div class="vx-bf-sim-thread" id="vxBfSimThread"></div>
       <button type="button" class="vx-bf-sim-reset" id="vxBfSimReset">↺ Reiniciar simulação</button>
     </div>`;
@@ -495,7 +507,7 @@
         const needsRerender=field==='answer_type'||field==='routing_dimension';
         const handler=async()=>{
           const val=el.type==='checkbox'?el.checked:el.value;
-          await updateStep(stepId,{[field]:val});
+          await trackWrite(updateStep(stepId,{[field]:val}));
           if(needsRerender){await loadAll();renderScreen()}
         };
         el.addEventListener(el.tagName==='SELECT'||el.type==='checkbox'?'change':'blur',handler);
@@ -518,7 +530,7 @@
         const i=Number(input.dataset.optIdx);
         const options=[...(Array.isArray(step.options)?step.options:[])];
         options[i]={value:input.value,label:input.value};
-        updateStep(stepId,{options});
+        trackWrite(updateStep(stepId,{options}));
       }));
       const dependsSelect=row.querySelector(`[data-cond-depends="${stepId}"]`);
       const valueInput=row.querySelector(`[data-cond-value="${stepId}"]`);
@@ -527,9 +539,85 @@
         if(!dependsSelect.value)setStepCondition(stepId,null,null);
       });
       valueInput?.addEventListener('blur',()=>{
-        if(dependsSelect.value&&valueInput.value)setStepCondition(stepId,dependsSelect.value,valueInput.value);
+        if(dependsSelect.value&&valueInput.value)trackWrite(setStepCondition(stepId,dependsSelect.value,valueInput.value));
       });
     });
+  }
+
+
+  let guideTab='messages';
+  const pendingWrites=new Set();
+  function trackWrite(promise){pendingWrites.add(promise);promise.finally(()=>pendingWrites.delete(promise)).catch(()=>{});return promise}
+  async function saveSettings(){
+    if(!bf.draft)return true;
+    for(const select of document.querySelectorAll('[data-cond-depends]')){
+      const input=document.querySelector(`[data-cond-value="${select.dataset.condDepends}"]`);
+      if(select.value&&!String(input?.value||'').trim()){toast?.('Informe a resposta que libera a pergunta condicional.','err');return false}
+    }
+    const retry=Number(document.getElementById('vxBfRetryLimit')?.value);
+    if(!Number.isInteger(retry)||retry<1||retry>10){toast?.('Use de 1 a 10 tentativas.','err');return false}
+    return patchDraft({
+      welcome_message:document.getElementById('vxBfWelcome').value,
+      always_human_toggle:document.getElementById('vxBfAlwaysHuman').checked,
+      invalid_message:document.getElementById('vxBfInvalidMsg').value,
+      retry_limit:retry,lookup_toggle:document.getElementById('vxBfLookup').checked,
+      default_attendant_id:document.getElementById('vxBfDefaultAttendant').value||null,
+      after_hours_toggle:document.getElementById('vxBfAfterHoursToggle').checked,
+      business_hours_text:document.getElementById('vxBfBusinessHoursText').value,
+      after_hours_message:document.getElementById('vxBfAfterHoursMsg').value
+    });
+  }
+  function flowIssues(){
+    const issues=[],v=bf.draft||bf.published||{},active=activeSortedSteps();
+    const add=(level,text)=>issues.push({level,text});
+    if(!active.length)add('error','Adicione pelo menos uma pergunta ativa na etapa Perguntas.');
+    for(const step of active){
+      const title=step.question_text||'Pergunta sem texto';
+      if(!String(step.question_text||'').trim())add('error','Preencha o texto de uma pergunta ativa.');
+      if(step.answer_type==='CHOICE'){
+        const options=Array.isArray(step.options)?step.options:[];
+        if(!options.length||options.some(o=>!normVal(o.value)||!normVal(o.label)))add('error',`${title}: preencha todas as opções de resposta.`);
+        const seen=new Set();
+        for(const o of options){const keys=new Set([normVal(o.value),normVal(o.label)].filter(Boolean));if([...keys].some(k=>seen.has(k)))add('error',`${title}: há opções ambíguas ou repetidas.`);keys.forEach(k=>seen.add(k));}
+        if(step.routing_dimension==='STORE'&&options.some(o=>!bf.stores.some(store=>store.id===o.value)))add('error',`${title}: sincronize as opções com as lojas ativas.`);
+      }else if(step.routing_dimension==='STORE')add('error',`${title}: escolha opções de resposta para identificar a loja.`);
+      const condition=bf.conditions.find(c=>c.step_id===step.id);
+      if(condition){
+        const parent=active.find(p=>p.id===condition.depends_on_step_id);
+        if(!parent||!normVal(condition.depends_on_value))add('error',`${title}: a condição depende de uma pergunta inativa, removida ou sem resposta esperada.`);
+        else if(parent.answer_type==='CHOICE'&&!parent.options?.some(o=>normVal(o.value)===normVal(condition.depends_on_value)))add('error',`${title}: a resposta da condição não corresponde ao valor de uma opção anterior.`);
+        const visited=new Set([step.id]);let cursor=parent;
+        while(cursor){if(visited.has(cursor.id)){add('error',`${title}: as condições formam um ciclo; uma pergunta depende da outra.`);break}visited.add(cursor.id);const dep=bf.conditions.find(c=>c.step_id===cursor.id);cursor=dep?active.find(p=>p.id===dep.depends_on_step_id):null}
+      }
+    }
+    for(const rule of bf.rules){
+      const queue=bf.queues.find(q=>q.id===rule.target_queue_id);
+      if(!queue||queue.active===false)add('error','Uma regra aponta para uma equipe removida ou inativa.');
+      else if(!membersOfQueue(queue.id).some(m=>bf.profiles.some(p=>p.id===m.user_id&&['GESTOR','ATENDENTE'].includes(norm(p.role)))))add('error',`${queue.name}: selecione pelo menos um integrante ativo para receber conversas.`);
+      for(const [field,dim] of [['store_id','STORE'],['warranty_value','WARRANTY'],['brand_value','BRAND']]){
+        if(rule[field]&&!active.some(step=>step.routing_dimension===dim))add('error',`Uma regra usa ${ROUTING_DIM_LABEL[dim]}, mas nenhuma pergunta ativa coleta essa informação.`);
+      }
+    }
+    for(let i=0;i<bf.rules.length;i++)for(let j=i+1;j<bf.rules.length;j++){
+      const a=bf.rules[i],b=bf.rules[j],fields=['store_id','warranty_value','brand_value'];
+      if(a.specificity===b.specificity&&a.target_queue_id!==b.target_queue_id&&fields.every(key=>!a[key]||!b[key]||normVal(a[key])===normVal(b[key])))add('error','Duas regras com a mesma quantidade de critérios podem encaminhar a mesma conversa para equipes diferentes. Ajuste os critérios.');
+    }
+    if(!v.default_attendant_id)add('warning','Sem atendente padrão, respostas sem regra ficam sem atribuição.');
+    else if(!bf.profiles.some(p=>p.id===v.default_attendant_id&&['GESTOR','ATENDENTE'].includes(norm(p.role))))add('error','O atendente padrão não está ativo ou não pode atender.');
+    if(v.after_hours_toggle&&!String(v.after_hours_message||'').trim())add('warning','Preencha a mensagem de fora do horário para orientar o cliente.');
+    if(!String(v.welcome_message||'').trim())add('warning','Uma saudação curta ajuda o cliente a entender o atendimento.');
+    return issues.filter((i,index,list)=>list.findIndex(x=>x.text===i.text)===index);
+  }
+  function guideCard(){
+    const v=bf.draft||bf.published;
+    return `<div class="vx-bf-guide"><div><b>${bf.published?(bf.published.paused?'Robô pausado':'Robô publicado'):'Ainda não publicado'}</b><span>${bf.draft?'Você está editando um rascunho. Publique após testar para aplicar aos clientes.':v?'Crie um rascunho para alterar as perguntas e mensagens.':'Comece criando o robô na etapa Testar e publicar.'}</span></div><nav aria-label="Etapas de configuração">${[['messages','Mensagens'],['questions','Perguntas'],['team','Equipe e destinos'],['review','Testar e publicar']].map(([key,label],i)=>`<button type="button" data-guide-tab="${key}" aria-current="${guideTab===key?'step':'false'}"><small>${i+1}</small>${label}</button>`).join('')}</nav><p>Perguntas e opções salvam ao sair do campo. Mensagens e configurações usam o botão Salvar. Trocar de etapa salva essas configurações antes de continuar. Equipes e integrantes são aplicados imediatamente.</p></div>`;
+  }
+  function reviewCard(){
+    const issues=flowIssues();
+    return `<div class="vx-bf-card"><h3>Conferência antes de publicar</h3><p class="vx-bf-sub">Corrija os pontos obrigatórios e teste os caminhos abaixo. Avisos ajudam a melhorar o atendimento.</p><div aria-live="polite">${issues.length?issues.map(i=>`<p class="vx-bf-check ${i.level}"><b>${i.level==='error'?'Corrigir':'Atenção'}:</b> ${E(i.text)}</p>`).join(''):'<p class="vx-bf-check ready">Configuração pronta para o teste. Confira o destino das conversas no simulador.</p>'}</div></div>`;
+  }
+  function flowMapCard(){
+    return `<div class="vx-bf-card"><h3>Caminho do cliente</h3><p class="vx-bf-sub">Resumo das perguntas ativas. Condições mostram quando uma pergunta aparece.</p><ol class="vx-bf-flow-map"><li><b>Boas-vindas</b><span>Apresenta o atendimento</span></li>${activeSortedSteps().map(step=>{const c=bf.conditions.find(c=>c.step_id===step.id),parent=c?bf.steps.find(p=>p.id===c.depends_on_step_id):null;return `<li><b>${E(step.question_text)}</b><span>${E(c?`Se “${parent?.question_text||'pergunta removida'}” = ${c.depends_on_value}`:'Sempre aparece quando chegar sua vez')}${step.routing_dimension?` · Define ${E(ROUTING_DIM_LABEL[step.routing_dimension].toLowerCase())}`:''}</span></li>`}).join('')}<li><b>Encaminhar à equipe</b><span>Aplica a regra que combina com as respostas ou o atendente padrão</span></li></ol></div>`;
   }
 
   function renderScreen(){
@@ -545,30 +633,20 @@
         <button type="button" id="vxBfBack" class="vx-bf-back">← Voltar</button>
         <div class="vx-bf-head-title"><h1>Robô de Atendimento</h1><p>Mensagem automática, triagem por perguntas e roteamento inicial de conversas novas.</p></div>
       </div>
-      ${welcomeCard()}
-      ${stepsCard()}
-      ${simulatorCard()}
-      ${generalSettingsCard()}
-      ${versionsCard()}
-      ${queuesCard()}
-      ${routingRulesCard()}
+      ${guideCard()}
+      <section data-guide-panel="messages" ${guideTab==='messages'?'':'hidden'}>${welcomeCard()}${generalSettingsCard()}</section>
+      <section data-guide-panel="questions" ${guideTab==='questions'?'':'hidden'}>${stepsCard()}${flowMapCard()}</section>
+      <section data-guide-panel="team" ${guideTab==='team'?'':'hidden'}>${queuesCard()}${routingRulesCard()}</section>
+      <section data-guide-panel="review" ${guideTab==='review'?'':'hidden'}>${reviewCard()}${simulatorCard()}${versionsCard()}</section>
     </div>`;
     document.getElementById('vxBfBack').onclick=backToConversas;
     document.getElementById('vxBfQueueForm')?.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.target);createQueue(f.get('name'));});
     document.querySelectorAll('[data-remove-queue]').forEach(btn=>btn.addEventListener('click',()=>removeQueue(btn.dataset.removeQueue)));
     document.querySelectorAll('[data-queue-member]').forEach(chk=>chk.addEventListener('change',()=>toggleQueueMember(chk.dataset.queueMember,chk.dataset.user,chk.checked)));
-    document.getElementById('vxBfWelcomeSave')?.addEventListener('click',()=>patchDraft({welcome_message:document.getElementById('vxBfWelcome').value}).then(()=>toast?.('Mensagem salva.')));
+    document.getElementById('vxBfWelcomeSave')?.addEventListener('click',async()=>{if(await saveSettings())toast?.('Mensagens e configurações salvas.');});
     document.getElementById('vxBfAddStep')?.addEventListener('click',addStep);
-    document.getElementById('vxBfGeneralSave')?.addEventListener('click',()=>patchDraft({
-      always_human_toggle:document.getElementById('vxBfAlwaysHuman').checked,
-      invalid_message:document.getElementById('vxBfInvalidMsg').value,
-      retry_limit:Number(document.getElementById('vxBfRetryLimit').value)||3,
-      lookup_toggle:document.getElementById('vxBfLookup').checked,
-      default_attendant_id:document.getElementById('vxBfDefaultAttendant').value||null,
-      after_hours_toggle:document.getElementById('vxBfAfterHoursToggle').checked,
-      business_hours_text:document.getElementById('vxBfBusinessHoursText').value,
-      after_hours_message:document.getElementById('vxBfAfterHoursMsg').value,
-    }).then(()=>toast?.('Configurações salvas.')));
+    document.getElementById('vxBfGeneralSave')?.addEventListener('click',async()=>{if(await saveSettings())toast?.('Mensagens e configurações salvas.');});
+    document.querySelectorAll('[data-guide-tab]').forEach(btn=>btn.addEventListener('click',async()=>{if(pendingWrites.size){toast?.('Aguarde o salvamento em andamento.','err');return}if(!await saveSettings())return;guideTab=btn.dataset.guideTab;renderScreen();}));
     document.getElementById('vxBfPublish')?.addEventListener('click',handlePublish);
     document.getElementById('vxBfTogglePause')?.addEventListener('click',handleTogglePause);
     document.getElementById('vxBfCreateBlank')?.addEventListener('click',handleCreateBlankDraft);
@@ -590,7 +668,7 @@
       if(matched){
         const queueName=matched.target?.name||'fila removida';
         const members=membersOfQueue(matched.target_queue_id).map(m=>m.profiles?.full_name).filter(Boolean);
-        box.innerHTML=`Regra vencedora: especificidade <b>${matched.specificity}</b>.<br>Fila destino: <b>${E(queueName)}</b>.<br>Integrantes disponíveis: ${members.length?members.map(E).join(', '):'<span class="vx-bf-sim-summary-empty">nenhum integrante nesta fila ainda -- ninguém vai ver a conversa até adicionar alguém.</span>'}`;
+        box.innerHTML=`Regra escolhida: <b>${matched.specificity}</b> critério(s) correspondente(s).<br>Fila destino: <b>${E(queueName)}</b>.<br>Integrantes cadastrados: ${members.length?members.map(E).join(', '):'<span class="vx-bf-sim-summary-empty">nenhum integrante nesta fila ainda -- ninguém vai ver a conversa até adicionar alguém.</span>'}`;
       }else{
         const v=bf.draft||bf.published;
         const defaultName=v?.default_attendant_id?bf.profiles.find(p=>p.id===v.default_attendant_id)?.full_name:null;
@@ -606,8 +684,12 @@
     const app=document.querySelector('#app');
     if(!app)return;
     app.innerHTML='<div class="card">Carregando Robô de Atendimento...</div>';
-    await loadAll();
-    renderScreen();
+    if(!isGestor()){renderScreen();return}
+    try{await loadAll();renderScreen()}catch(err){
+      bf.loaded=false;
+      app.innerHTML=`<div class="vx-bf-wrap"><div class="vx-bf-card"><h3>Não foi possível carregar o robô</h3><p class="vx-bf-sub">A configuração não foi carregada por completo. Tente novamente antes de editar ou publicar.</p><button type="button" id="vxBfRetryLoad">Tentar novamente</button></div></div>`;
+      document.getElementById('vxBfRetryLoad').onclick=renderChatBotConfig;
+    }
   }
 
   window.renderChatBotConfig=renderChatBotConfig;
@@ -619,5 +701,6 @@
   };
 
   window.VoxAssistRuntime=window.VoxAssistRuntime||{};
-  window.VoxAssistRuntime.chatBotConfig={name:'Robô de Atendimento V1',version:'1.0.0',owner:'runtime/chat-bot-config-v1.js'};
+  window.VoxAssistRuntime.chatBotConfig={name:'Robô de Atendimento V1',version:'1.1.0',owner:'runtime/chat-bot-config-v1.js'};
 })();
+

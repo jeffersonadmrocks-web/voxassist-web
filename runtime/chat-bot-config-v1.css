@@ -105,3 +105,29 @@
 .vx-bf-queue-head button{border:none;background:none;color:var(--cc-ink-faint);cursor:pointer;font-size:13px}
 .vx-bf-queue-members{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:8px}
 .vx-bf-queue-members .vx-bf-toggle{font-weight:400;font-size:12px}
+
+
+/* Configuração guiada, com a mesma paleta sóbria da Central. */
+#app .vx-bf-guide{border:1px solid #e0e6ec;background:#fff;border-radius:12px;padding:16px}
+#app .vx-bf-guide>div{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;color:#173b58}
+#app .vx-bf-guide span,#app .vx-bf-guide p{font-size:12px;color:#617585;line-height:1.5}
+#app .vx-bf-guide p{margin:12px 0 0}
+#app .vx-bf-guide nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:14px}
+#app .vx-bf-guide nav button{display:flex;align-items:center;gap:8px;border:1px solid #dde5ec;background:#f7f9fb;border-radius:9px;padding:10px;color:#496174;font:inherit;font-size:12px;cursor:pointer;text-align:left}
+#app .vx-bf-guide nav small{display:grid;place-items:center;width:22px;height:22px;flex:none;border-radius:50%;background:#e6ecf2}
+#app .vx-bf-guide nav [aria-current=step]{background:#173b58;color:white;border-color:#173b58}
+#app .vx-bf-guide nav [aria-current=step] small{background:#31556f}
+#app [data-guide-panel]{display:flex;flex-direction:column;gap:14px;min-width:0}
+#app .vx-bf-check{font-size:12px;line-height:1.5;padding:10px 12px;border-radius:8px;background:#f4f7fa;color:#496174}
+#app .vx-bf-check.error{background:#fff1ef;color:#953b32}
+#app .vx-bf-check.warning{background:#faf5e9;color:#816629}
+#app .vx-bf-flow-map{padding:0;list-style:none;display:grid;gap:8px;counter-reset:flow}
+#app .vx-bf-flow-map li{position:relative;padding:11px 12px 11px 44px;border:1px solid #e0e6ec;border-radius:9px;background:#fafbfc;counter-increment:flow}
+#app .vx-bf-flow-map li:before{content:counter(flow);position:absolute;left:12px;top:11px;color:#617585;font-size:12px}
+#app .vx-bf-flow-map b{display:block;color:#173b58;font-size:13px;overflow-wrap:anywhere}
+#app .vx-bf-flow-map span{display:block;color:#617585;font-size:12px;margin-top:4px;overflow-wrap:anywhere}
+#app .vx-bf-card{overflow-x:auto}
+#app .vx-bf-card .vx-bf-toggle{display:flex;align-items:center;gap:8px}
+#app .vx-bf-card input[type=checkbox]{width:15px;height:15px;flex:none}
+#app .vx-bf-wrap button:focus-visible{outline:2px solid #547e9f;outline-offset:3px}
+@media(max-width:650px){#app .vx-bf-guide nav{grid-template-columns:repeat(2,minmax(0,1fr))}#app .vx-bf-step-head{flex-wrap:wrap}#app .vx-bf-step-question{min-width:0;width:calc(100% - 36px)}#app .vx-bf-step-actions{width:100%;justify-content:flex-end}#app .vx-bf-step-fields,#app .vx-bf-step-condition,#app .vx-bf-version-status{flex-direction:column;align-items:stretch}#app .vx-bf-rule-form input,#app .vx-bf-rule-form select{width:100%;min-width:0}#app .vx-bf-wrap{padding:12px 8px}}
