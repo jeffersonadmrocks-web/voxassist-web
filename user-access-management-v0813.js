@@ -52,7 +52,11 @@
     document.body.appendChild(o);o.querySelector('[data-close]').onclick=()=>o.remove();o.onclick=e=>{if(e.target===o)o.remove()};return o;
   }
   function presetMap(type){const p=presets[type]||[];const out={};perms.forEach(([,k])=>out[k]=p==='*'||p.includes(k));return out}
-  function permissionsHtml(values={}){let last='';return `<div class="vx-permissions">${perms.map(([g,k,l])=>`${g!==last?(last=g,`<div class="vx-perm-group">${g}</div>`):''}<label><input type="checkbox" data-perm="${k}" ${values[k]?'checked':''}> <span>${l}</span></label>`).join('')}</div>`}
+  function permissionsHtml(values={}){
+    const groups=new Map();
+    perms.forEach(([group,key,label])=>{if(!groups.has(group))groups.set(group,[]);groups.get(group).push([key,label]);});
+    return `<div class="vx-permissions">${[...groups].map(([group,items])=>`<section class="vx-permission-section" aria-label="${E(group)}"><div class="vx-perm-group">${E(group)}</div><div class="vx-permission-items">${items.map(([key,label])=>`<label><input type="checkbox" data-perm="${E(key)}" ${values[key]?'checked':''}><span>${E(label)}</span></label>`).join('')}</div></section>`).join('')}</div>`;
+  }
   function setPerms(root,type){const map=presetMap(type);root.querySelectorAll('[data-perm]').forEach(x=>x.checked=!!map[x.dataset.perm]);}
   function readPerms(root){const o={};root.querySelectorAll('[data-perm]').forEach(x=>o[x.dataset.perm]=!!x.checked);return o}
 
