@@ -170,7 +170,7 @@
   // idêntica à aba do menu principal do Financeiro (duas abas "Financeiro"
   // abertas ao mesmo tempo, indistinguíveis), mascarando até visualmente
   // se o botão Voltar realmente tinha trocado de tela.
-  const OP_LABELS={os:'Pesquisa O.S.',clientes:'Clientes',oficina:'Fila Técnica',agenda:'Atividades',estoque:'Estoque / Peças',financeiro:'Recebimentos',testes:'Testes de Funções',usuarios:'Usuários / Segurança'};
+  const OP_LABELS={os:'Pesquisa O.S.',clientes:'Clientes',oficina:'Fila Técnica',agenda:'Agenda e Tarefas',estoque:'Estoque / Peças',financeiro:'Recebimentos',testes:'Testes de Funções',usuarios:'Usuários / Segurança'};
   function lowerTabs(){return `<div class="module-lower-tabs"><button class="active">Oportunidades do Dia</button><button>Casos de Atenção</button><button data-target="agenda-operacional">Minhas Tarefas</button><button data-target="agenda-operacional">Agenda / Compromissos</button><button data-target="estoque-operacional">Pedidos de Peças</button><button>Produtividade / Bonificação</button></div><div class="module-lower-content">Ambiente de homologação — dados fictícios.</div>`}
   // summaryDrills NÃO é resetado aqui -- os argumentos (metrics, com os
   // summary(...) que povoam summaryDrills) já foram todos avaliados
@@ -229,7 +229,7 @@
     placeholderCard('⚙','EM CONSTRUÇÃO','Espaço reservado para nova funcionalidade da Oficina.'),
     summary('AGUARDANDO ANÁLISE',ordersByStatus('AGUARDANDO ANALISE'),'orange')+summary('EM CONSERTO',ordersByStatus('AGUARDANDO CONSERTO'),'blue')+summary('PRONTO',ordersByStatus('PRONTO PARA ENTREGA'),'green')+summary('TAREFAS',state.tasks,'purple','task')
   )}
-  function atividades(){home('Atividades','Tarefas • Agenda • Casos • Compromissos',
+  function atividades(){home('Agenda e Tarefas','Tarefas • Agenda • Casos • Compromissos',
     card('☑','MINHAS TAREFAS','Pendências atribuídas ao usuário com prioridade e prazo.','agenda-operacional','blue')+
     card('◷','AGENDA / COMPROMISSOS','Atendimentos externos, retiradas e compromissos.','agenda-operacional','purple')+
     // Achado do usuário em 2026-09-02: havia um card "NPS ELECTROLUX"

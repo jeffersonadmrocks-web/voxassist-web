@@ -1,0 +1,100 @@
+/* Chat VoxAssist: referência escandinava, leve e confortável para uso diário. */
+:root{
+  --cc-bg:#f4f5f3;--cc-surface:#fff;--cc-surface-2:#f6f7f5;--cc-border:#e1e6e2;
+  --cc-ink:#243b46;--cc-ink-dim:#5d7079;--cc-ink-faint:#70818a;
+  --cc-navy:#173b58;--cc-navy-deep:#244b60;--cc-accent:#315e72;--cc-accent-hover:#254d60;--cc-accent-soft:#edf4f2;
+  --cc-selected-bg:#eaf3ee;--cc-info-bg:#edf3f6;--cc-info-ink:#426f82;
+  --cc-neutral-bg:#f0f2ef;--cc-neutral-ink:#62716c;
+  --cc-bubble-out:#315e72;--cc-tick-read:#c9e8e1;--cc-shadow:0 3px 12px #183b4b06;
+}
+#app .vx-cc-wrap{background:var(--cc-bg);padding:12px;gap:12px;border-radius:14px}
+#app .vx-cc-top{padding:4px 2px;gap:12px}
+#app .vx-cc-title-block h1{font-size:21px;font-weight:650;letter-spacing:-.5px}
+#app .vx-cc-title-block p{color:var(--cc-ink-dim);font-size:12px;margin-top:4px}
+#app .vx-cc-top-actions{background:#eef1ed;border-color:#e1e6e2;padding:4px;gap:3px}
+#app .vx-cc-settings-btn{padding:7px 10px;font-weight:600}
+#app .vx-cc-settings-btn-txt b{font-size:12px;font-weight:600}
+#app .vx-cc-settings-btn-txt small{font-weight:400;color:#6b7c84}
+#app .vx-cc-settings-btn-ic{background:#e4eeeb;color:#4d786d;border-radius:8px;width:29px;height:29px}
+#app #chatHubUsers .vx-cc-settings-btn-ic{background:#eee9f1;color:#7b688b}
+#app #chatHubSettings .vx-cc-settings-btn-ic{background:#eeeae1;color:#897447}
+#app .vx-cc-tabbar{padding:0 12px;gap:8px}
+#app .vx-cc-tab{font-size:12px;font-weight:600;padding:8px 15px}
+#app .vx-cc-tab.active{background:#173b58;border-color:#173b58;color:#fff}
+#app .vx-cc-board{grid-template-columns:minmax(240px,27%) minmax(0,1fr) minmax(230px,24%);gap:12px}
+#app .vx-cc-pane{border-color:#e1e6e2;border-radius:13px;min-width:0;box-shadow:0 2px 9px #173b5805}
+#app .vx-cc-pane-head{background:#fbfcfa;padding:14px 13px 12px}
+#app .vx-cc-pane-head h2,#app .vx-cc-pane-head-row h2{font-size:12px;font-weight:650;letter-spacing:.045em;color:#496b69}
+#app .vx-cc-new-btn{border-radius:8px;background:#173b58;padding:8px 12px;font-weight:600}
+#app .vx-cc-new-btn:hover{background:#244b60}
+#app .vx-cc-new-btn-primary{box-shadow:none}
+#app .vx-cc-search input{background:#f4f6f2;border-color:#e1e6e2;font-size:12px;min-height:36px}
+#app .vx-cc-filter-group-label{font-size:10px;color:#60766f;font-weight:600;letter-spacing:.025em}
+#app .vx-cc-filter-chips{gap:5px}
+#app .vx-cc-chip{background:#fff;font-weight:500;font-size:11px;padding:5px 9px}
+#app .vx-cc-chip.active{background:#e6efe8;color:#365f50;border-color:#bfd5c6;font-weight:600}
+#app .vx-cc-filter-selects select{background:#fff;font-weight:500;font-size:11px;min-width:0}
+#app .vx-cc-conv-list{padding:7px;scrollbar-width:thin;scrollbar-color:#ccd6cd transparent}
+#app .vx-cc-row{padding:11px 9px;gap:10px;margin-bottom:3px;border-radius:9px;border-left-width:3px}
+#app .vx-cc-row:hover{background:#f4f7f3}
+#app .vx-cc-row.active{background:#eaf3ee;border-left-color:#528875}
+#app .vx-cc-avatar{background:#e7eeea;color:#497266;border:1px solid #dce6df;font-size:12px;font-weight:600;width:37px;height:37px}
+#app .vx-cc-avatar.unmatched{background:#efeee9;color:#85795e;border-color:#e6e3d9}
+#app .vx-cc-name{font-size:13px;font-weight:600}
+#app .vx-cc-time{font-size:10px;font-weight:400;color:#697b83}
+#app .vx-cc-prev-text{font-size:12px;line-height:1.4}
+#app .vx-cc-meta{font-size:10px;font-weight:500;letter-spacing:0;text-transform:none}
+#app .vx-cc-unread{background:#477b68;min-width:19px;height:19px;font-weight:600}
+#app .vx-cc-pill,#app .vx-cc-tag-pill{font-weight:600}
+#app .vx-cc-pane-thread{container-type:inline-size}
+#app .vx-cc-thread-head{background:#fff;padding:13px 16px;gap:10px;flex-wrap:wrap}
+#app .vx-cc-thread-avatar{background:#e7eeea;color:#497266;border:1px solid #dce6df;border-radius:12px;font-weight:600}
+#app .vx-cc-thread-title{font-size:15px;font-weight:650;flex-wrap:wrap;line-height:1.4;overflow-wrap:anywhere}
+#app .vx-cc-thread-sub{color:#637780;font-weight:400;font-size:11px;line-height:1.5}
+#app .vx-cc-th-btn{font-size:11px;font-weight:500;padding:7px 9px;background:#fff}
+#app .vx-cc-th-btn-success{background:var(--cc-ok-bg);color:var(--cc-ok-ink)}
+#app .vx-cc-th-btn-danger{background:var(--cc-err-bg);color:var(--cc-err-ink)}
+#app .vx-cc-thread-toolbar{padding:8px 14px;background:#f9faf7;border-bottom-color:#e6eae5}
+#app .vx-cc-tb-btn{background:#fff;font-weight:500;font-size:11px;padding:5px 9px}
+#app .vx-cc-pane-thread .vx-msg-list{background:#f3f5f0;padding:18px 16px;gap:10px;scrollbar-width:thin;scrollbar-color:#ccd6cd transparent}
+#app .vx-cc-pane-thread .vx-msg-bubble{padding:10px 13px;border-radius:12px;border-color:#e1e7df;box-shadow:0 1px 3px #233d4505;font-size:13px;line-height:1.55;max-width:82%}
+#app .vx-cc-pane-thread .vx-msg-in .vx-msg-bubble{border-top-left-radius:4px;background:#fff;color:#243b46}
+#app .vx-cc-pane-thread .vx-msg-out .vx-msg-bubble{border-top-right-radius:4px;background:#315e72;border-color:#315e72;color:#fff}
+#app .vx-cc-pane-thread .vx-msg-bubble small{opacity:.82;font-size:10px}
+#app .vx-cc-pane-thread .vx-msg-bubble-internal{background:#f8f1df;border-color:#ece0c4;color:#806433;font-size:12px;line-height:1.5}
+#app .vx-cc-composer{background:#fff;padding:12px;gap:7px}
+#app .vx-cc-composer.note-mode{background:var(--cc-warn-bg)}
+#app .vx-cc-composer textarea{background:#f6f8f4;border-color:#dde5dd;border-radius:10px;font-size:13px;line-height:1.5;min-height:40px}
+#app .vx-cc-composer.note-mode textarea{background:#fff}
+#app .vx-cc-composer textarea:focus{outline:none;border-color:#8cafa0;box-shadow:0 0 0 2px #ddece4}
+#app .vx-cc-note-btn{border-color:#e0e7df;background:#f9faf7;color:#5f776d;border-radius:9px}
+#app .vx-cc-note-btn.active{background:var(--cc-warn-bg);color:var(--cc-warn-ink)}
+#app .vx-cc-send-btn{background:#173b58;height:40px;padding:0 15px;font-size:12px;font-weight:600;border-radius:10px}
+#app .vx-cc-send-btn:hover{background:#244b60}
+#app .vx-cc-wrap button:focus-visible,#app .vx-cc-wrap input:focus-visible{outline:2px solid #659383;outline-offset:2px}
+#app .vx-cc-wrap button:disabled{opacity:.5;cursor:not-allowed}
+#app .vx-cc-ctx-body{background:#fbfcfa;padding:12px;gap:10px}
+#app .vx-cc-ctx-card{background:#fff;border-color:#e1e6e2;padding:12px;border-radius:10px}
+#app .vx-cc-ctx-card h3{font-size:10px;font-weight:600;letter-spacing:.04em;color:#60766f}
+#app .vx-cc-ctx-client-name{font-size:14px;font-weight:600}
+#app .vx-cc-ctx-client-line,#app .vx-cc-ctx-kv>span:last-child{font-weight:500}
+#app .vx-cc-ctx-action-btn{background:#f6f8f4;border-color:#e0e7df;font-size:11px;font-weight:500}
+#app .vx-cc-statusbar{background:#fafbf8;border-color:#e1e6e2;border-radius:10px;font-size:11px;padding:8px 14px;gap:14px}
+#app .vx-cc-status-item b{font-weight:600}
+#app .vx-cc-thread-empty{padding:24px;line-height:1.6;color:#687d77;max-width:280px}
+/* Conexões e ferramentas compartilham o acabamento da Central. */
+#app .vx-chatbeta{max-width:760px;gap:14px}
+#app .vx-chatbeta-wide{max-width:1080px}
+#app .vx-chatbeta-head,#app .vx-bf-head,#app .vx-mon-head{background:#f1f5ef;border:1px solid #e0e7dd;border-radius:12px;padding:13px 16px;gap:12px}
+#app .vx-chatbeta-head h2,#app .vx-bf-head-title h1,#app .vx-mon-head-title h1{font-size:21px;font-weight:650;letter-spacing:-.4px;color:#173b58}
+#app .vx-chatbeta-card,#app .vx-conn-card,#app .vx-bf-card{border-color:#e1e6e2;box-shadow:0 2px 8px #173b5805;border-radius:12px}
+#app .vx-conn-summary-row,#app .vx-conn-help{background:#f6f8f3;border-color:#e0e7dd}
+#app .vx-conn-card-head{padding-bottom:8px;border-bottom:1px solid #edf0eb}
+#app .vx-conn-card-actions button{border-radius:8px;font-size:11px;min-height:34px}
+#app .vx-mon-kpi{background:#f7f9f4;border-color:#dfe7dd;border-top-color:#7f9c8b;box-shadow:none}
+#app .vx-mon-kpi:nth-child(2){background:#f8f4ec;border-top-color:#b29c74}
+#app .vx-mon-kpi:nth-child(3){background:#f4f0f6;border-top-color:#a393af}
+#app .vx-mon-kpi:nth-child(4){background:#eef4f6;border-top-color:#87a4b0}
+@container(max-width:540px){#app .vx-cc-thread-actions{width:100%;flex-wrap:wrap}#app .vx-cc-composer{flex-wrap:wrap}#app .vx-cc-composer-input{flex-basis:100%}}
+@media(max-width:1100px){#app .vx-cc-board{grid-template-columns:250px minmax(0,1fr)}}
+@media(max-width:760px){#app .vx-cc-board{grid-template-columns:minmax(0,1fr)}#app .vx-cc-wrap{padding:8px;min-height:0}#app .vx-cc-top-actions{margin-left:0;flex-wrap:wrap}#app .vx-cc-top{align-items:flex-start}#app .vx-cc-pane-thread .vx-msg-list{padding:13px 10px}#app .vx-cc-thread-head{padding:12px}#app .vx-chatbeta{padding:10px}}
