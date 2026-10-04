@@ -439,7 +439,7 @@
           <button class="vx-action attention" onclick="vxOpenCasoAtencaoModal()">+ Caso de atenção</button>
           <button class="vx-action parts" onclick="vxOpenSolicitarPecaModal()">SOLICITAR PEÇA</button>${partRequestBadge()}
           <button class="vx-action" onclick="showVxOsSection('orcamento')">GERAR PARECER ▼</button>
-          <button class="vx-action" onclick="printOs()" title="Imprimir ou salvar o documento como PDF">IMPRIMIR</button>
+          <button class="vx-action" onclick="printOs()" title="Imprimir ou salvar o documento como PDF">Imprimir O.S.</button>
         </div>
       </div>
       <div class="vx-os-head-info">
