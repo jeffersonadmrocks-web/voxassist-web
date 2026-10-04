@@ -26,7 +26,7 @@
   // exclusividade do Whirlpool) -- são só mais dois tipos de PARECER
   // TÉCNICO que qualquer OS normal pode emitir, usando 100% desta mesma
   // infraestrutura (aba Documentos, os_document_emissions, vxPrintShell).
-  const DOC_TYPE_LABELS={ENTRADA:'Entrada',ORCAMENTO:'Orçamento',ENTREGA:'Entrega',HISENSE:'Parecer Técnico Hisense/Gorenje',ASSURANT:'Parecer Técnico Assurant'};
+  const DOC_TYPE_LABELS={ENTRADA:'Entrada',ORCAMENTO:'Orçamento',ENTREGA:'Entrega',PARECER_VOX:'Parecer Técnico VOX',HISENSE:'Parecer Técnico Hisense/Gorenje',ASSURANT:'Parecer Técnico Assurant'};
   const CHANNEL_LABELS={IMPRESSO:'Impresso',PDF:'PDF',WHATSAPP:'WhatsApp'};
   const HISENSE_FOTO_LABELS=['FOTO 1 – Instalação do Produto','FOTO 2 – Instalação do Produto','FOTO 3 – Local onde o Produto está Instalado.','FOTO 4 – Instalação Elétrica','FOTO 5 – Nº de Série','FOTO 6 – Peça Avariada','FOTO 7','FOTO 8'];
   const fileToDataUrl=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f)});
@@ -75,7 +75,8 @@
   function reopenEmission(r){
     const d=r.data_snapshot||{};
     let body;
-    if(r.document_type==='HISENSE')body=buildHisenseBody(d);
+    if(r.document_type==='PARECER_VOX')body=buildVoxReportBody(d);
+    else if(r.document_type==='HISENSE')body=buildHisenseBody(d);
     else if(r.document_type==='ASSURANT')body=buildAssurantBody(d);
     else{
       const rowsHtml=Object.entries(d).map(([k,v])=>`<div class="row"><b>${E(k.toUpperCase())}</b><span>${E(typeof v==='object'?JSON.stringify(v):v)}</span></div>`).join('');
@@ -159,7 +160,7 @@
       <div style="border:1px solid #000;min-height:70px;padding:8px;font-size:11px;white-space:pre-wrap">${E(d.anotacoes)}</div>
       <div style="margin-top:24px;font-style:italic">
         <div style="font-size:11px">${E(d.cidade)}, ${E(d.dataParecer)||'___/___/______'}</div>
-        <div style="margin-top:20px;text-align:right;padding-right:40px"><div style="font-weight:700;text-decoration:underline;font-size:13px">${E(d.responsavel)}</div><div style="font-size:11px">Técnico Responsável</div></div>
+        ${signatureHtml(d.responsavel)}
       </div>
     </div>`;
   }
@@ -234,36 +235,18 @@
       <div class="vx-doc-photo-grid"><label class="vx-doc-photo-slot"><span>RESIDÊNCIA</span><input type="file" accept="image/*" capture="environment" data-residencia="1"></label></div>
     </div>`;
   }
-  const EXTRA_FIELDS_HTML={HISENSE:hisenseExtraFieldsHtml,ASSURANT:assurantExtraFieldsHtml};
+  function voxExtraFieldsHtml(){return `<div class="vx-doc-extra"><label>PARECER TÉCNICO / DIAGNÓSTICO</label><textarea name="parecerTecnico" rows="4"></textarea><label>CONCLUSÃO E RECOMENDAÇÕES</label><textarea name="conclusao" rows="3"></textarea><label>OBSERVAÇÕES</label><textarea name="observacoes" rows="2"></textarea><label>VALIDADE DO ORÇAMENTO</label><input name="validade" value="15 dias"><label>GARANTIA</label><textarea name="garantia" rows="2" placeholder="Informe as condições aplicáveis"></textarea></div>`}
+  function signatureHtml(name){return name?`<div style="margin-top:24px;text-align:center"><div style="font-family:'Segoe Script',cursive;font-size:23px;color:#173b58">${E(name)}</div><div style="border-top:1px solid #a8b5c2;padding-top:5px">${E(name)} · Técnico responsável</div></div>`:''}
+  function buildVoxReportBody(d){
+    const row=(label,value)=>value?`<div class="row"><b>${E(label)}</b><span style="white-space:pre-wrap">${E(value)}</span></div>`:'';
+    const box=(title,value)=>value?`<div class="box"><h3>${E(title)}</h3><p style="white-space:pre-wrap">${E(value)}</p></div>`:'';
+    return `<div class="doc vox"><div class="head"><div><img alt="Logo" src="${E(d.logo_url||'icons/icon-192.png')}" style="max-height:48px;max-width:140px"><b>${E(d.assistenciaTec)}</b><div>${E(d.cnpj)}</div></div><div><h2>PARECER TÉCNICO</h2><b>OS ${E(d.os_numero)}</b><div>${E(d.dataParecer)}</div></div></div><div class="box"><h3>CLIENTE E EQUIPAMENTO</h3>${row('Cliente',d.cliente)}${row('CPF/CNPJ',d.cliente_documento)}${row('Telefone',d.telefone)}${row('Endereço',d.endereco)}${row('Produto',d.equipamento)}${row('Número de série',d.numeroSerie)}${row('Entrada',d.dataEntrada)}</div>${box('DEFEITO RELATADO',d.defeitoRelatado)}${box('PARECER TÉCNICO',d.parecerTecnico)}${box('CONCLUSÃO E RECOMENDAÇÕES',d.conclusao)}<div class="box"><h3>ORÇAMENTO</h3>${(d.pecas||[]).length?`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th>Código</th><th>Peça</th><th>Qtd.</th><th>Unitário</th><th>Total</th></tr></thead><tbody>${d.pecas.map(p=>`<tr><td>${E(p.part_code||p.code||'')}</td><td>${E(p.description||p.part_description||'Peça')}</td><td>${E(p.quantity)}</td><td>${money(p.unit_value)}</td><td>${money(Number(p.quantity||0)*Number(p.unit_value||0))}</td></tr>`).join('')}</tbody></table>`:''}${row('Mão de obra',money(d.maoDeObra))}${Number(d.adicionais)?row('Demais serviços / despesas',money(d.adicionais)):''}${Number(d.desconto)?row('Desconto',money(d.desconto)):''}${row('TOTAL',money(d.totalValor))}</div>${box('OBSERVAÇÕES',d.observacoes)}${row('Validade',d.validade)}${box('GARANTIA',d.garantia)}${row('Local e data',[d.cidade,d.dataParecer].filter(Boolean).join(' · '))}${signatureHtml(d.responsavel)}</div>`;
+  }
+  const EXTRA_FIELDS_HTML={PARECER_VOX:voxExtraFieldsHtml,HISENSE:hisenseExtraFieldsHtml,ASSURANT:assurantExtraFieldsHtml};
 
-  async function openEmitModal(id){
-    ensureExtraStyle();
-    document.querySelector('#vxDocEmitModal')?.remove();
-    const ov=document.createElement('div');ov.id='vxDocEmitModal';ov.className='vx-admin-overlay';
-    ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>Emitir documento</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body"><form class="vx-admin-form">
-      <label>TIPO *</label><select name="document_type" id="vxDocTypeSelect">${Object.entries(DOC_TYPE_LABELS).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
-      <div id="vxDocExtraWrap"></div>
-      <p class="vx-sg-help">Registra uma emissão nova e abre pra impressão/PDF.</p>
-      <div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button class="primary">EMITIR</button></div>
-    </form></div></div>`;
-    document.body.appendChild(ov);
-    ov.querySelectorAll('[data-close],[data-cancel]').forEach(b=>b.onclick=()=>ov.remove());
-    const typeSelect=ov.querySelector('#vxDocTypeSelect'),extraWrap=ov.querySelector('#vxDocExtraWrap'),help=ov.querySelector('.vx-sg-help');
-    function refreshExtra(){
-      const type=typeSelect.value;
-      const builder=EXTRA_FIELDS_HTML[type];
-      extraWrap.innerHTML=builder?builder():'';
-      help.textContent=builder
-        ? 'Parecer técnico gerado a partir dos dados desta OS -- não usa Termos e Condições (é um documento interno pro fabricante/seguradora, não um contrato com o cliente).'
-        : 'Registra uma emissão nova (com os dados atuais da OS e os Termos vigentes) e abre pra impressão/PDF.';
-    }
-    typeSelect.onchange=refreshExtra;refreshExtra();
-    ov.querySelector('form').onsubmit=async e=>{
-      e.preventDefault();
-      const form=e.target,btn=e.submitter,type=typeSelect.value;btn.disabled=true;
-      try{
-        const extra={};
-        form.querySelectorAll('.vx-doc-extra [name]').forEach(el=>{extra[el.name]=el.value});
+  async function collectReportExtra(form,type){
+    const extra={};
+    form.querySelectorAll('.vx-doc-extra [name]').forEach(el=>{extra[el.name]=el.value});
         if(type==='HISENSE'){
           const fotos=new Array(HISENSE_FOTO_LABELS.length).fill(null).map((_,i)=>({legenda:HISENSE_FOTO_LABELS[i],dataUrl:''}));
           for(const inp of form.querySelectorAll('[data-foto]')){const i=Number(inp.dataset.foto);if(inp.files?.[0])fotos[i].dataUrl=await fileToDataUrl(inp.files[0])}
@@ -276,7 +259,58 @@
           const residInp=form.querySelector('[data-residencia]');
           extra.fotos=fotos;extra.cotacaoImgs=cotacaoImgs;extra.residenciaImg=residInp?.files?.[0]?await fileToDataUrl(residInp.files[0]):'';
         }
-        const snapshot=await buildDataSnapshot(id,type,extra);
+    return extra;
+  }
+
+  async function openEmitModal(id,reportOnly=false){
+    ensureExtraStyle();
+    let seed,technicians=[];
+    try{seed=await buildDataSnapshot(id,'PARECER_VOX',{});const members=await api(`user_companies?company_id=eq.${seed.company_id}&active=eq.true&select=user_id`).catch(()=>[]);const ids=members.map(m=>m.user_id);technicians=ids.length?await api(`profiles?id=in.(${ids.join(',')})&role=eq.TECNICO&active=eq.true&select=id,full_name&order=full_name`).catch(()=>[]):[];}catch(err){toast?.('Não foi possível carregar os dados da OS: '+err.message,'err');return;}
+    document.querySelector('#vxDocEmitModal')?.remove();
+    const ov=document.createElement('div');ov.id='vxDocEmitModal';ov.className='vx-admin-overlay';
+    ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>${reportOnly?'Gerar Parecer Técnico':'Emitir documento'}</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body"><form class="vx-admin-form">
+      <label>TIPO *</label><select name="document_type" id="vxDocTypeSelect">${Object.entries(DOC_TYPE_LABELS).filter(([v])=>!reportOnly||['PARECER_VOX','HISENSE','ASSURANT'].includes(v)).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+      <div id="vxDocCommon" class="vx-doc-extra"><p class="vx-sg-help">OS ${E(seed.os_numero)} · ${E(seed.cliente)} · ${E(seed.equipamento)}<br>Dados preenchidos a partir da OS. Revise antes de emitir.</p><label>DEFEITO RELATADO</label><textarea name="defeitoRelatado" rows="2">${E(seed.defeitoRelatado)}</textarea><label>DIAGNÓSTICO (opcional)</label><textarea name="diagnosticoTec" rows="2">${E(seed.diagnosticoTec)}</textarea><label>TÉCNICO RESPONSÁVEL</label><select name="responsavel"><option value="${E(seed.responsavel)}">${E(seed.responsavel||'Selecione o técnico')}</option>${technicians.filter(t=>t.full_name!==seed.responsavel).map(t=>`<option value="${E(t.full_name)}">${E(t.full_name)}</option>`).join('')}</select><label>LOCAL</label><input name="cidade" value="${E(seed.cidade)}"><label>DATA</label><input name="dataParecer" value="${E(seed.dataParecer)}"></div><div id="vxDocExtraWrap"></div><div id="vxDocPreview"></div>
+      <p class="vx-sg-help">Registra uma emissão nova e abre pra impressão/PDF.</p>
+      <div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button type="button" data-preview>VISUALIZAR</button><button class="primary">EMITIR E IMPRIMIR</button></div>
+    </form></div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelectorAll('[data-close],[data-cancel]').forEach(b=>b.onclick=()=>ov.remove());
+    const typeSelect=ov.querySelector('#vxDocTypeSelect'),extraWrap=ov.querySelector('#vxDocExtraWrap'),help=ov.querySelector('.vx-sg-help');
+    const draftNodes={};let previousType;
+    function refreshExtra(){
+      if(previousType){const fragment=document.createDocumentFragment();while(extraWrap.firstChild)fragment.appendChild(extraWrap.firstChild);draftNodes[previousType]=fragment;}
+      const type=typeSelect.value;
+      const builder=EXTRA_FIELDS_HTML[type];
+      const restored=!!draftNodes[type];
+      if(restored)extraWrap.appendChild(draftNodes[type]);else extraWrap.innerHTML=builder?builder():'';
+      ov.querySelector('#vxDocCommon').hidden=!builder;
+      const values={parecerTecnico:seed.diagnosticoTec,pecasNecessarias:(seed.pecas||[]).map(p=>[p.part_code,p.description||p.part_description].filter(Boolean).join(' · ')).join('\n'),marcaProduto:/gorenje/i.test(seed.produtoMarca)?'gorenje':'hisense'};
+      if(!restored)extraWrap.querySelectorAll('[name]').forEach(el=>{if(values[el.name]!=null)el.value=values[el.name]});previousType=type;
+      ov.querySelector('[data-preview]').hidden=!builder;
+      ov.querySelector('#vxDocPreview').innerHTML='';
+      help.textContent=builder
+        ? 'Revise os dados, complete o parecer e visualize antes de emitir. A assinatura visual acompanha o técnico selecionado. Alterações aqui pertencem ao documento; os dados da OS são preservados.'
+        : 'Registra uma emissão nova (com os dados atuais da OS e os Termos vigentes) e abre pra impressão/PDF.';
+    }
+    typeSelect.onchange=refreshExtra;refreshExtra();
+    ov.querySelector('[data-preview]').onclick=async()=>{
+      const type=typeSelect.value;
+      if(!EXTRA_FIELDS_HTML[type]){toast?.('A prévia está disponível para pareceres técnicos.','err');return;}
+      const extra=await collectReportExtra(ov.querySelector('form'),type);
+      const d={...seed,...extra,os_numero:type==='PARECER_VOX'?seed.os_numero:seed.manufacturer_os_number};
+      const body=type==='PARECER_VOX'?buildVoxReportBody(d):type==='HISENSE'?buildHisenseBody(d):buildAssurantBody(d);
+      const wrap=ov.querySelector('#vxDocPreview');wrap.innerHTML='<iframe title="Prévia do parecer" sandbox style="width:100%;height:480px;border:1px solid #dce5ed;border-radius:8px"></iframe>';
+      wrap.firstChild.srcdoc='<!doctype html><meta charset="utf-8"><style>body{margin:12px;font:12px Arial;color:#173451}.doc{max-width:190mm;margin:auto}.head{display:flex;justify-content:space-between;gap:16px;border-bottom:2px solid #173b58;padding-bottom:12px}.head img{display:block}.box{border:1px solid #dde4ea;padding:10px;margin:10px 0}h3{font-size:12px;margin:0 0 8px}.row{display:flex;gap:12px;padding:4px 0}.row b{min-width:110px}td,th{padding:5px;text-align:left;border-bottom:1px solid #eee}*{box-sizing:border-box}</style>'+body;
+    };
+
+    ov.querySelector('form').onsubmit=async e=>{
+      e.preventDefault();
+      const form=e.target,btn=e.submitter,type=typeSelect.value;btn.disabled=true;
+      try{
+        const extra=await collectReportExtra(form,type);
+        const snapshot=EXTRA_FIELDS_HTML[type]?{...seed,...extra,os_numero:type==='PARECER_VOX'?seed.os_numero:seed.manufacturer_os_number}:await buildDataSnapshot(id,type,extra);
+        if(EXTRA_FIELDS_HTML[type]&&(!snapshot.responsavel||!(type==='HISENSE'?snapshot.diagnosticoTec:snapshot.parecerTecnico))&&!confirm('Este parecer está sem responsável ou diagnóstico. Deseja emitir mesmo assim?')){btn.disabled=false;return;}
         const r=await api('rpc/create_os_document_emission',{method:'POST',body:JSON.stringify({p_service_order_id:id,p_document_type:type,p_data_snapshot:snapshot,p_channel:'IMPRESSO'})});
         ov.remove();
         toast?.('Documento emitido.');
@@ -289,21 +323,29 @@
 
   async function buildDataSnapshot(id,type,extra){
     const [osRows,parts,finRows,brand]=await Promise.all([
-      api(`service_orders?id=eq.${id}&select=*,clients(*),equipments(*),profiles!service_orders_technician_id_fkey(full_name)`).catch(()=>[]),
-      api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`).catch(()=>[]),
-      api(`os_financial?service_order_id=eq.${id}&select=*&limit=1`).catch(()=>[]),
+      api(`service_orders?id=eq.${id}&select=*,clients(*),equipments(*),profiles!service_orders_technician_id_fkey(full_name)`),
+      api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`),
+      api(`os_financial?service_order_id=eq.${id}&select=*&limit=1`),
       typeof window.getActiveCompanyBranding==='function'?window.getActiveCompanyBranding().catch(()=>({})):Promise.resolve({}),
     ]);
     const o=osRows?.[0]||{},c=o.clients||{},e=o.equipments||{},fin=finRows?.[0]||{},b=brand||{};
+    if(!o.id)throw new Error('OS não encontrada ou sem acesso.');
     const partsTotal=(parts||[]).reduce((s,p)=>s+Number(p.quantity||0)*Number(p.unit_value||0),0);
     const total=partsTotal+Number(fin.labor_value||0)+Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0)-Number(fin.discount_value||0);
     // Achado Fase C: campos comuns (cliente/equipamento/defeito/técnico) vêm
     // SEMPRE da mesma fonte canônica já usada pelo Whirlpool -- nunca
     // reperguntados ao usuário. Só os campos exclusivos de cada parecer
     // (recebidos em `extra`, preenchidos no modal) entram além disso.
-    if(type==='HISENSE'||type==='ASSURANT'){
+    if(type==='PARECER_VOX'||type==='HISENSE'||type==='ASSURANT'){
       const base={
-        os_numero:o.manufacturer_os_number||o.os_number||'',
+        os_numero:type==='PARECER_VOX'?o.os_number||'':o.manufacturer_os_number||o.os_number||'',
+        manufacturer_os_number:o.manufacturer_os_number||o.os_number||'',company_id:o.company_id,
+        logo_url:b.logo_url||new URL('icons/icon-192.png',location.href).href,
+        cliente_documento:c.document||'',telefone:c.phone_primary||c.phone||c.mobile||'',
+        endereco:[c.address,c.address_number,c.neighborhood,c.city,c.state].filter(Boolean).join(', '),
+        equipamento:[e.product_type,e.brand,e.model].filter(Boolean).join(' · '),
+        dataEntrada:(o.opened_at||o.created_at)?new Date(o.opened_at||o.created_at).toLocaleDateString('pt-BR'):'',
+        pecas:parts||[],maoDeObra:Number(fin.labor_value||0),adicionais:Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0),desconto:Number(fin.discount_value||0),totalValor:total,
         assistenciaTec:b.trade_name||b.legal_name||'VOX ELETRÔNICA',
         cnpj:b.document||'',
         cliente:c.name||'',
@@ -326,6 +368,7 @@
     };
   }
 
+  window.vxOpenTechnicalReport=()=>state?.activeOs?.id?openEmitModal(state.activeOs.id,true):toast?.('Abra uma OS para gerar o parecer.','err');
   const baseRender=window.renderOsDetail;
   if(typeof baseRender==='function')window.renderOsDetail=async function(){const r=await baseRender.apply(this,arguments);setTimeout(injectDocumentsTab,120);return r};
   setTimeout(injectDocumentsTab,550);
