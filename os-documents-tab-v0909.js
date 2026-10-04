@@ -166,42 +166,46 @@
   }
 
   function buildAssurantBody(d){
-    const cell='border:1px solid #333;padding:6px 8px;font-size:11px;vertical-align:top;height:22px';
-    const label=`${cell};font-weight:700;background:#dbeafe;white-space:nowrap;width:22%`;
-    const bar='background:#1e3a8a;color:#fff;font-weight:700;font-size:12px;padding:6px 10px;text-align:center;letter-spacing:1px';
-    const colgroup='<colgroup><col style="width:22%"><col style="width:28%"><col style="width:22%"><col style="width:28%"></colgroup>';
-    const row=(l,v)=>`<tr><td style="${label}">${l}</td><td style="${cell}">${E(v)||'&nbsp;'}</td></tr>`;
-    return `<div id="parecer-print" style="background:#fff;color:#000;font-family:'Calibri',Arial,sans-serif;padding:15mm;width:210mm;min-height:297mm;margin:0 auto">
-      <h1 style="font-size:22px;font-weight:800;margin:0 0 8px;letter-spacing:2px;text-align:center">ANÁLISE TÉCNICA</h1>
-      <div style="${bar}">ASSISTÊNCIA TÉCNICA</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed">${colgroup}<tr>${row('Assistência:',d.assistenciaTec)}${row('CNPJ:',d.cnpj)}</tr></table>
-      <div style="${bar}">CONSUMIDOR</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed">${colgroup}<tr>${row('Serial:',d.numeroSerie)}${row('Sinistro:',d.sinistro)}</tr></table>
-      <div style="${bar}">PRODUTO</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed">${colgroup}<tr>${row('Marca:',d.produtoMarca)}${row('Modelo:',d.modeloProduto)}</tr></table>
-      <div style="${bar}">PARECER TÉCNICO APÓS ANÁLISE DO PRODUTO:</div>
-      <div style="border:1px solid #333;border-top:none;padding:8px;font-size:11px;min-height:50px;white-space:pre-wrap">${E(d.parecerTecnico)}</div>
-      <div style="${bar};margin-top:6px">PEÇA QUE NECESSITA SER TROCADA E MOTIVO?</div>
-      <div style="border:1px solid #333;border-top:none;padding:8px;font-size:11px;min-height:40px;white-space:pre-wrap">${E(d.pecaTrocar)}</div>
-      <table style="width:100%;border-collapse:collapse;margin-top:6px;table-layout:fixed">
-        <colgroup><col style="width:44%"><col style="width:56%"></colgroup>
-        <tr><td style="${label};width:44%">MOTIVO:</td><td style="${cell}">${E(d.motivo)||'&nbsp;'}</td></tr>
-        <tr><td style="${label};width:44%">QUAL FOI A FORMA DE ATENDIMENTO?</td><td style="${cell}">${E(d.formaAtendimento)||'&nbsp;'}</td></tr>
-        <tr><td style="${label};width:44%">PRODUTO FOI COLETADO?</td><td style="${cell}">${E(d.produtoColetado)||'&nbsp;'}</td></tr>
-      </table>
-      ${photoGridHtml(d.fotos,2,150)}
-      ${photoGridHtml([{legenda:'COTAÇÃO DO ORÇAMENTO DA PEÇA ATÉ 30 DIAS',dataUrl:(d.cotacaoImgs||[])[0]},{legenda:'COTAÇÃO DO ORÇAMENTO DA PEÇA ATÉ 30 DIAS',dataUrl:(d.cotacaoImgs||[])[1]}],2,150)}
-      ${photoGridHtml([{legenda:'FOTO RESIDÊNCIA DO SEGURADO',dataUrl:d.residenciaImg}],1,150)}
-      <div style="margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
-        <div style="text-align:center">
-          <div style="position:relative;border-top:1px solid #000;padding-top:4px;font-size:11px;font-weight:700">
-            ${d.responsavel?`<span style="position:absolute;left:50%;bottom:100%;transform:translate(-50%,20%) rotate(-4deg);font-family:'Jennifer Lynne Bold','Jennifer Lynne','Kristabelle','Great Vibes','Segoe Script',cursive;font-size:20px;font-weight:400;color:#1d4ed8;white-space:nowrap;pointer-events:none">${E(d.responsavel)}</span>`:''}
-            ${E(d.responsavel)}
-          </div>
-          <div style="font-size:10px">Assinatura Técnico Responsável</div>
-        </div>
-        <div style="text-align:center"><div style="border-top:1px solid #000;padding-top:4px;font-size:11px">${E(d.cidade)} - ${E(d.dataParecer)||'___/___/______'}</div><div style="font-size:10px">Local e Data</div></div>
-      </div>
+    const cells=(label,value)=>`<th>${E(label)}</th><td>${E(value)||'&nbsp;'}</td>`;
+    const pair=(a,av,b,bv)=>`<table class="assurant-data"><colgroup><col style="width:18%"><col style="width:32%"><col style="width:18%"><col style="width:32%"></colgroup><tbody><tr>${cells(a,av)}${cells(b,bv)}</tr></tbody></table>`;
+    const heading=text=>`<h2>${E(text)}</h2>`;
+    const textBox=(title,text)=>`<section class="assurant-section">${heading(title)}<div class="assurant-text">${E(text)||'&nbsp;'}</div></section>`;
+    const photos=(items,title)=>{
+      const filled=(items||[]).filter(f=>f?.dataUrl);
+      if(!filled.length)return '';
+      return `<section class="assurant-section assurant-photos">${heading(title)}<div class="assurant-photo-grid"${filled.length===1?' style="grid-template-columns:1fr"':''}>${filled.map(f=>`<figure><img src="${E(f.dataUrl)}" alt="${E(f.legenda||title)}"><figcaption>${E(f.legenda||title)}</figcaption></figure>`).join('')}</div></section>`;
+    };
+    return `<style>
+      .assurant-report{width:100%;max-width:194mm;margin:0 auto;color:#172b40;font-family:Arial,sans-serif;font-size:10px;box-sizing:border-box;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+      .assurant-report *{box-sizing:border-box}
+      .assurant-report h1{font-size:19px;letter-spacing:1.2px;text-align:center;margin:0 0 9px;color:#172b40}
+      .assurant-report h2{font-size:10px;letter-spacing:.35px;color:#172b40;background:#eaf0f5;border:1px solid #8899aa;padding:5px 8px;margin:0;font-weight:700;text-align:left}
+      .assurant-report .assurant-section{margin-bottom:7px;break-inside:avoid;page-break-inside:avoid}
+      .assurant-report .assurant-data{width:100%;table-layout:fixed;border-collapse:collapse;margin:0}
+      .assurant-report td,.assurant-report th{border:1px solid #8899aa;padding:5px 7px;font-size:10px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+      .assurant-report th{background:#f5f7fa;font-weight:700;white-space:normal}
+      .assurant-report .assurant-text{border:1px solid #8899aa;border-top:0;padding:7px 8px;min-height:26px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4}
+      .assurant-report .assurant-photo-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:6px}
+      .assurant-report figure{margin:0;border:1px solid #8899aa;padding:4px;break-inside:avoid}
+      .assurant-report figure img{display:block;width:100%;height:26mm;object-fit:contain}
+      .assurant-report figcaption{font-size:8px;text-align:center;line-height:1.3;margin-top:3px;color:#42556a}
+      .assurant-report .assurant-signatures{display:grid;grid-template-columns:1fr 1fr;align-items:end;gap:20px;margin-top:14px;break-inside:avoid;page-break-inside:avoid;text-align:center}
+      .assurant-report .assurant-signature-mark{height:27px;display:flex;align-items:center;justify-content:center;font-family:'Segoe Script',cursive;font-style:italic;font-size:16px;color:#245184;overflow:hidden}
+      .assurant-report .assurant-signature-mark span{max-width:100%;overflow-wrap:anywhere;line-height:1.1}
+      .assurant-report .assurant-signature-name{border-top:1px solid #74889a;padding-top:5px;min-height:19px;font-size:10px;font-weight:700;overflow-wrap:anywhere}
+      .assurant-report .assurant-signature-label{font-size:9px;margin-top:3px;color:#42556a}
+    </style><div id="parecer-print" class="assurant-report">
+      <h1>ANÁLISE TÉCNICA</h1>
+      <section class="assurant-section">${heading('ASSISTÊNCIA TÉCNICA')}${pair('Assistência',d.assistenciaTec,'CNPJ',d.cnpj)}</section>
+      <section class="assurant-section">${heading('CONSUMIDOR')}${d.cliente?`<table class="assurant-data"><tbody><tr><th style="width:18%">Cliente</th><td>${E(d.cliente)}</td></tr></tbody></table>`:''}${pair('Serial',d.numeroSerie,'Sinistro',d.sinistro)}</section>
+      <section class="assurant-section">${heading('PRODUTO')}${pair('Marca',d.produtoMarca,'Modelo',d.modeloProduto)}</section>
+      ${textBox('PARECER TÉCNICO APÓS ANÁLISE DO PRODUTO',d.parecerTecnico)}
+      ${textBox('PEÇA QUE NECESSITA SER TROCADA E MOTIVO',d.pecaTrocar)}
+      <section class="assurant-section"><table class="assurant-data"><colgroup><col style="width:44%"><col style="width:56%"></colgroup><tbody><tr>${cells('Motivo',d.motivo)}</tr><tr>${cells('Forma de atendimento',d.formaAtendimento)}</tr><tr>${cells('Produto foi coletado?',d.produtoColetado)}</tr></tbody></table></section>
+      ${photos(d.fotos,'FOTOS DO DEFEITO ENCONTRADO')}
+      ${photos((d.cotacaoImgs||[]).map((dataUrl,i)=>({dataUrl,legenda:'Cotação '+(i+1)+' - orçamento da peça até 30 dias'})),'COTAÇÕES DO ORÇAMENTO')}
+      ${photos([{dataUrl:d.residenciaImg,legenda:'Residência do segurado'}],'RESIDÊNCIA DO SEGURADO')}
+      <div class="assurant-signatures"><div><div class="assurant-signature-mark"><span style="font-size:${String(d.responsavel||'').length>30?'13':'16'}px">${E(d.responsavel)}</span></div><div class="assurant-signature-name">${E(d.responsavel)||'&nbsp;'}</div><div class="assurant-signature-label">Assinatura Técnico Responsável</div></div><div><div class="assurant-signature-name">${E(d.cidade)}${d.cidade?' - ':''}${E(d.dataParecer)||'___/___/______'}</div><div class="assurant-signature-label">Local e Data</div></div></div>
     </div>`;
   }
 
