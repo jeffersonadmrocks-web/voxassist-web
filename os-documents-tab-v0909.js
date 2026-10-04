@@ -26,7 +26,7 @@
   // exclusividade do Whirlpool) -- são só mais dois tipos de PARECER
   // TÉCNICO que qualquer OS normal pode emitir, usando 100% desta mesma
   // infraestrutura (aba Documentos, os_document_emissions, vxPrintShell).
-  const DOC_TYPE_LABELS={ENTRADA:'Entrada',ORCAMENTO:'Orçamento',ENTREGA:'Entrega',HISENSE:'Parecer Técnico Hisense/Gorenje',ASSURANT:'Parecer Técnico Assurant'};
+  const DOC_TYPE_LABELS={ENTRADA:'Entrada',ORCAMENTO:'Orçamento',ENTREGA:'Entrega',PARECER_VOX:'Parecer Técnico VOX',HISENSE:'Parecer Técnico Hisense/Gorenje',ASSURANT:'Parecer Técnico Assurant'};
   const CHANNEL_LABELS={IMPRESSO:'Impresso',PDF:'PDF',WHATSAPP:'WhatsApp'};
   const HISENSE_FOTO_LABELS=['FOTO 1 – Instalação do Produto','FOTO 2 – Instalação do Produto','FOTO 3 – Local onde o Produto está Instalado.','FOTO 4 – Instalação Elétrica','FOTO 5 – Nº de Série','FOTO 6 – Peça Avariada','FOTO 7','FOTO 8'];
   const fileToDataUrl=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f)});
@@ -75,7 +75,8 @@
   function reopenEmission(r){
     const d=r.data_snapshot||{};
     let body;
-    if(r.document_type==='HISENSE')body=buildHisenseBody(d);
+    if(r.document_type==='PARECER_VOX')body=buildVoxReportBody(d);
+    else if(r.document_type==='HISENSE')body=buildHisenseBody(d);
     else if(r.document_type==='ASSURANT')body=buildAssurantBody(d);
     else{
       const rowsHtml=Object.entries(d).map(([k,v])=>`<div class="row"><b>${E(k.toUpperCase())}</b><span>${E(typeof v==='object'?JSON.stringify(v):v)}</span></div>`).join('');
@@ -159,48 +160,52 @@
       <div style="border:1px solid #000;min-height:70px;padding:8px;font-size:11px;white-space:pre-wrap">${E(d.anotacoes)}</div>
       <div style="margin-top:24px;font-style:italic">
         <div style="font-size:11px">${E(d.cidade)}, ${E(d.dataParecer)||'___/___/______'}</div>
-        <div style="margin-top:20px;text-align:right;padding-right:40px"><div style="font-weight:700;text-decoration:underline;font-size:13px">${E(d.responsavel)}</div><div style="font-size:11px">Técnico Responsável</div></div>
+        ${signatureHtml(d.responsavel)}
       </div>
     </div>`;
   }
 
   function buildAssurantBody(d){
-    const cell='border:1px solid #333;padding:6px 8px;font-size:11px;vertical-align:top;height:22px';
-    const label=`${cell};font-weight:700;background:#dbeafe;white-space:nowrap;width:22%`;
-    const bar='background:#1e3a8a;color:#fff;font-weight:700;font-size:12px;padding:6px 10px;text-align:center;letter-spacing:1px';
-    const colgroup='<colgroup><col style="width:22%"><col style="width:28%"><col style="width:22%"><col style="width:28%"></colgroup>';
-    const row=(l,v)=>`<tr><td style="${label}">${l}</td><td style="${cell}">${E(v)||'&nbsp;'}</td></tr>`;
-    return `<div id="parecer-print" style="background:#fff;color:#000;font-family:'Calibri',Arial,sans-serif;padding:15mm;width:210mm;min-height:297mm;margin:0 auto">
-      <h1 style="font-size:22px;font-weight:800;margin:0 0 8px;letter-spacing:2px;text-align:center">ANÁLISE TÉCNICA</h1>
-      <div style="${bar}">ASSISTÊNCIA TÉCNICA</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed">${colgroup}<tr>${row('Assistência:',d.assistenciaTec)}${row('CNPJ:',d.cnpj)}</tr></table>
-      <div style="${bar}">CONSUMIDOR</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed">${colgroup}<tr>${row('Serial:',d.numeroSerie)}${row('Sinistro:',d.sinistro)}</tr></table>
-      <div style="${bar}">PRODUTO</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:6px;table-layout:fixed">${colgroup}<tr>${row('Marca:',d.produtoMarca)}${row('Modelo:',d.modeloProduto)}</tr></table>
-      <div style="${bar}">PARECER TÉCNICO APÓS ANÁLISE DO PRODUTO:</div>
-      <div style="border:1px solid #333;border-top:none;padding:8px;font-size:11px;min-height:50px;white-space:pre-wrap">${E(d.parecerTecnico)}</div>
-      <div style="${bar};margin-top:6px">PEÇA QUE NECESSITA SER TROCADA E MOTIVO?</div>
-      <div style="border:1px solid #333;border-top:none;padding:8px;font-size:11px;min-height:40px;white-space:pre-wrap">${E(d.pecaTrocar)}</div>
-      <table style="width:100%;border-collapse:collapse;margin-top:6px;table-layout:fixed">
-        <colgroup><col style="width:44%"><col style="width:56%"></colgroup>
-        <tr><td style="${label};width:44%">MOTIVO:</td><td style="${cell}">${E(d.motivo)||'&nbsp;'}</td></tr>
-        <tr><td style="${label};width:44%">QUAL FOI A FORMA DE ATENDIMENTO?</td><td style="${cell}">${E(d.formaAtendimento)||'&nbsp;'}</td></tr>
-        <tr><td style="${label};width:44%">PRODUTO FOI COLETADO?</td><td style="${cell}">${E(d.produtoColetado)||'&nbsp;'}</td></tr>
-      </table>
-      ${photoGridHtml(d.fotos,2,150)}
-      ${photoGridHtml([{legenda:'COTAÇÃO DO ORÇAMENTO DA PEÇA ATÉ 30 DIAS',dataUrl:(d.cotacaoImgs||[])[0]},{legenda:'COTAÇÃO DO ORÇAMENTO DA PEÇA ATÉ 30 DIAS',dataUrl:(d.cotacaoImgs||[])[1]}],2,150)}
-      ${photoGridHtml([{legenda:'FOTO RESIDÊNCIA DO SEGURADO',dataUrl:d.residenciaImg}],1,150)}
-      <div style="margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
-        <div style="text-align:center">
-          <div style="position:relative;border-top:1px solid #000;padding-top:4px;font-size:11px;font-weight:700">
-            ${d.responsavel?`<span style="position:absolute;left:50%;bottom:100%;transform:translate(-50%,20%) rotate(-4deg);font-family:'Jennifer Lynne Bold','Jennifer Lynne','Kristabelle','Great Vibes','Segoe Script',cursive;font-size:20px;font-weight:400;color:#1d4ed8;white-space:nowrap;pointer-events:none">${E(d.responsavel)}</span>`:''}
-            ${E(d.responsavel)}
-          </div>
-          <div style="font-size:10px">Assinatura Técnico Responsável</div>
-        </div>
-        <div style="text-align:center"><div style="border-top:1px solid #000;padding-top:4px;font-size:11px">${E(d.cidade)} - ${E(d.dataParecer)||'___/___/______'}</div><div style="font-size:10px">Local e Data</div></div>
-      </div>
+    const cells=(label,value)=>`<th>${E(label)}</th><td>${E(value)||'&nbsp;'}</td>`;
+    const pair=(a,av,b,bv)=>`<table class="assurant-data"><colgroup><col style="width:18%"><col style="width:32%"><col style="width:18%"><col style="width:32%"></colgroup><tbody><tr>${cells(a,av)}${cells(b,bv)}</tr></tbody></table>`;
+    const heading=text=>`<h2>${E(text)}</h2>`;
+    const textBox=(title,text)=>`<section class="assurant-section">${heading(title)}<div class="assurant-text">${E(text)||'&nbsp;'}</div></section>`;
+    const photos=(items,title)=>{
+      const filled=(items||[]).filter(f=>f?.dataUrl);
+      if(!filled.length)return '';
+      return `<section class="assurant-section assurant-photos">${heading(title)}<div class="assurant-photo-grid"${filled.length===1?' style="grid-template-columns:1fr"':''}>${filled.map(f=>`<figure><img src="${E(f.dataUrl)}" alt="${E(f.legenda||title)}"><figcaption>${E(f.legenda||title)}</figcaption></figure>`).join('')}</div></section>`;
+    };
+    return `<style>
+      .assurant-report{width:100%;max-width:194mm;margin:0 auto;color:#172b40;font-family:Arial,sans-serif;font-size:10px;box-sizing:border-box;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+      .assurant-report *{box-sizing:border-box}
+      .assurant-report h1{font-size:19px;letter-spacing:1.2px;text-align:center;margin:0 0 9px;color:#172b40}
+      .assurant-report h2{font-size:10px;letter-spacing:.35px;color:#172b40;background:#eaf0f5;border:1px solid #8899aa;padding:5px 8px;margin:0;font-weight:700;text-align:left}
+      .assurant-report .assurant-section{margin-bottom:7px;break-inside:avoid;page-break-inside:avoid}
+      .assurant-report .assurant-data{width:100%;table-layout:fixed;border-collapse:collapse;margin:0}
+      .assurant-report td,.assurant-report th{border:1px solid #8899aa;padding:5px 7px;font-size:10px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+      .assurant-report th{background:#f5f7fa;font-weight:700;white-space:normal}
+      .assurant-report .assurant-text{border:1px solid #8899aa;border-top:0;padding:7px 8px;min-height:26px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4}
+      .assurant-report .assurant-photo-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:6px}
+      .assurant-report figure{margin:0;border:1px solid #8899aa;padding:4px;break-inside:avoid}
+      .assurant-report figure img{display:block;width:100%;height:26mm;object-fit:contain}
+      .assurant-report figcaption{font-size:8px;text-align:center;line-height:1.3;margin-top:3px;color:#42556a}
+      .assurant-report .assurant-signatures{display:grid;grid-template-columns:1fr 1fr;align-items:end;gap:20px;margin-top:14px;break-inside:avoid;page-break-inside:avoid;text-align:center}
+      .assurant-report .assurant-signature-mark{height:27px;display:flex;align-items:center;justify-content:center;font-family:'Segoe Script',cursive;font-style:italic;font-size:16px;color:#245184;overflow:hidden}
+      .assurant-report .assurant-signature-mark span{max-width:100%;overflow-wrap:anywhere;line-height:1.1}
+      .assurant-report .assurant-signature-name{border-top:1px solid #74889a;padding-top:5px;min-height:19px;font-size:10px;font-weight:700;overflow-wrap:anywhere}
+      .assurant-report .assurant-signature-label{font-size:9px;margin-top:3px;color:#42556a}
+    </style><div id="parecer-print" class="assurant-report">
+      <h1>ANÁLISE TÉCNICA</h1>
+      <section class="assurant-section">${heading('ASSISTÊNCIA TÉCNICA')}${pair('Assistência',d.assistenciaTec,'CNPJ',d.cnpj)}</section>
+      <section class="assurant-section">${heading('CONSUMIDOR')}${d.cliente?`<table class="assurant-data"><tbody><tr><th style="width:18%">Cliente</th><td>${E(d.cliente)}</td></tr></tbody></table>`:''}${pair('Serial',d.numeroSerie,'Sinistro',d.sinistro)}</section>
+      <section class="assurant-section">${heading('PRODUTO')}${pair('Marca',d.produtoMarca,'Modelo',d.modeloProduto)}</section>
+      ${textBox('PARECER TÉCNICO APÓS ANÁLISE DO PRODUTO',d.parecerTecnico)}
+      ${textBox('PEÇA QUE NECESSITA SER TROCADA E MOTIVO',d.pecaTrocar)}
+      <section class="assurant-section"><table class="assurant-data"><colgroup><col style="width:44%"><col style="width:56%"></colgroup><tbody><tr>${cells('Motivo',d.motivo)}</tr><tr>${cells('Forma de atendimento',d.formaAtendimento)}</tr><tr>${cells('Produto foi coletado?',d.produtoColetado)}</tr></tbody></table></section>
+      ${photos(d.fotos,'FOTOS DO DEFEITO ENCONTRADO')}
+      ${photos((d.cotacaoImgs||[]).map((dataUrl,i)=>({dataUrl,legenda:'Cotação '+(i+1)+' - orçamento da peça até 30 dias'})),'COTAÇÕES DO ORÇAMENTO')}
+      ${photos([{dataUrl:d.residenciaImg,legenda:'Residência do segurado'}],'RESIDÊNCIA DO SEGURADO')}
+      <div class="assurant-signatures"><div><div class="assurant-signature-mark"><span style="font-size:${String(d.responsavel||'').length>30?'13':'16'}px">${E(d.responsavel)}</span></div><div class="assurant-signature-name">${E(d.responsavel)||'&nbsp;'}</div><div class="assurant-signature-label">Assinatura Técnico Responsável</div></div><div><div class="assurant-signature-name">${E(d.cidade)}${d.cidade?' - ':''}${E(d.dataParecer)||'___/___/______'}</div><div class="assurant-signature-label">Local e Data</div></div></div>
     </div>`;
   }
 
@@ -234,36 +239,18 @@
       <div class="vx-doc-photo-grid"><label class="vx-doc-photo-slot"><span>RESIDÊNCIA</span><input type="file" accept="image/*" capture="environment" data-residencia="1"></label></div>
     </div>`;
   }
-  const EXTRA_FIELDS_HTML={HISENSE:hisenseExtraFieldsHtml,ASSURANT:assurantExtraFieldsHtml};
+  function voxExtraFieldsHtml(){return `<div class="vx-doc-extra"><label>PARECER TÉCNICO / DIAGNÓSTICO</label><textarea name="parecerTecnico" rows="4"></textarea><label>CONCLUSÃO E RECOMENDAÇÕES</label><textarea name="conclusao" rows="3"></textarea><label>OBSERVAÇÕES</label><textarea name="observacoes" rows="2"></textarea><label>VALIDADE DO ORÇAMENTO</label><input name="validade" value="15 dias"><label>GARANTIA</label><textarea name="garantia" rows="2" placeholder="Informe as condições aplicáveis"></textarea></div>`}
+  function signatureHtml(name){return name?`<div style="margin-top:24px;text-align:center"><div style="font-family:'Segoe Script',cursive;font-size:23px;color:#173b58">${E(name)}</div><div style="border-top:1px solid #a8b5c2;padding-top:5px">${E(name)} · Técnico responsável</div></div>`:''}
+  function buildVoxReportBody(d){
+    const row=(label,value)=>value?`<div class="row"><b>${E(label)}</b><span style="white-space:pre-wrap">${E(value)}</span></div>`:'';
+    const box=(title,value)=>value?`<div class="box"><h3>${E(title)}</h3><p style="white-space:pre-wrap">${E(value)}</p></div>`:'';
+    return `<div class="doc vox"><div class="head"><div><img alt="Logo" src="${E(d.logo_url||'icons/icon-192.png')}" style="max-height:48px;max-width:140px"><b>${E(d.assistenciaTec)}</b><div>${E(d.cnpj)}</div></div><div><h2>PARECER TÉCNICO</h2><b>OS ${E(d.os_numero)}</b><div>${E(d.dataParecer)}</div></div></div><div class="box"><h3>CLIENTE E EQUIPAMENTO</h3>${row('Cliente',d.cliente)}${row('CPF/CNPJ',d.cliente_documento)}${row('Telefone',d.telefone)}${row('Endereço',d.endereco)}${row('Produto',d.equipamento)}${row('Número de série',d.numeroSerie)}${row('Entrada',d.dataEntrada)}</div>${box('DEFEITO RELATADO',d.defeitoRelatado)}${box('PARECER TÉCNICO',d.parecerTecnico)}${box('CONCLUSÃO E RECOMENDAÇÕES',d.conclusao)}<div class="box"><h3>ORÇAMENTO</h3>${(d.pecas||[]).length?`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th>Código</th><th>Peça</th><th>Qtd.</th><th>Unitário</th><th>Total</th></tr></thead><tbody>${d.pecas.map(p=>`<tr><td>${E(p.part_code||p.code||'')}</td><td>${E(p.description||p.part_description||'Peça')}</td><td>${E(p.quantity)}</td><td>${money(p.unit_value)}</td><td>${money(Number(p.quantity||0)*Number(p.unit_value||0))}</td></tr>`).join('')}</tbody></table>`:''}${row('Mão de obra',money(d.maoDeObra))}${Number(d.adicionais)?row('Demais serviços / despesas',money(d.adicionais)):''}${Number(d.desconto)?row('Desconto',money(d.desconto)):''}${row('TOTAL',money(d.totalValor))}</div>${box('OBSERVAÇÕES',d.observacoes)}${row('Validade',d.validade)}${box('GARANTIA',d.garantia)}${row('Local e data',[d.cidade,d.dataParecer].filter(Boolean).join(' · '))}${signatureHtml(d.responsavel)}</div>`;
+  }
+  const EXTRA_FIELDS_HTML={PARECER_VOX:voxExtraFieldsHtml,HISENSE:hisenseExtraFieldsHtml,ASSURANT:assurantExtraFieldsHtml};
 
-  async function openEmitModal(id){
-    ensureExtraStyle();
-    document.querySelector('#vxDocEmitModal')?.remove();
-    const ov=document.createElement('div');ov.id='vxDocEmitModal';ov.className='vx-admin-overlay';
-    ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>Emitir documento</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body"><form class="vx-admin-form">
-      <label>TIPO *</label><select name="document_type" id="vxDocTypeSelect">${Object.entries(DOC_TYPE_LABELS).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
-      <div id="vxDocExtraWrap"></div>
-      <p class="vx-sg-help">Registra uma emissão nova e abre pra impressão/PDF.</p>
-      <div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button class="primary">EMITIR</button></div>
-    </form></div></div>`;
-    document.body.appendChild(ov);
-    ov.querySelectorAll('[data-close],[data-cancel]').forEach(b=>b.onclick=()=>ov.remove());
-    const typeSelect=ov.querySelector('#vxDocTypeSelect'),extraWrap=ov.querySelector('#vxDocExtraWrap'),help=ov.querySelector('.vx-sg-help');
-    function refreshExtra(){
-      const type=typeSelect.value;
-      const builder=EXTRA_FIELDS_HTML[type];
-      extraWrap.innerHTML=builder?builder():'';
-      help.textContent=builder
-        ? 'Parecer técnico gerado a partir dos dados desta OS -- não usa Termos e Condições (é um documento interno pro fabricante/seguradora, não um contrato com o cliente).'
-        : 'Registra uma emissão nova (com os dados atuais da OS e os Termos vigentes) e abre pra impressão/PDF.';
-    }
-    typeSelect.onchange=refreshExtra;refreshExtra();
-    ov.querySelector('form').onsubmit=async e=>{
-      e.preventDefault();
-      const form=e.target,btn=e.submitter,type=typeSelect.value;btn.disabled=true;
-      try{
-        const extra={};
-        form.querySelectorAll('.vx-doc-extra [name]').forEach(el=>{extra[el.name]=el.value});
+  async function collectReportExtra(form,type){
+    const extra={};
+    form.querySelectorAll('.vx-doc-extra [name]').forEach(el=>{extra[el.name]=el.value});
         if(type==='HISENSE'){
           const fotos=new Array(HISENSE_FOTO_LABELS.length).fill(null).map((_,i)=>({legenda:HISENSE_FOTO_LABELS[i],dataUrl:''}));
           for(const inp of form.querySelectorAll('[data-foto]')){const i=Number(inp.dataset.foto);if(inp.files?.[0])fotos[i].dataUrl=await fileToDataUrl(inp.files[0])}
@@ -276,7 +263,58 @@
           const residInp=form.querySelector('[data-residencia]');
           extra.fotos=fotos;extra.cotacaoImgs=cotacaoImgs;extra.residenciaImg=residInp?.files?.[0]?await fileToDataUrl(residInp.files[0]):'';
         }
-        const snapshot=await buildDataSnapshot(id,type,extra);
+    return extra;
+  }
+
+  async function openEmitModal(id,reportOnly=false){
+    ensureExtraStyle();
+    let seed,technicians=[];
+    try{seed=await buildDataSnapshot(id,'PARECER_VOX',{});const members=await api(`user_companies?company_id=eq.${seed.company_id}&active=eq.true&select=user_id`).catch(()=>[]);const ids=members.map(m=>m.user_id);technicians=ids.length?await api(`profiles?id=in.(${ids.join(',')})&role=eq.TECNICO&active=eq.true&select=id,full_name&order=full_name`).catch(()=>[]):[];}catch(err){toast?.('Não foi possível carregar os dados da OS: '+err.message,'err');return;}
+    document.querySelector('#vxDocEmitModal')?.remove();
+    const ov=document.createElement('div');ov.id='vxDocEmitModal';ov.className='vx-admin-overlay';
+    ov.innerHTML=`<div class="vx-admin-modal"><div class="vx-admin-modal-head"><h3>${reportOnly?'Gerar Parecer Técnico':'Emitir documento'}</h3><button type="button" data-close>×</button></div><div class="vx-admin-modal-body"><form class="vx-admin-form">
+      <label>TIPO *</label><select name="document_type" id="vxDocTypeSelect">${Object.entries(DOC_TYPE_LABELS).filter(([v])=>!reportOnly||['PARECER_VOX','HISENSE','ASSURANT'].includes(v)).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+      <div id="vxDocCommon" class="vx-doc-extra"><p class="vx-sg-help">OS ${E(seed.os_numero)} · ${E(seed.cliente)} · ${E(seed.equipamento)}<br>Dados preenchidos a partir da OS. Revise antes de emitir.</p><label>DEFEITO RELATADO</label><textarea name="defeitoRelatado" rows="2">${E(seed.defeitoRelatado)}</textarea><label>DIAGNÓSTICO (opcional)</label><textarea name="diagnosticoTec" rows="2">${E(seed.diagnosticoTec)}</textarea><label>TÉCNICO RESPONSÁVEL</label><select name="responsavel"><option value="${E(seed.responsavel)}">${E(seed.responsavel||'Selecione o técnico')}</option>${technicians.filter(t=>t.full_name!==seed.responsavel).map(t=>`<option value="${E(t.full_name)}">${E(t.full_name)}</option>`).join('')}</select><label>LOCAL</label><input name="cidade" value="${E(seed.cidade)}"><label>DATA</label><input name="dataParecer" value="${E(seed.dataParecer)}"></div><div id="vxDocExtraWrap"></div><div id="vxDocPreview"></div>
+      <p class="vx-sg-help">Registra uma emissão nova e abre pra impressão/PDF.</p>
+      <div class="vx-admin-form-actions"><button type="button" class="secondary" data-cancel>CANCELAR</button><button type="button" data-preview>VISUALIZAR</button><button class="primary">EMITIR E IMPRIMIR</button></div>
+    </form></div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelectorAll('[data-close],[data-cancel]').forEach(b=>b.onclick=()=>ov.remove());
+    const typeSelect=ov.querySelector('#vxDocTypeSelect'),extraWrap=ov.querySelector('#vxDocExtraWrap'),help=ov.querySelector('.vx-sg-help');
+    const draftNodes={};let previousType;
+    function refreshExtra(){
+      if(previousType){const fragment=document.createDocumentFragment();while(extraWrap.firstChild)fragment.appendChild(extraWrap.firstChild);draftNodes[previousType]=fragment;}
+      const type=typeSelect.value;
+      const builder=EXTRA_FIELDS_HTML[type];
+      const restored=!!draftNodes[type];
+      if(restored)extraWrap.appendChild(draftNodes[type]);else extraWrap.innerHTML=builder?builder():'';
+      ov.querySelector('#vxDocCommon').hidden=!builder;
+      const values={parecerTecnico:seed.diagnosticoTec,pecasNecessarias:(seed.pecas||[]).map(p=>[p.part_code,p.description||p.part_description].filter(Boolean).join(' · ')).join('\n'),marcaProduto:/gorenje/i.test(seed.produtoMarca)?'gorenje':'hisense'};
+      if(!restored)extraWrap.querySelectorAll('[name]').forEach(el=>{if(values[el.name]!=null)el.value=values[el.name]});previousType=type;
+      ov.querySelector('[data-preview]').hidden=!builder;
+      ov.querySelector('#vxDocPreview').innerHTML='';
+      help.textContent=builder
+        ? 'Revise os dados, complete o parecer e visualize antes de emitir. A assinatura visual acompanha o técnico selecionado. Alterações aqui pertencem ao documento; os dados da OS são preservados.'
+        : 'Registra uma emissão nova (com os dados atuais da OS e os Termos vigentes) e abre pra impressão/PDF.';
+    }
+    typeSelect.onchange=refreshExtra;refreshExtra();
+    ov.querySelector('[data-preview]').onclick=async()=>{
+      const type=typeSelect.value;
+      if(!EXTRA_FIELDS_HTML[type]){toast?.('A prévia está disponível para pareceres técnicos.','err');return;}
+      const extra=await collectReportExtra(ov.querySelector('form'),type);
+      const d={...seed,...extra,os_numero:type==='PARECER_VOX'?seed.os_numero:seed.manufacturer_os_number};
+      const body=type==='PARECER_VOX'?buildVoxReportBody(d):type==='HISENSE'?buildHisenseBody(d):buildAssurantBody(d);
+      const wrap=ov.querySelector('#vxDocPreview');wrap.innerHTML='<iframe title="Prévia do parecer" sandbox style="width:100%;height:480px;border:1px solid #dce5ed;border-radius:8px"></iframe>';
+      wrap.firstChild.srcdoc='<!doctype html><meta charset="utf-8"><style>body{margin:12px;font:12px Arial;color:#173451}.doc{max-width:190mm;margin:auto}.head{display:flex;justify-content:space-between;gap:16px;border-bottom:2px solid #173b58;padding-bottom:12px}.head img{display:block}.box{border:1px solid #dde4ea;padding:10px;margin:10px 0}h3{font-size:12px;margin:0 0 8px}.row{display:flex;gap:12px;padding:4px 0}.row b{min-width:110px}td,th{padding:5px;text-align:left;border-bottom:1px solid #eee}*{box-sizing:border-box}</style>'+body;
+    };
+
+    ov.querySelector('form').onsubmit=async e=>{
+      e.preventDefault();
+      const form=e.target,btn=e.submitter,type=typeSelect.value;btn.disabled=true;
+      try{
+        const extra=await collectReportExtra(form,type);
+        const snapshot=EXTRA_FIELDS_HTML[type]?{...seed,...extra,os_numero:type==='PARECER_VOX'?seed.os_numero:seed.manufacturer_os_number}:await buildDataSnapshot(id,type,extra);
+        if(EXTRA_FIELDS_HTML[type]&&(!snapshot.responsavel||!(type==='HISENSE'?snapshot.diagnosticoTec:snapshot.parecerTecnico))&&!confirm('Este parecer está sem responsável ou diagnóstico. Deseja emitir mesmo assim?')){btn.disabled=false;return;}
         const r=await api('rpc/create_os_document_emission',{method:'POST',body:JSON.stringify({p_service_order_id:id,p_document_type:type,p_data_snapshot:snapshot,p_channel:'IMPRESSO'})});
         ov.remove();
         toast?.('Documento emitido.');
@@ -289,21 +327,29 @@
 
   async function buildDataSnapshot(id,type,extra){
     const [osRows,parts,finRows,brand]=await Promise.all([
-      api(`service_orders?id=eq.${id}&select=*,clients(*),equipments(*),profiles!service_orders_technician_id_fkey(full_name)`).catch(()=>[]),
-      api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`).catch(()=>[]),
-      api(`os_financial?service_order_id=eq.${id}&select=*&limit=1`).catch(()=>[]),
+      api(`service_orders?id=eq.${id}&select=*,clients(*),equipments(*),profiles!service_orders_technician_id_fkey(full_name)`),
+      api(`os_parts?service_order_id=eq.${id}&select=*&order=created_at`),
+      api(`os_financial?service_order_id=eq.${id}&select=*&limit=1`),
       typeof window.getActiveCompanyBranding==='function'?window.getActiveCompanyBranding().catch(()=>({})):Promise.resolve({}),
     ]);
     const o=osRows?.[0]||{},c=o.clients||{},e=o.equipments||{},fin=finRows?.[0]||{},b=brand||{};
+    if(!o.id)throw new Error('OS não encontrada ou sem acesso.');
     const partsTotal=(parts||[]).reduce((s,p)=>s+Number(p.quantity||0)*Number(p.unit_value||0),0);
     const total=partsTotal+Number(fin.labor_value||0)+Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0)-Number(fin.discount_value||0);
     // Achado Fase C: campos comuns (cliente/equipamento/defeito/técnico) vêm
     // SEMPRE da mesma fonte canônica já usada pelo Whirlpool -- nunca
     // reperguntados ao usuário. Só os campos exclusivos de cada parecer
     // (recebidos em `extra`, preenchidos no modal) entram além disso.
-    if(type==='HISENSE'||type==='ASSURANT'){
+    if(type==='PARECER_VOX'||type==='HISENSE'||type==='ASSURANT'){
       const base={
-        os_numero:o.manufacturer_os_number||o.os_number||'',
+        os_numero:type==='PARECER_VOX'?o.os_number||'':o.manufacturer_os_number||o.os_number||'',
+        manufacturer_os_number:o.manufacturer_os_number||o.os_number||'',company_id:o.company_id,
+        logo_url:b.logo_url||new URL('icons/icon-192.png',location.href).href,
+        cliente_documento:c.document||'',telefone:c.phone_primary||c.phone||c.mobile||'',
+        endereco:[c.address,c.address_number,c.neighborhood,c.city,c.state].filter(Boolean).join(', '),
+        equipamento:[e.product_type,e.brand,e.model].filter(Boolean).join(' · '),
+        dataEntrada:(o.opened_at||o.created_at)?new Date(o.opened_at||o.created_at).toLocaleDateString('pt-BR'):'',
+        pecas:parts||[],maoDeObra:Number(fin.labor_value||0),adicionais:Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0),desconto:Number(fin.discount_value||0),totalValor:total,
         assistenciaTec:b.trade_name||b.legal_name||'VOX ELETRÔNICA',
         cnpj:b.document||'',
         cliente:c.name||'',
@@ -326,6 +372,7 @@
     };
   }
 
+  window.vxOpenTechnicalReport=()=>state?.activeOs?.id?openEmitModal(state.activeOs.id,true):toast?.('Abra uma OS para gerar o parecer.','err');
   const baseRender=window.renderOsDetail;
   if(typeof baseRender==='function')window.renderOsDetail=async function(){const r=await baseRender.apply(this,arguments);setTimeout(injectDocumentsTab,120);return r};
   setTimeout(injectDocumentsTab,550);
