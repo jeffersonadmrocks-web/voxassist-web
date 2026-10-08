@@ -772,7 +772,7 @@
     };
   };
 
-  // ---- Corrigir forma de pagamento (GESTOR estrito, migration
+  // ---- Corrigir pagamento (GESTOR estrito, migration
   // 20260914050000) -- mesma RPC/mecânica de
   // financeiro-recebimentos-v1.js (openCorrectMethodModal), reaproveitada
   // aqui pro financeiro interno da OS nunca ficar inconsistente com a
@@ -787,17 +787,23 @@
     if(!p)return toast('Selecione um pagamento.','err');
     if(String(p.status).toUpperCase()!=='RECEBIDO'||p.reversal_of_payment_id||p.reversal_state)return toast('Somente um recebimento confirmado (e nunca estornado) pode ter a forma corrigida.','err');
     closeVxModal('vxCorrectPayModal');
-    const otherMethods=(ctx.paymentMethods||[]).filter(m=>String(m.name||'').toUpperCase()!=='DESCONTO'&&String(m.name||'').toUpperCase()!==String(p.method||'').toUpperCase());
+    const otherMethods=(ctx.paymentMethods||[]).filter(m=>String(m.name||'').toUpperCase()!=='DESCONTO');
     const bg=document.createElement('div');bg.id='vxCorrectPayModal';bg.className='vx-modal-bg';
     bg.innerHTML=`<div class="vx-modal vx-pay-modal">
-      <h3>CORRIGIR FORMA DE PAGAMENTO</h3>
+      <h3>CORRIGIR PAGAMENTO</h3>
       <p style="font-size:12px;color:#617287">Forma atual: ${val(p.method)} • ${money(p.amount)} • ${dt(p.paid_at)}</p>
-      <div class="vx-field"><label>NOVA FORMA *</label><select class="vx-control" id="vxCorrMethod"><option value="">Selecione...</option>${otherMethods.map(m=>`<option>${val(m.name)}</option>`).join('')}</select></div>
+      <div class="vx-field"><label>FORMA DE PAGAMENTO *</label><select class="vx-control" id="vxCorrMethod"><option value="">Selecione...</option>${otherMethods.map(m=>`<option>${val(m.name)}</option>`).join('')}</select></div>
+      <div class="vx-field"><label>DATA E HORA DO PAGAMENTO *</label><input class="vx-control" type="datetime-local" id="vxCorrDate" required></div>
       <div class="vx-field"><label>MOTIVO DA CORREÇÃO *</label><input class="vx-control" id="vxCorrReason" placeholder="Ex.: cliente informou que pagou via PIX, não em dinheiro"></div>
-      <p style="font-size:11.5px;color:#a35b00;background:#fdf3e3;border-radius:8px;padding:8px 10px">O lançamento atual será estornado e um novo recebimento será criado com a forma corrigida -- mesma OS, empresa e valor. Continua aparecendo como um pagamento só (com um * ao lado da forma).</p>
+      <p style="font-size:11.5px;color:#a35b00;background:#fdf3e3;border-radius:8px;padding:8px 10px">O lançamento atual será estornado e um novo recebimento será criado com a forma e a data informadas -- mesma OS, empresa e valor. Continua aparecendo como um pagamento só (com um * ao lado da forma).</p>
       <div class="vx-modal-actions"><button type="button" data-close>CANCELAR</button><button type="button" class="vx-green-btn" id="vxCorrConfirm">CONFIRMAR CORREÇÃO</button></div>
     </div>`;
     document.body.appendChild(bg);
+    const originalDate=new Date(p.paid_at);
+    bg.querySelector('#vxCorrDate').value=new Date(originalDate.getTime()-originalDate.getTimezoneOffset()*60000).toISOString().slice(0,16);
+    const methodSelect=bg.querySelector('#vxCorrMethod');
+    if(!Array.from(methodSelect.options).some(o=>o.value===p.method))methodSelect.add(new Option(p.method,p.method));
+    methodSelect.value=p.method;
     const close=()=>bg.remove();
     bg.querySelector('[data-close]').onclick=close;
     bg.addEventListener('click',e=>{if(e.target===bg)close()});
@@ -808,13 +814,18 @@
       const newMethod=bg.querySelector('#vxCorrMethod').value;
       const reason=up(bg.querySelector('#vxCorrReason').value||'');
       if(!newMethod)return toast('Selecione a nova forma de pagamento.','err');
-      if(newMethod.toUpperCase()===String(p.method||'').toUpperCase())return toast('A nova forma precisa ser diferente da forma atual.','err');
+      const dateValue=bg.querySelector('#vxCorrDate').value;
+      const paidDate=new Date(dateValue);
+      if(!dateValue||!Number.isFinite(paidDate.getTime()))return toast('Informe uma data e hora válidas.','err');
+      const dateChanged=dateValue!==new Date(originalDate.getTime()-originalDate.getTimezoneOffset()*60000).toISOString().slice(0,16);
+      const newPaidAt=dateChanged?paidDate.toISOString():p.paid_at;
+      if(newMethod.toUpperCase()===String(p.method||'').toUpperCase()&&!dateChanged)return toast('Altere a forma ou a data do pagamento.','err');
       if(!reason)return toast('Informe o motivo da correção.','err');
-      if(!confirm(`Confirmar correção: ${p.method} → ${newMethod} (${money(p.amount)})?`))return;
+      if(!confirm(`Confirmar correção: ${p.method} → ${newMethod} (${money(p.amount)}), data ${paidDate.toLocaleString('pt-BR')}?`))return;
       confirmBtn.disabled=true;
       try{
-        await api('rpc/correct_payment_method',{method:'POST',body:JSON.stringify({p_payment_id:p.id,p_new_method:newMethod,p_reason:reason,p_idempotency_key:idempotencyKey})});
-        toast('Forma de pagamento corrigida.');close();reload();
+        await api('rpc/correct_payment_details',{method:'POST',body:JSON.stringify({p_payment_id:p.id,p_new_method:newMethod,p_reason:reason,p_idempotency_key:idempotencyKey,p_new_paid_at:newPaidAt})});
+        toast('Pagamento corrigido.');close();reload();
       }catch(e){toast(e.message,'err');confirmBtn.disabled=false}
     };
   };
