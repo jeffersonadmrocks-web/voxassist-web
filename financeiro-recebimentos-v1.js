@@ -64,7 +64,7 @@
   // DOM/console ainda esbarra em reverse_payment/RLS no servidor.
   const norm = (s) => String(s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replaceAll('_', ' ').trim();
   const isManager = () => ['GESTOR', 'ADMIN', 'ADMINISTRADOR'].includes(norm(state?.profile?.role));
-  // "Corrigir forma de pagamento" \u00e9 GESTOR estrito (decis\u00e3o do usu\u00e1rio,
+  // "Corrigir pagamento" \u00e9 GESTOR estrito (decis\u00e3o do usu\u00e1rio,
   // 2026-09-14) -- diferente de isManager() (que tamb\u00e9m aceita
   // ADMIN/ADMINISTRADOR), nunca por permiss\u00e3o granular. Mesma checagem
   // exata que o backend (correct_payment_method) faz -- s\u00f3 pra n\u00e3o
@@ -323,7 +323,7 @@
         <div class="vx-fin-menu" id="vxFinMenu-${p.id}" hidden>
           <button type="button" onclick="vxFinOpenDrawer('${p.id}')">Ver detalhes</button>
           ${canRev ? `<button type="button" class="vx-fin-menu-danger" onclick="vxFinQuickReverse('${p.id}')">Estornar recebimento</button>` : ''}
-          ${canCorrect ? `<button type="button" onclick="vxFinOpenCorrectMethod('${p.id}')">Corrigir forma de pagamento</button>` : ''}
+          ${canCorrect ? `<button type="button" onclick="vxFinOpenCorrectMethod('${p.id}')">Corrigir pagamento</button>` : ''}
         </div>
       </td>
     </tr>`;
@@ -619,7 +619,7 @@
           <button type="button" id="vxFinDrawerAuditBtn">AUDITORIA</button>
           ${canReverse ? `<button type="button" class="vx-orange-btn" id="vxFinDrawerReverse">ESTORNAR RECEBIMENTO</button>`
             : (reversibleHere && !ui.canReverse ? `<span class="vx-fin-reverse-locked" title="Requer a permissão financeiro.reverse">Estornar recebimento indisponível — requer a permissão <b>financeiro.reverse</b></span>` : '')}
-          ${canCorrect ? `<button type="button" id="vxFinDrawerCorrect">CORRIGIR FORMA DE PAGAMENTO</button>` : ''}
+          ${canCorrect ? `<button type="button" id="vxFinDrawerCorrect">CORRIGIR PAGAMENTO</button>` : ''}
         </div>
         <button type="button" data-close>FECHAR</button>
       </div>
@@ -768,7 +768,7 @@
     };
   }
 
-  // ---- Corrigir forma de pagamento (GESTOR estrito, migration
+  // ---- Corrigir pagamento (GESTOR estrito, migration
   // 20260914050000) ----
   // Por baixo dos panos é estorno interno + novo recebimento
   // (correct_payment_method), mas o usuário nunca precisa saber disso
@@ -778,24 +778,30 @@
     document.querySelector('#vxFinCorrectModal')?.remove();
     const os = p.service_orders?.os_number;
     const cliente = p.service_orders ? (p.service_orders.clients?.name || '—') : 'BALCÃO';
-    const otherMethods = ui.methods.filter((m) => up(m.name) !== 'DESCONTO' && up(m.name) !== up(p.method));
+    const otherMethods = ui.methods.filter((m) => up(m.name) !== 'DESCONTO');
     const bg = document.createElement('div');
     bg.id = 'vxFinCorrectModal';
     bg.className = 'vx-modal-bg';
     bg.innerHTML = `<div class="vx-modal vx-fin-avulso-modal vx-fin-correct-modal">
-      <h3>Corrigir forma de pagamento</h3>
+      <h3>Corrigir pagamento</h3>
       <div class="vx-fin-reverse-summary">
         <div><span>OS</span><b>${os ? esc(os) : 'SEM OS (AVULSO)'}</b></div>
         <div><span>Cliente</span><b>${esc(cliente)}</b></div>
         <div><span>Valor a corrigir</span><b>${money(p.amount)}</b></div>
         <div><span>Forma registrada atualmente</span><b>${esc(p.method)}</b></div>
       </div>
-      <div class="vx-field"><label>NOVA FORMA DE PAGAMENTO *</label><select class="vx-control" id="vxFinCorrMethod"><option value="">Selecione...</option>${otherMethods.map((m) => `<option>${esc(m.name)}</option>`).join('')}</select></div>
+      <div class="vx-field"><label>FORMA DE PAGAMENTO *</label><select class="vx-control" id="vxFinCorrMethod"><option value="">Selecione...</option>${otherMethods.map((m) => `<option>${esc(m.name)}</option>`).join('')}</select></div>
+      <div class="vx-field"><label>DATA E HORA DO PAGAMENTO *</label><input class="vx-control" type="datetime-local" id="vxFinCorrDate" required></div>
       <div class="vx-field"><label>MOTIVO DA CORREÇÃO *</label><textarea class="vx-control" id="vxFinCorrReason" rows="2" placeholder="Ex.: Cliente informou que pagou via PIX, não em dinheiro"></textarea></div>
-      <p class="vx-fin-reverse-warning">O lançamento atual será estornado e um novo recebimento será criado com a forma corrigida. Mesma OS, empresa e valor -- o recebimento continuará aparecendo como um único pagamento (com um * ao lado da forma) no Financeiro, Caixa, relatório diário e financeiro da OS.</p>
+      <p class="vx-fin-reverse-warning">O lançamento atual será estornado e um novo recebimento será criado com a forma e a data informadas. Mesma OS, empresa e valor -- o recebimento continuará aparecendo como um único pagamento (com um * ao lado da forma) no Financeiro, Caixa, relatório diário e financeiro da OS. A data informada define o dia do recebimento nos relatórios.</p>
       <div class="vx-modal-actions"><button type="button" data-close>Cancelar</button><button type="button" class="vx-green-btn" id="vxFinCorrConfirm">Confirmar correção</button></div>
     </div>`;
     document.body.appendChild(bg);
+    const originalDate=new Date(p.paid_at);
+    bg.querySelector('#vxFinCorrDate').value=new Date(originalDate.getTime()-originalDate.getTimezoneOffset()*60000).toISOString().slice(0,16);
+    const methodSelect=bg.querySelector('#vxFinCorrMethod');
+    if(!Array.from(methodSelect.options).some(o=>o.value===p.method))methodSelect.add(new Option(p.method,p.method));
+    methodSelect.value=p.method;
     const close = () => bg.remove();
     bg.querySelector('[data-close]').onclick = close;
     bg.addEventListener('click', (e) => { if (e.target === bg) close(); });
@@ -810,16 +816,21 @@
       const newMethod = $('#vxFinCorrMethod', bg).value;
       const reason = ($('#vxFinCorrReason', bg).value || '').trim();
       if (!newMethod) return toast('Selecione a nova forma de pagamento.', 'err');
-      if (up(newMethod) === up(p.method)) return toast('A nova forma precisa ser diferente da forma atual.', 'err');
+      const dateValue=bg.querySelector('#vxFinCorrDate').value;
+      const paidDate=new Date(dateValue);
+      if(!dateValue||!Number.isFinite(paidDate.getTime()))return toast('Informe uma data e hora válidas.','err');
+      const dateChanged=dateValue!==new Date(originalDate.getTime()-originalDate.getTimezoneOffset()*60000).toISOString().slice(0,16);
+      const newPaidAt=dateChanged?paidDate.toISOString():p.paid_at;
+      if(newMethod.toUpperCase()===String(p.method||'').toUpperCase()&&!dateChanged)return toast('Altere a forma ou a data do pagamento.','err');
       if (!reason) return toast('Informe o motivo da correção.', 'err');
-      if (!confirm(`Confirmar correção: ${esc(p.method)} → ${esc(newMethod)} (${money(p.amount)})?`)) return;
+      if (!confirm(`Confirmar correção: ${esc(p.method)} → ${esc(newMethod)} (${money(p.amount)}), data ${paidDate.toLocaleString('pt-BR')}?`)) return;
       confirmBtn.disabled = true;
       try {
-        await api('rpc/correct_payment_method', {
+        await api('rpc/correct_payment_details', {
           method: 'POST',
-          body: JSON.stringify({ p_payment_id: p.id, p_new_method: newMethod, p_reason: reason, p_idempotency_key: idempotencyKey }),
+          body: JSON.stringify({ p_payment_id: p.id, p_new_method: newMethod, p_reason: reason, p_idempotency_key: idempotencyKey, p_new_paid_at: newPaidAt }),
         });
-        toast('Forma de pagamento corrigida.');
+        toast('Pagamento corrigido.');
         close();
         closeDrawer();
         await reload();
