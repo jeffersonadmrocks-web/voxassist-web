@@ -58,8 +58,30 @@ Deno.serve(async req=>{
       // A autenticação já foi validada pelo worker antes desta chamada. Após
       // uma falha sistêmica, o relatório AUTH_OK só libera a fila ao FINAL do
       // lote; filtrar apenas PENDENTE aqui deixava o lote vazio para sempre.
-      const {data:q,error}=await admin.from("whirlpool_import_queue").select("id,external_order_id,created_at").in("state",["PENDENTE","AGUARDANDO_CONEXAO_WHIRLPOOL"]).eq("queue_reason","ATIVA_NOVA").order("created_at").limit(limit);
-      if(error)throw error;
+      // Priorize explicitamente solicitações novas/manuais antes do backlog
+      // AGUARDANDO_CONEXAO_WHIRLPOOL. A ordenação antiga por created_at
+      // deixava importações manuais recém-solicitadas atrás de centenas
+      // de itens antigos, parecendo que o botão não funcionava.
+      // Filtre também a conexão reivindicada pelo worker para não
+      // misturar ordens de filiais diferentes.
+      const {data:pending,error:pendingError}=await admin.from("whirlpool_import_queue")
+        .select("id,external_order_id,created_at")
+        .eq("state","PENDENTE")
+        .eq("queue_reason","ATIVA_NOVA")
+        .order("updated_at",{ascending:false})
+        .limit(limit);
+      if(pendingError)throw pendingError;
+      const remaining=limit-(pending||[]).length;
+      const {data:waiting,error:waitingError}=remaining>0
+        ?await admin.from("whirlpool_import_queue")
+          .select("id,external_order_id,created_at")
+          .eq("state","AGUARDANDO_CONEXAO_WHIRLPOOL")
+          .eq("queue_reason","ATIVA_NOVA")
+          .order("created_at")
+          .limit(remaining)
+        :{data:[],error:null};
+      if(waitingError)throw waitingError;
+      const q=[...(pending||[]),...(waiting||[])];
       const ids=(q||[]).map((x:any)=>x.external_order_id);
       const {data:ext,error:ee}=ids.length?await admin.from("whirlpool_external_orders").select("id,external_order_id,service_status").in("id",ids):{data:[],error:null};
       if(ee)throw ee;const byId=new Map((ext||[]).map((x:any)=>[x.id,x]));
