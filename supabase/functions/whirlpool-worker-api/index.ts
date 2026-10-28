@@ -62,8 +62,6 @@ Deno.serve(async req=>{
       // AGUARDANDO_CONEXAO_WHIRLPOOL. A ordenação antiga por created_at
       // deixava importações manuais recém-solicitadas atrás de centenas
       // de itens antigos, parecendo que o botão não funcionava.
-      // Filtre também a conexão reivindicada pelo worker para não
-      // misturar ordens de filiais diferentes.
       const {data:pending,error:pendingError}=await admin.from("whirlpool_import_queue")
         .select("id,external_order_id,created_at")
         .eq("state","PENDENTE")
