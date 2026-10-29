@@ -37,15 +37,16 @@
 
   function budgetNumbers(){
     const panel=q('#vx-orcamento');
-    if(!panel) return {parts:0,labor:0,freight:0,aux:0,opinion:0,discount:0,total:0};
+    if(!panel) return {parts:0,labor:0,freight:0,visit:0,aux:0,opinion:0,discount:0,total:0};
     const read=label=>parseMoney(fieldByLabel(panel,label)?.value);
     const parts=read('VALOR DAS PEÇAS');
     const labor=read('MÃO DE OBRA');
     const freight=read('FRETE');
+    const visit=read('VISITA TÉCNICA');
     const aux=read('MATERIAL AUXILIAR');
     const opinion=read('PARECER TÉCNICO');
     const discount=read('DESCONTO');
-    return {parts,labor,freight,aux,opinion,discount,total:parts+labor+freight+aux+opinion-discount};
+    return {parts,labor,freight,visit,aux,opinion,discount,total:parts+labor+freight+visit+aux+opinion-discount};
   }
 
   function brl(n){return Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
@@ -56,7 +57,7 @@
     const n=budgetNumbers();
     q('[data-vx="parts"]',box).textContent=brl(n.parts);
     q('[data-vx="labor"]',box).textContent=brl(n.labor);
-    q('[data-vx="extras"]',box).textContent=brl(n.freight+n.aux+n.opinion);
+    q('[data-vx="extras"]',box).textContent=brl(n.freight+n.visit+n.aux+n.opinion);
     q('[data-vx="discount"]',box).textContent=brl(n.discount);
     q('[data-vx="total"]',box).textContent=brl(n.total);
   }
@@ -193,7 +194,7 @@
         const total=document.createElement('div');
         total.id='vxBudgetTotal';
         total.style.cssText='margin:14px 0 8px;border:1px solid #cbd7e3;background:#f7fafc;padding:12px 14px;display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;align-items:center;';
-        total.innerHTML='<div><small>PEÇAS</small><b data-vx="parts" style="display:block;margin-top:5px"></b></div><div><small>MÃO DE OBRA</small><b data-vx="labor" style="display:block;margin-top:5px"></b></div><div><small>FRETE + AUXILIAR + PARECER</small><b data-vx="extras" style="display:block;margin-top:5px"></b></div><div><small>DESCONTO</small><b data-vx="discount" style="display:block;margin-top:5px;color:#d56b00"></b></div><div style="border-left:3px solid #078f46;padding-left:12px"><small>TOTAL DO ORÇAMENTO</small><b data-vx="total" style="display:block;margin-top:4px;font-size:20px;color:#078f46"></b></div>';
+        total.innerHTML='<div><small>PEÇAS</small><b data-vx="parts" style="display:block;margin-top:5px"></b></div><div><small>MÃO DE OBRA</small><b data-vx="labor" style="display:block;margin-top:5px"></b></div><div><small>FRETE + VISITA + AUXILIAR + PARECER</small><b data-vx="extras" style="display:block;margin-top:5px"></b></div><div><small>DESCONTO</small><b data-vx="discount" style="display:block;margin-top:5px;color:#d56b00"></b></div><div style="border-left:3px solid #078f46;padding-left:12px"><small>TOTAL DO ORÇAMENTO</small><b data-vx="total" style="display:block;margin-top:4px;font-size:20px;color:#078f46"></b></div>';
         form.insertAdjacentElement('afterend',total);
         updateBudgetTotal();
       }
