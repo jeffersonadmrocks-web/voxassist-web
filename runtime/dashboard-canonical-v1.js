@@ -55,7 +55,7 @@
   // desconto entravam aqui, subestimando todo valor de OS com peça
   // lançada. partsTotal é opcional (0 por padrão) só pra não quebrar
   // quem já chama budget() sem essa informação disponível.
-  const budget=(f,partsTotal=0)=>Math.max(0,Number(partsTotal||0)+Number(f?.labor_value||0)+Number(f?.freight_value||0)+Number(f?.auxiliary_material_value||0)+Number(f?.technical_report_value||0)-Number(f?.discount_value||0));
+  const budget=(f,partsTotal=0)=>Math.max(0,Number(partsTotal||0)+Number(f?.labor_value||0)+Number(f?.freight_value||0)+Number(f?.auxiliary_material_value||0)+Number(f?.technical_report_value||0)+Number(f?.technical_visit_value||0)-Number(f?.discount_value||0));
   const startOfMonth=d=>new Date(d.getFullYear(),d.getMonth(),1);
   const withTimeout=(promise,ms,label)=>Promise.race([promise,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+' excedeu '+ms+'ms')),ms))]);
   const pct=(part,total)=>total>0?Math.round((part/total)*100):0;

@@ -1,6 +1,6 @@
 /* VoxAssist V0.8.12 — corrige campos monetários formatados (ex.: R$ 0,00) antes do save global */
 (function(){
-  const moneyNames=new Set(['labor_value','freight_value','auxiliary_material_value','technical_report_value','discount_value']);
+  const moneyNames=new Set(['labor_value','freight_value','auxiliary_material_value','technical_report_value','technical_visit_value','discount_value']);
   function parseBR(v){
     if(v==null||v==='')return null;
     let s=String(v).trim();

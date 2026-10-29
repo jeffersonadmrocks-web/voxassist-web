@@ -19,3 +19,10 @@ test('both save paths synchronize financial context after successful persistence
  for(const name of ['os-global-save-v0812.js','equipment-save-v0812.js'])assert.match(read(name),/vxApplySavedFinancial\?\.\(financialBody,o.id\)/);
  const source=read('os-detail-v0812.js');const payment=source.slice(source.indexOf('window.vxOpenRegisterPayment=async function(){'));assert.ok(payment.indexOf('vxHasUnsavedBudget')<payment.indexOf('await refreshPaymentBudget()'));assert.ok(payment.indexOf('await refreshPaymentBudget()')<payment.indexOf('const {budget,received,bal}=budgetSummary()'));
 });
+
+test('technical visit increases balance, survives saved-budget refresh and can be cleared',async()=>{
+ const {c}=harness();c.window.vxApplySavedFinancial({technical_visit_value:125.75},'os');assert.equal(c.summary().budget,1065.75);assert.equal(c.summary().bal,1065.75);
+ c.api=async url=>url.startsWith('os_financial')?[{technical_visit_value:125.75}]:url.startsWith('os_parts')?[{quantity:1,unit_value:940}]:[{amount:1000,status:'RECEBIDO'}];
+ await c.refresh();assert.equal(c.summary().budget,1065.75);assert.equal(c.summary().bal,65.75);
+ c.window.vxApplySavedFinancial({technical_visit_value:0},'os');assert.equal(c.summary().budget,940);
+});

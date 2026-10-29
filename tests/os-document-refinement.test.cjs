@@ -7,3 +7,10 @@ test('entry includes parts without prices and refuses missing terms',async()=>{c
 test('diagnosis no longer gates SQL advancement',()=>{const sql=fs.readFileSync('supabase/migrations/20261004170000_optional_diagnosed_defect.sql','utf8');assert.doesNotMatch(sql,/trim\(p_diagnosed_defect\)/);assert.match(sql,/p_paid_total/);});
 
 test('parts precede budget and terms follow financial summary',async()=>{const html=await harness()(body,{company_id:'c'},[{description:'Placa',quantity:1,unit_value:20}],{},{},'orcamento');assert.ok(html.indexOf('PEÇAS CADASTRADAS')<html.indexOf('💰 ORÇAMENTO'));assert.ok(html.indexOf('💰 ORÇAMENTO')<html.indexOf('TERMOS E CONDIÇÕES'));});
+
+test('technical visit is itemized only on priced documents when charged',async()=>{
+ const render=harness();const fin={technical_visit_value:125.75};
+ assert.match(await render(body,{company_id:'c'},[],fin,{},'orcamento'),/VISITA TÉCNICA.*125,75/);
+ assert.doesNotMatch(await render(body,{company_id:'c'},[],fin,{},'entrada'),/VISITA TÉCNICA/);
+ assert.doesNotMatch(await render(body,{company_id:'c'},[],{technical_visit_value:0},{},'orcamento'),/VISITA TÉCNICA/);
+});
