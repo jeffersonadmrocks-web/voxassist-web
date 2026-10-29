@@ -122,7 +122,7 @@
     if(!docType)return; // usuário fechou a escolha do documento sem selecionar
     const d=await loadBundle(id),o=d.o,c=o.clients||{},e=o.equipments||{},b=d.brand||{},parts=d.parts||[],fin=d.fin||{};
     const partsTotal=parts.reduce((s,p)=>s+Number(p.quantity||0)*Number(p.unit_value||0),0);
-    const total=partsTotal+Number(fin.labor_value||0)+Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0)-Number(fin.discount_value||0);
+    const total=partsTotal+Number(fin.labor_value||0)+Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0)+Number(fin.technical_visit_value||0)-Number(fin.discount_value||0);
     const clienteBox=`<div class="box"><h3>👤 CLIENTE</h3><div class="row"><b>NOME</b><span>${E(c.name)}</span></div><div class="row"><b>CPF/CNPJ</b><span>${E(c.document)}</span></div><div class="row"><b>TELEFONE</b><span>${E(c.phone_primary)}</span></div><div class="row"><b>ENDEREÇO</b><span>${E([c.address,c.address_number,c.complement,c.neighborhood,c.city,c.state].filter(Boolean).join(', '))}</span></div></div>`;
     const equipBox=`<div class="box"><h3>📦 EQUIPAMENTO</h3><div class="row"><b>PRODUTO</b><span>${E(e.product_type)}</span></div><div class="row"><b>MARCA / MODELO</b><span>${E([e.brand,e.model].filter(Boolean).join(' • '))}</span></div><div class="row"><b>SÉRIE</b><span>${E(e.serial_number)}</span></div><div class="row"><b>ATENDIMENTO</b><span>${E(o.service_type)}</span></div></div>`;
     let middle='',signBox='';

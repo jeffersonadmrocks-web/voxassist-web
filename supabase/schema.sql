@@ -1104,6 +1104,7 @@ create table if not exists public.os_financial (
   notes text,
   updated_at timestamptz not null default now(),
   freight_value numeric default 0,
+  technical_visit_value numeric default 0,
   auxiliary_material_value numeric default 0,
   technical_report_value numeric default 0,
   analysis_date date

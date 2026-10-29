@@ -485,7 +485,7 @@
     ]);
     const fin = finRows?.[0] || {};
     const partsTotal = (parts || []).reduce((s, x) => s + Number(x.quantity || 0) * Number(x.unit_value || 0), 0);
-    const budget = partsTotal + Number(fin.labor_value || 0) + Number(fin.freight_value || 0) + Number(fin.auxiliary_material_value || 0) + Number(fin.technical_report_value || 0) - Number(fin.discount_value || 0);
+    const budget = partsTotal + Number(fin.labor_value || 0) + Number(fin.freight_value || 0) + Number(fin.auxiliary_material_value || 0) + Number(fin.technical_report_value || 0)+Number(fin.technical_visit_value || 0) - Number(fin.discount_value || 0);
     const cutoff = new Date(p.paid_at).getTime();
     const allocated = (payRows || [])
       .filter((x) => !isCancelled(x.status) && new Date(x.paid_at).getTime() <= cutoff)
@@ -680,7 +680,7 @@
       ]).then(([finRows, parts]) => {
         const fin = finRows?.[0] || {};
         const partsTotal = (parts || []).reduce((s, x) => s + Number(x.quantity || 0) * Number(x.unit_value || 0), 0);
-        const budget = partsTotal + Number(fin.labor_value || 0) + Number(fin.freight_value || 0) + Number(fin.auxiliary_material_value || 0) + Number(fin.technical_report_value || 0) - Number(fin.discount_value || 0);
+        const budget = partsTotal + Number(fin.labor_value || 0) + Number(fin.freight_value || 0) + Number(fin.auxiliary_material_value || 0) + Number(fin.technical_report_value || 0)+Number(fin.technical_visit_value || 0) - Number(fin.discount_value || 0);
         bg.querySelector('#vxFinDrawerBudget').textContent = money(budget);
       });
     } else {

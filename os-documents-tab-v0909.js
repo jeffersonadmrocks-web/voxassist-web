@@ -335,7 +335,7 @@
     const o=osRows?.[0]||{},c=o.clients||{},e=o.equipments||{},fin=finRows?.[0]||{},b=brand||{};
     if(!o.id)throw new Error('OS não encontrada ou sem acesso.');
     const partsTotal=(parts||[]).reduce((s,p)=>s+Number(p.quantity||0)*Number(p.unit_value||0),0);
-    const total=partsTotal+Number(fin.labor_value||0)+Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0)-Number(fin.discount_value||0);
+    const total=partsTotal+Number(fin.labor_value||0)+Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0)+Number(fin.technical_visit_value||0)-Number(fin.discount_value||0);
     // Achado Fase C: campos comuns (cliente/equipamento/defeito/técnico) vêm
     // SEMPRE da mesma fonte canônica já usada pelo Whirlpool -- nunca
     // reperguntados ao usuário. Só os campos exclusivos de cada parecer
@@ -349,7 +349,7 @@
         endereco:[c.address,c.address_number,c.neighborhood,c.city,c.state].filter(Boolean).join(', '),
         equipamento:[e.product_type,e.brand,e.model].filter(Boolean).join(' · '),
         dataEntrada:(o.opened_at||o.created_at)?new Date(o.opened_at||o.created_at).toLocaleDateString('pt-BR'):'',
-        pecas:parts||[],maoDeObra:Number(fin.labor_value||0),adicionais:Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0),desconto:Number(fin.discount_value||0),totalValor:total,
+        pecas:parts||[],maoDeObra:Number(fin.labor_value||0),adicionais:Number(fin.freight_value||0)+Number(fin.auxiliary_material_value||0)+Number(fin.technical_report_value||0)+Number(fin.technical_visit_value||0),desconto:Number(fin.discount_value||0),totalValor:total,
         assistenciaTec:b.trade_name||b.legal_name||'VOX ELETRÔNICA',
         cnpj:b.document||'',
         cliente:c.name||'',
